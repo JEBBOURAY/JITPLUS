@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
   inputWrap: { alignSelf: 'stretch', justifyContent: 'center', borderRadius: radius.lg, borderWidth: 2 },
   inputWrapLarge: { minHeight: ms(84) },
   inputWrapSmall: { minHeight: ms(56) },
-  input: { fontFamily: font.bold, textAlign: 'center', paddingHorizontal: ms(56), paddingVertical: 8 },
+  input: { fontFamily: font.semibold, textAlign: 'center', paddingHorizontal: ms(56), paddingVertical: 8 },
   inputLarge: { fontSize: ms(42), letterSpacing: -0.5 },
   inputSmall: { fontSize: ms(22) },
   currency: { position: 'absolute', fontFamily: font.semibold },
@@ -232,6 +232,6 @@ const styles = StyleSheet.create({
   currencyLtr: { right: 18 },
   currencyRtl: { left: 18 },
   earnPill: { alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
-  earnPillText: { fontSize: ms(15), fontFamily: font.bold },
+  earnPillText: { fontSize: ms(15), fontFamily: font.semibold },
   hint: { fontSize: ms(13), fontFamily: font.regular, textAlign: 'center' },
 });

@@ -7,7 +7,6 @@ describe('resolveNotificationRoute', () => {
   it('maps campaign actions to their screens', () => {
     expect(resolveNotificationRoute({ action: 'open_explore' })).toBe('/(tabs)/discover');
     expect(resolveNotificationRoute({ action: 'open_scan' })).toBe('/(tabs)/qr');
-    expect(resolveNotificationRoute({ action: 'open_referral' })).toBe('/referral');
     expect(resolveNotificationRoute({ action: 'open_cards' })).toBe('/(tabs)');
     expect(resolveNotificationRoute({ action: 'open_notifications' })).toBe(FEED);
     expect(resolveNotificationRoute({ action: 'open_coupons' })).toBe('/coupons');
@@ -27,7 +26,14 @@ describe('resolveNotificationRoute', () => {
       .toEqual({ pathname: '/scratch/[id]', params: { id: ID } });
     expect(resolveNotificationRoute({ action: 'open_scratch', cardId: 'bad', campaignId: ID }))
       .toEqual({ pathname: '/scratch/[id]', params: { id: ID, mode: 'campaign' } });
-    expect(resolveNotificationRoute({ action: 'open_scratch' })).toBe('/(tabs)');
+    expect(resolveNotificationRoute({ action: 'open_scratch' })).toBe('/scratch');
+  });
+
+  it('opens the lucky wheel for ticket notifications, not the merchant', () => {
+    const wheel = { pathname: '/(tabs)', params: { wheel: ID } };
+    expect(resolveNotificationRoute({ event: 'lucky_wheel_ticket', action: 'open_wheel', merchantId: ID })).toEqual(wheel);
+    expect(resolveNotificationRoute({ event: 'lucky_wheel_ticket', merchantId: ID, tickets: '1' })).toEqual(wheel);
+    expect(resolveNotificationRoute({ action: 'open_wheel' })).toEqual({ pathname: '/(tabs)', params: { wheel: '1' } });
   });
 
   it('routes coupons by id, or to the list', () => {
@@ -48,6 +54,17 @@ describe('resolveNotificationRoute', () => {
     expect(resolveNotificationRoute({ event: 'deals_digest', action: 'open_deal', dealId: ID }))
       .toEqual({ pathname: '/deal/[id]', params: { id: ID } });
     expect(resolveNotificationRoute({ event: 'deals_digest', action: 'open_deals' })).toBe('/(tabs)/deals');
+  });
+
+  it('opens the target of events that carry no action', () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const merchant = { pathname: '/merchant/[id]', params: { id: ID } };
+    expect(resolveNotificationRoute({ event: 'some_future_event', merchantId: ID })).toEqual(merchant);
+    expect(resolveNotificationRoute({ action: 'some_future_action', merchantId: ID })).toEqual(merchant);
+    expect(resolveNotificationRoute({ event: 'some_future_event', couponId: ID, merchantId: ID }))
+      .toEqual({ pathname: '/coupons/[id]', params: { id: ID } });
+    expect(resolveNotificationRoute({ event: 'some_future_event', dealId: ID }))
+      .toEqual({ pathname: '/deal/[id]', params: { id: ID } });
   });
 
   it('falls back to the in-app feed for broadcasts and unknown payloads', () => {

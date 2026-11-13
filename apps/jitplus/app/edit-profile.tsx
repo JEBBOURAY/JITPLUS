@@ -6,7 +6,6 @@ import {
 import { Text, TextInput } from '@/components/AppText';
 import { useNavigation, usePreventRemove, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Calendar, Mail, User } from 'lucide-react-native';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +14,7 @@ import PremiumPhoneInput from '@/components/PremiumPhoneInput';
 import { FieldLabel, OtpVerificationModal, ProfileTextField, VerificationBadge } from '@/components/profile';
 import { useProfileEditing } from '@/hooks/useProfileEditing';
 import { formatDateInput } from '@/utils/dateInput';
+import { firstChar } from '@/utils/profileCompletion';
 import { useAppFonts } from '@/utils/fonts';
 import { hapticSuccess } from '@/utils/haptics';
 import { fontSize as FS, hp, ms, radius, wp } from '@/utils/responsive';
@@ -100,7 +100,7 @@ export default function EditProfileScreen() {
     />
   ) : null), [phoneUnchanged, client, sendingPhoneOtp, startOtpFlow]);
 
-  const initials = `${fields.prenom.trim().charAt(0)}${fields.nom.trim().charAt(0)}`.toUpperCase() || '?';
+  const initials = `${firstChar(fields.prenom)}${firstChar(fields.nom)}`.toUpperCase() || '?';
   const canSave = isDirty && !isSaving;
 
   return (
@@ -135,16 +135,11 @@ export default function EditProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.avatarBlock}>
-            <LinearGradient
-              colors={[palette.violet, palette.violetVivid, palette.gold]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatarRing}
-            >
+            <View style={[styles.avatarRing, { backgroundColor: `${palette.violet}2E` }]}>
               <View style={[styles.avatarInner, { backgroundColor: theme.isDark ? palette.violetDeep : palette.violet }]}>
                 <Text style={[styles.avatarText, { fontFamily: fonts.bold }]}>{initials}</Text>
               </View>
-            </LinearGradient>
+            </View>
             <Text style={[styles.subtitle, { color: theme.textMuted, fontFamily: fonts.regular }]}>
               {t('profile.editProfileSubtitle')}
             </Text>
@@ -292,8 +287,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: FS.sm, textAlign: 'center', marginTop: hp(12), lineHeight: ms(19), paddingHorizontal: wp(16) },
   sectionTitle: {
     fontSize: FS.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
     marginTop: hp(6),
     marginBottom: hp(12),
     marginHorizontal: wp(2),

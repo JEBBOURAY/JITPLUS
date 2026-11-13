@@ -112,7 +112,10 @@ function PremiumPhoneInput({
   // ── Live formatted display ─────────────────────────────────────────────
   const handleChange = useCallback(
     (text: string) => {
-      const cleaned = text.replace(/[^0-9]/g, '');
+      let cleaned = text.replace(/[^0-9]/g, '');
+      // "0612345678" is the local way to write it: without this the country's
+      // digit limit cut the last digit and the number was refused.
+      if (cleaned.startsWith('0') && cleaned.length > 1) cleaned = cleaned.slice(1);
       onChangePhone(cleaned);
     },
     [onChangePhone],

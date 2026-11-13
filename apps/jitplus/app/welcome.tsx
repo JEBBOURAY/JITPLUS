@@ -7,13 +7,13 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   useWindowDimensions,
+  I18nManager,
 } from 'react-native';
 import { Text } from '@/components/AppText';
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ticket, MapPin, QrCode, Bell, Gift, ArrowRight, Eye } from 'lucide-react-native';
-import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
@@ -53,31 +53,31 @@ export default function WelcomeScreen() {
   const slides = useMemo<Slide[]>(() => [
     {
       key: 'cards',
-      icon: <Ticket size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
+      icon: <Ticket size={ms(36)} color={palette.violet} strokeWidth={1.5} />,
       titleKey: 'welcome.featureCardsTitle',
       descKey: 'welcome.featureCardsDesc',
     },
     {
       key: 'discover',
-      icon: <MapPin size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
+      icon: <MapPin size={ms(36)} color={palette.violet} strokeWidth={1.5} />,
       titleKey: 'welcome.featureDiscoverTitle',
       descKey: 'welcome.featureDiscoverDesc',
     },
     {
       key: 'qr',
-      icon: <QrCode size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
+      icon: <QrCode size={ms(36)} color={palette.violet} strokeWidth={1.5} />,
       titleKey: 'welcome.featureQrTitle',
       descKey: 'welcome.featureQrDesc',
     },
     {
       key: 'notifications',
-      icon: <Bell size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
+      icon: <Bell size={ms(36)} color={palette.violet} strokeWidth={1.5} />,
       titleKey: 'welcome.featureNotifTitle',
       descKey: 'welcome.featureNotifDesc',
     },
     {
       key: 'rewards',
-      icon: <Gift size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
+      icon: <Gift size={ms(36)} color={palette.violet} strokeWidth={1.5} />,
       titleKey: 'welcome.featureRewardsTitle',
       descKey: 'welcome.featureRewardsDesc',
     },
@@ -111,7 +111,7 @@ export default function WelcomeScreen() {
       </View>
 
       {/* Icon */}
-      <View style={[styles.iconCircle, { backgroundColor: `${palette.gold}15` }]}>
+      <View style={[styles.iconCircle, { backgroundColor: theme.primaryBg }]}>
         {item.icon}
       </View>
 
@@ -188,17 +188,12 @@ export default function WelcomeScreen() {
 
         {/* Next / Start button */}
         <TouchableOpacity activeOpacity={0.85} onPress={handleNext} style={styles.nextBtn} accessibilityRole="button" accessibilityLabel={isLast ? t('welcome.start') : t('welcome.next')}>
-          <LinearGradient
-            colors={[brandGradient[0], brandGradient[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.gradientBtn}
-          >
+          <View style={styles.gradientBtn}>
             <Text style={[styles.nextBtnText, { fontFamily: fonts.semibold }]}>
               {isLast ? t('welcome.start') : t('welcome.next')}
             </Text>
-            <ArrowRight size={ms(20)} color="#FFFFFF" style={styles.nextBtnIcon} />
-          </LinearGradient>
+            <ArrowRight size={ms(20)} color="#FFFFFF" style={[styles.nextBtnIcon, I18nManager.isRTL && styles.flip]} />
+          </View>
         </TouchableOpacity>
 
         {/* Guest explore link */}
@@ -269,6 +264,7 @@ const styles = StyleSheet.create({
     paddingVertical: hp(16),
     paddingHorizontal: wp(24),
     borderRadius: radius.xl,
+    backgroundColor: palette.violet,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
@@ -279,6 +275,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   nextBtnIcon: { marginLeft: wp(8) },
+  flip: { transform: [{ scaleX: -1 }] },
   exploreBtn: {
     flexDirection: 'row',
     alignItems: 'center',

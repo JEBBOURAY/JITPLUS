@@ -1,6 +1,7 @@
 import { moneyFormatter } from '@jitplus/shared/src/currency';
 import { useCallback, useMemo } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Text } from '@/components/AppText';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,12 +21,12 @@ import { useTransientFlag } from '@/hooks/useTransientFlag';
 import {
   COUPON_QR_PREFIX, describeCouponConditions, formatCouponCode, formatRewardValue,
 } from '@jitplus/shared/src/scratch';
+import * as Clipboard from 'expo-clipboard';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-let Clipboard: typeof import('expo-clipboard') | null = null;
-try { Clipboard = require('expo-clipboard'); } catch { /* module not available */ }
-
 const KEEP_AWAKE_TAG = 'jitplus-coupon';
+// Copy feedback crossfades in place: no icon snap, no layout jump.
+const FADE = { transitionProperty: 'opacity', transitionDuration: 150, transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)' } as const;
 
 export default function CouponDetailScreen() {
   const router = useRouter();
@@ -62,7 +63,7 @@ export default function CouponDetailScreen() {
     if (!coupon) return;
     haptic();
     try {
-      if (Clipboard?.setStringAsync) await Clipboard.setStringAsync(coupon.code);
+      await Clipboard.setStringAsync(coupon.code);
       flashCopied();
     } catch { /* non-fatal */ }
   }, [coupon, flashCopied]);
@@ -99,8 +100,8 @@ export default function CouponDetailScreen() {
       : theme.success;
 
     return (
-      <View style={styles.body}>
-        <Text style={[styles.reward, { color: theme.text }]}>{reward}</Text>
+      <ScrollView contentContainerStyle={[styles.body, styles.scrollBody]} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.reward, { color: theme.text }]} numberOfLines={3}>{reward}</Text>
         {!!coupon.merchant?.nom && (
           <Text style={[styles.merchant, { color: theme.textSecondary }]}>{coupon.merchant.nom}</Text>
         )}
@@ -132,11 +133,18 @@ export default function CouponDetailScreen() {
             <TouchableOpacity style={styles.codeRow} onPress={copyCode} accessibilityRole="button" accessibilityLabel={t('scratch.coupons.copyCode')}>
               <Text style={[styles.codeLabel, { color: theme.textMuted }]}>{t('scratch.coupon.code')}</Text>
               <Text style={[styles.codeValue, { color: theme.text }]}>{formatCouponCode(coupon.code)}</Text>
-              {copied
-                ? <Check size={ms(16)} color={theme.success} />
-                : <Copy size={ms(16)} color={theme.textMuted} />}
+              <View style={styles.copyIcon}>
+                <Animated.View style={[StyleSheet.absoluteFill, FADE, { opacity: copied ? 0 : 1 }]}>
+                  <Copy size={ms(16)} color={theme.textMuted} />
+                </Animated.View>
+                <Animated.View style={[StyleSheet.absoluteFill, FADE, { opacity: copied ? 1 : 0 }]}>
+                  <Check size={ms(16)} color={theme.success} />
+                </Animated.View>
+              </View>
             </TouchableOpacity>
-            {copied && <Text style={[styles.copiedText, { color: theme.success }]}>{t('scratch.coupons.copied')}</Text>}
+            <Animated.View style={[FADE, { opacity: copied ? 1 : 0 }]} accessibilityLiveRegion="polite">
+              <Text style={[styles.copiedText, { color: theme.success }]}>{copied ? t('scratch.coupons.copied') : ' '}</Text>
+            </Animated.View>
             <Text style={[styles.showHint, { color: theme.textMuted }]}>{t('scratch.coupon.showAtCheckout')}</Text>
           </>
         ) : (
@@ -164,7 +172,7 @@ export default function CouponDetailScreen() {
             ))}
           </View>
         )}
-      </View>
+      </ScrollView>
     );
   };
 
@@ -185,22 +193,24 @@ export default function CouponDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: wp(20) },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(10) },
-  headerTitle: { fontSize: ms(19), fontWeight: '700' },
+  headerTitle: { fontSize: ms(19), fontWeight: '600' },
   body: { flex: 1, alignItems: 'center', gap: hp(12), paddingBottom: hp(30) },
-  reward: { fontSize: ms(26), fontWeight: '800', textAlign: 'center' },
+  reward: { fontSize: ms(26), fontWeight: '600', textAlign: 'center' },
   merchant: { fontSize: ms(15), fontWeight: '600', marginTop: -hp(6) },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: wp(14), paddingVertical: hp(6), borderRadius: 999 },
-  statusText: { fontSize: ms(13), fontWeight: '700' },
+  statusText: { fontSize: ms(13), fontWeight: '600' },
   qrBox: { padding: wp(16), borderRadius: 20, marginTop: hp(4) },
   codeRow: { flexDirection: 'row', alignItems: 'center', gap: wp(10), marginTop: hp(2) },
-  codeLabel: { fontSize: ms(12), fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 },
-  codeValue: { fontSize: ms(28), fontWeight: '800', letterSpacing: 3, fontVariant: ['tabular-nums'] },
+  codeLabel: { fontSize: ms(12), fontWeight: '600' },
+  codeValue: { fontSize: ms(28), fontWeight: '600', letterSpacing: 3, fontVariant: ['tabular-nums'] },
+  scrollBody: { flex: 0, flexGrow: 1 },
+  copyIcon: { width: ms(16), height: ms(16) },
   copiedText: { fontSize: ms(12), fontWeight: '600', marginTop: -hp(6) },
   showHint: { fontSize: ms(12), textAlign: 'center', paddingHorizontal: wp(24) },
   inactiveBox: { width: '100%', borderRadius: 16, borderWidth: 1, padding: wp(18), alignItems: 'center' },
   inactiveText: { fontSize: ms(14), fontWeight: '600', textAlign: 'center' },
   conditionsBox: { width: '100%', borderRadius: 14, borderWidth: 1, padding: wp(14), gap: 4, marginTop: hp(4) },
-  conditionsTitle: { fontSize: ms(11), fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 },
+  conditionsTitle: { fontSize: ms(11), fontWeight: '600', marginBottom: 4 },
   conditionLine: { fontSize: ms(13), lineHeight: ms(19) },
   stateText: { fontSize: ms(15), fontWeight: '600', textAlign: 'center' },
   retryBtn: { marginTop: hp(4), paddingHorizontal: wp(24), paddingVertical: hp(10), borderRadius: 12, borderWidth: 1 },

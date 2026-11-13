@@ -1,94 +1,60 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View, TouchableOpacity, Modal, ScrollView, Animated, PanResponder, Dimensions, Pressable,
-} from 'react-native';
+import { View, TouchableOpacity, ScrollView } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Trash2, BadgeCheck, BadgePercent } from 'lucide-react-native';
 import { hp, ms } from '@/utils/responsive';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
+import BottomSheet from '@/components/BottomSheet';
 import { ClientNotification } from '@/types';
-import { notificationKind } from '@/utils/notificationKind';
+import type { Href } from 'expo-router';
+import { notificationKind, notificationLinkRoute } from '@/utils/notificationKind';
 import { notificationStyles as styles } from './notificationStyles';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface NotificationDetailModalProps {
   notif: ClientNotification | null;
   onClose: () => void;
   onDelete: (id: string) => void;
+  /** Opens the screen the notification points at (its merchant card). */
+  onOpenLink: (route: Href) => void;
   theme: ThemeColors;
   fonts: AppFonts;
   formatDate: (date: Date) => string;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const OPEN_DURATION_MS = 260;
-const CLOSE_DURATION_MS = 200;
-const DRAG_CLOSE_DISTANCE = 110;
-const DRAG_CLOSE_VELOCITY = 1.1;
-
 export default React.memo(function NotificationDetailModal({
-  notif, onClose, onDelete, theme, fonts, formatDate, t,
+  notif, onClose, onDelete, onOpenLink, theme, fonts, formatDate, t,
 }: NotificationDetailModalProps) {
   const insets = useSafeAreaInsets();
-  // Keeps the content mounted during the close animation, after the parent clears `notif`.
+  // Keeps the content on screen during the slide-out, after the parent clears `notif`.
   const [shown, setShown] = useState<ClientNotification | null>(notif);
-  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const overlay = useRef(new Animated.Value(0)).current;
-  const closingRef = useRef(false);
+  useEffect(() => { if (notif) setShown(notif); }, [notif]);
 
-  useEffect(() => {
-    if (!notif) {
-      if (!closingRef.current) setShown(null);
-      return;
-    }
-    closingRef.current = false;
-    setShown(notif);
-    translateY.setValue(SCREEN_HEIGHT);
-    overlay.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 22, stiffness: 220, mass: 0.9 }),
-      Animated.timing(overlay, { toValue: 1, duration: OPEN_DURATION_MS, useNativeDriver: true }),
-    ]).start();
-  }, [notif, translateY, overlay]);
+  // Delete / open run once the sheet has left, so the list and navigation update behind a closed modal.
+  const pendingRef = useRef<(() => void) | null>(null);
+  const handleExited = useCallback(() => {
+    setShown(null);
+    const run = pendingRef.current;
+    pendingRef.current = null;
+    run?.();
+  }, []);
 
-  const animateOut = useCallback((after: () => void) => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    Animated.parallel([
-      Animated.timing(translateY, { toValue: SCREEN_HEIGHT, duration: CLOSE_DURATION_MS, useNativeDriver: true }),
-      Animated.timing(overlay, { toValue: 0, duration: CLOSE_DURATION_MS, useNativeDriver: true }),
-    ]).start(() => {
-      setShown(null);
-      after();
-    });
-  }, [translateY, overlay]);
-
-  const handleClose = useCallback(() => animateOut(onClose), [animateOut, onClose]);
   const handleDelete = useCallback(() => {
     const id = shown?.id;
-    animateOut(() => { onClose(); if (id) onDelete(id); });
-  }, [animateOut, onClose, onDelete, shown?.id]);
+    if (id) pendingRef.current = () => onDelete(id);
+    onClose();
+  }, [onClose, onDelete, shown?.id]);
 
-  const handleCloseRef = useRef(handleClose);
-  handleCloseRef.current = handleClose;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
-      onPanResponderMove: (_, g) => { translateY.setValue(Math.max(0, g.dy)); },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > DRAG_CLOSE_DISTANCE || g.vy > DRAG_CLOSE_VELOCITY) handleCloseRef.current();
-        else Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-      },
-      onPanResponderTerminate: () => {
-        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-      },
-    }),
-  ).current;
+  const linkRoute = shown ? notificationLinkRoute(shown) : null;
+  const handleOpenLink = useCallback(() => {
+    if (!linkRoute) return;
+    pendingRef.current = () => onOpenLink(linkRoute);
+    onClose();
+  }, [onClose, onOpenLink, linkRoute]);
 
   if (!shown) return null;
 
@@ -99,21 +65,17 @@ export default React.memo(function NotificationDetailModal({
   const sender = kind === 'deals' ? t('deals.notification.sender') : shown.merchantName || 'JitPlus';
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleClose}>
-      <Animated.View style={[styles.modalOverlay, { opacity: overlay }]}>
-        <Pressable style={{ flex: 1 }} onPress={handleClose} accessibilityRole="button" accessibilityLabel={t('common.close')} />
-      </Animated.View>
-
-      <Animated.View
-        style={[styles.modalSheet, {
-          backgroundColor: theme.bgCard,
-          paddingBottom: insets.bottom + hp(16),
-          transform: [{ translateY }],
-        }]}
-        accessibilityViewIsModal
-      >
-        <View style={styles.modalGrabZone} {...panResponder.panHandlers}>
-          <View style={[styles.modalHandle, { backgroundColor: theme.border }]} />
+    <BottomSheet
+      visible={!!notif}
+      onClose={onClose}
+      onExited={handleExited}
+      scrollable
+      backdropColor="rgba(15,23,42,0.5)"
+      backdropLabel={t('common.close')}
+      handleStyle={styles.modalHandle}
+      style={[styles.modalSheet, { backgroundColor: theme.bgCard, paddingBottom: insets.bottom + hp(16) }]}
+      header={(
+        <View style={styles.modalGrabZone}>
           <View style={styles.modalHeader}>
             {kind === 'deals' ? (
               <View style={[styles.modalLogo, styles.dealsLogo, { backgroundColor: `${palette.violet}${isDark ? '33' : '18'}` }]}>
@@ -132,7 +94,7 @@ export default React.memo(function NotificationDetailModal({
               </Text>
             </View>
             <TouchableOpacity
-              onPress={handleClose}
+              onPress={onClose}
               style={[styles.modalClose, { backgroundColor: theme.bgInput }]}
               hitSlop={8}
               accessibilityRole="button"
@@ -143,35 +105,37 @@ export default React.memo(function NotificationDetailModal({
           </View>
           <View style={[styles.modalDivider, { backgroundColor: theme.border }]} />
         </View>
+      )}
+    >
+      <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false} bounces={false}>
+        <Text style={[styles.modalTitle, { color: theme.text, fontFamily: fonts.bold }]} selectable>{shown.title}</Text>
+        {!!shown.body && (
+          <Text style={[styles.modalBodyText, { color: theme.textSecondary, fontFamily: fonts.regular }]} selectable>{shown.body}</Text>
+        )}
+      </ScrollView>
 
-        <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false} bounces={false}>
-          <Text style={[styles.modalTitle, { color: theme.text, fontFamily: fonts.bold }]} selectable>{shown.title}</Text>
-          {!!shown.body && (
-            <Text style={[styles.modalBodyText, { color: theme.textSecondary, fontFamily: fonts.regular }]} selectable>{shown.body}</Text>
-          )}
-        </ScrollView>
-
-        <View style={styles.modalActions}>
-          <TouchableOpacity
-            onPress={handleDelete}
-            activeOpacity={0.75}
-            style={[styles.modalDeleteBtn, { borderColor: `${theme.danger}40`, backgroundColor: `${theme.danger}0D` }]}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.delete')}
-          >
-            <Trash2 size={ms(17)} color={theme.danger} strokeWidth={2} />
-            <Text style={[styles.modalBtnText, { color: theme.danger, fontFamily: fonts.semibold }]}>{t('common.delete')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleClose}
-            activeOpacity={0.85}
-            style={[styles.modalPrimaryBtn, { backgroundColor: palette.violet }]}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.modalBtnText, { color: '#fff', fontFamily: fonts.bold }]}>{t('notifications.gotIt')}</Text>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-    </Modal>
+      <View style={styles.modalActions}>
+        <TouchableOpacity
+          onPress={handleDelete}
+          activeOpacity={0.75}
+          style={[styles.modalDeleteBtn, { borderColor: `${theme.danger}40`, backgroundColor: `${theme.danger}0D` }]}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.delete')}
+        >
+          <Trash2 size={ms(17)} color={theme.danger} strokeWidth={2} />
+          <Text style={[styles.modalBtnText, { color: theme.danger, fontFamily: fonts.semibold }]}>{t('common.delete')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={linkRoute ? handleOpenLink : onClose}
+          activeOpacity={0.85}
+          style={[styles.modalPrimaryBtn, { backgroundColor: palette.violet }]}
+          accessibilityRole="button"
+        >
+          <Text style={[styles.modalBtnText, { color: '#fff', fontFamily: fonts.bold }]}>
+            {t(linkRoute ? 'notifications.viewCard' : 'notifications.gotIt')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </BottomSheet>
   );
 });

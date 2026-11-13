@@ -1,15 +1,11 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ChevronRight, X, type LucideIcon } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { palette } from '@/contexts/ThemeContext';
 import { radius } from '@/utils/responsive';
 import { font } from '@/constants/design';
 
 const GOLD = palette.gold;
-const GRADIENT = [palette.premiumBg, palette.premiumBgMid] as const;
-const GRADIENT_START = { x: 0, y: 0 };
-const GRADIENT_END = { x: 1, y: 0 };
 
 interface Props {
   Icon: LucideIcon;
@@ -23,7 +19,7 @@ interface Props {
 export function NoticeBanner({ Icon, title, description, actionLabel, onPress, onDismiss }: Props) {
   const { t, isRTL } = useLanguage();
   return (
-    <LinearGradient colors={GRADIENT} start={GRADIENT_START} end={GRADIENT_END} style={styles.card}>
+    <View style={styles.card}>
       <TouchableOpacity
         onPress={onPress}
         accessibilityRole="button"
@@ -43,7 +39,7 @@ export function NoticeBanner({ Icon, title, description, actionLabel, onPress, o
           <X size={16} color="rgba(255,255,255,0.55)" />
         </TouchableOpacity>
       )}
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -53,6 +49,7 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: 'flex-start',
     borderRadius: radius.xl,
+    backgroundColor: palette.premiumBg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: `${GOLD}47`,
   },

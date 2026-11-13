@@ -17,7 +17,7 @@ export const DEFAULT_PAGE_SIZE = 20;
 export const MS_PER_DAY = 86_400_000;
 
 /** Admin dashboard origin, always allowed by HTTP + WebSocket CORS in production. */
-export const ADMIN_DASHBOARD_ORIGIN_DEFAULT = 'https://admin-jitplus-97259.web.app';
+const ADMIN_DASHBOARD_ORIGIN_DEFAULT = 'https://admin-jitplus-97259.web.app';
 
 /** Admin dashboard origin: env ADMIN_DASHBOARD_ORIGIN, else the hosted dashboard. */
 export function getAdminDashboardOrigin(): string {
@@ -150,6 +150,8 @@ export const DEFAULT_NOTIFICATION_LOGO = EMAIL_LOGO_JITPLUS;
 
 /** Duration of the free trial in days */
 export const TRIAL_DURATION_DAYS = 30;
+/** The first N merchant sign-ups get permanent free PREMIUM with no plan UI ("founding members"). */
+export const FOUNDING_MEMBERS_LIMIT = 500;
 
 /** User type values */
 export const USER_TYPE_MERCHANT = 'merchant' as const;

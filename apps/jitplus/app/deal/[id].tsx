@@ -4,7 +4,6 @@ import { View, ScrollView, Pressable, Share, Alert, Linking, StyleSheet, useWind
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isAxiosError } from 'axios';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
   AlertCircle, ArrowLeft, BadgePercent, ChevronRight, ExternalLink, Flag, Flame, Globe,
   Hourglass, ListChecks, LogIn, MapPin, Navigation, Phone, Share2, Store, FileText,
@@ -18,7 +17,7 @@ import MerchantLogo from '@/components/MerchantLogo';
 import ActionSheet, { type ActionSheetOption } from '@/components/ActionSheet';
 import MerchantSection from '@/components/merchant/MerchantSection';
 import DealThumb from '@/components/deals/DealThumb';
-import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { recordDealEvent, useDeal, useReportDeal } from '@/hooks/useDealHooks';
@@ -90,9 +89,9 @@ function DealGuestView({ dealId }: { dealId?: string }) {
         </Text>
         <Text style={[styles.stateBody, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('deals.guest.detailBody')}</Text>
         <Pressable onPress={() => go('/register')} style={styles.fullBtn} accessibilityRole="button">
-          <LinearGradient colors={[brandGradient[0], brandGradient[1]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.gradientBtn}>
+          <View style={[styles.gradientBtn, { backgroundColor: palette.violet }]}>
             <Text style={[styles.primaryText, { fontFamily: fonts.semibold }]}>{t('welcome.createAccount')}</Text>
-          </LinearGradient>
+          </View>
         </Pressable>
         <Pressable onPress={() => go('/login')} style={styles.linkBtn} accessibilityRole="button">
           <LogIn size={ms(16)} color={palette.violet} strokeWidth={2} />
@@ -493,10 +492,10 @@ function DealActionBar({ deal, nearest, onLink, onDirections, onMerchant }: {
           </Pressable>
         )}
         <Pressable onPress={primary.onPress} style={({ pressed }) => [styles.flex, { opacity: pressed ? 0.85 : 1 }]} accessibilityRole="button">
-          <LinearGradient colors={[brandGradient[0], palette.violetDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtn}>
+          <View style={[styles.primaryBtn, { backgroundColor: palette.violet }]}>
             <PrimaryIcon size={ms(18)} color="#FFFFFF" strokeWidth={2} />
             <Text style={[styles.primaryText, { fontFamily: fonts.semibold }]}>{primary.label}</Text>
-          </LinearGradient>
+          </View>
         </Pressable>
       </View>
       {!!host && (

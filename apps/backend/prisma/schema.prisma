@@ -64,6 +64,8 @@ model Merchant {
   planExpiresAt        DateTime?          @map("plan_expires_at")
   planActivatedByAdmin Boolean            @default(false) @map("plan_activated_by_admin")
   trialStartedAt       DateTime?          @map("trial_started_at")
+  /// One of the first FOUNDING_MEMBERS_LIMIT sign-ups: permanent free PREMIUM, the Pro app hides every plan/Premium surface
+  foundingMember       Boolean            @default(false) @map("founding_member")
 
   isActive            Boolean   @default(true) @map("is_active")
   emailVerified       Boolean   @default(false) @map("email_verified")
@@ -671,6 +673,8 @@ model Notification {
   isBroadcast    Boolean  @default(false) @map("is_broadcast")
   channel        String?  @map("channel")
   audience       String?  @map("audience") @db.VarChar(30)
+  /// Deep link for the client feed: routing keys of the push payload (event, action, target ids).
+  data           Json?    @map("data")
   createdAt      DateTime @default(now()) @map("created_at")
 
   merchant       Merchant?                  @relation(fields: [merchantId], references: [id], onDelete: Cascade)

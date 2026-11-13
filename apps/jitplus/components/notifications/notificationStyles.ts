@@ -13,7 +13,7 @@ export const notificationStyles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 10,
   },
   headerShadow: {
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: wp(8), minHeight: ms(46) },
   titleBlock: { flex: 1 },
@@ -21,7 +21,7 @@ export const notificationStyles = StyleSheet.create({
   subtitle: { fontSize: fontSize.sm, marginTop: hp(1) },
   headerPill: {
     flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    height: ms(36), paddingHorizontal: wp(12), borderRadius: 999,
+    minHeight: ms(36), paddingVertical: hp(6), paddingHorizontal: wp(12), borderRadius: 999,
   },
   headerPillText: { fontSize: fontSize.xs },
   iconBtn: {
@@ -33,7 +33,7 @@ export const notificationStyles = StyleSheet.create({
   filterRow: { flexDirection: 'row', gap: wp(8), marginTop: hp(12) },
   filterChip: {
     flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    height: ms(34), paddingHorizontal: wp(14), borderRadius: 999, borderWidth: 1,
+    minHeight: ms(34), paddingVertical: hp(6), paddingHorizontal: wp(14), borderRadius: 999, borderWidth: 1,
   },
   filterChipText: { fontSize: fontSize.xs },
   filterBadge: {
@@ -46,7 +46,7 @@ export const notificationStyles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: wp(16), paddingTop: hp(8), flexGrow: 1 },
   sectionHeader: {
-    fontSize: fontSize.xs, letterSpacing: 0.6, textTransform: 'uppercase',
+    fontSize: fontSize.xs,
     marginTop: hp(14), marginBottom: hp(8), marginHorizontal: wp(4),
   },
 
@@ -128,7 +128,7 @@ export const notificationStyles = StyleSheet.create({
     position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '85%',
     borderTopLeftRadius: radius['2xl'], borderTopRightRadius: radius['2xl'],
     paddingHorizontal: wp(22), paddingTop: hp(10),
-    shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.12, shadowRadius: 20, elevation: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2,
   },
   modalGrabZone: { paddingBottom: hp(6) },
   modalHandle: { width: wp(40), height: ms(5), borderRadius: ms(3), alignSelf: 'center', marginBottom: hp(16) },

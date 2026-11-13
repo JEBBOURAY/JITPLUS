@@ -3,23 +3,23 @@ import {
   useQuery,
   useInfiniteQuery,
   useQueryClient,
-  keepPreviousData,
   type InfiniteData,
 } from '@tanstack/react-query';
 import api from '@/services/api';
-import type { ClientListItem, ClientListView, ClientsPage } from '@/types';
+import type { ClientListView, ClientsPage } from '@/types';
 import { queryKeys, STALE } from './keys';
 
-export function useClients(enabled = true) {
-  return useQuery<ClientListItem[]>({
-    queryKey: queryKeys.clients(''),
+/** Whether the merchant has at least one client: a one-row probe, for the "Démarrage" guide. */
+export function useHasClients(enabled = true) {
+  return useQuery<boolean>({
+    queryKey: queryKeys.clientsExist,
     queryFn: async () => {
-      const res = await api.get('/merchant/clients');
+      const res = await api.get('/merchant/clients', { params: { page: 1, limit: 1 } });
       const data = res.data;
-      return Array.isArray(data) ? data : data?.clients ?? [];
+      if (Array.isArray(data)) return data.length > 0;
+      return (data?.pagination?.total ?? data?.clients?.length ?? 0) > 0;
     },
     staleTime: STALE.MEDIUM,
-    placeholderData: keepPreviousData,
     enabled,
   });
 }

@@ -177,6 +177,7 @@ export default function StampCodeBatchScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <ScreenHeader
         title={batch?.label ?? t('stampCodes.detail.title')}
+        wrap
         onBack={() => (router.canGoBack() ? router.back() : router.replace('/stamp-codes'))}
       />
       {isLoading ? (

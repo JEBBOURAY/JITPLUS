@@ -10,17 +10,17 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Share2, Check, Printer, Clock } from 'lucide-react-native';
-import { JitGames, JitGift, JitSettings, JitStamp } from '@/components/icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Share2, Check } from 'lucide-react-native';
+import { JitClock, JitGames, JitGift, JitPoster, JitSettings, JitStamp } from '@/components/icons';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
-import { useTheme, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
 import { font, icon } from '@/constants/design';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
+import { ScreenHeader } from '@/components/scratch/ScratchUI';
 import { useAuthStore } from '@/stores/authStore';
 import PlvPoster, { PLV_TEMPLATES, type PlvTemplateId } from '@/components/plv/PlvPoster';
 import { usePlvProgram } from '@/components/plv/usePlvProgram';
@@ -36,7 +36,7 @@ export default function ClientAppQrScreen() {
   const [exporting, setExporting] = useState(false);
   const [templateId, setTemplateId] = useState<PlvTemplateId>('classic');
   const [posterW, setPosterW] = useState(0);
-  const { row, textAlign, alignEnd, flip } = useDir();
+  const { row, textAlign, alignEnd } = useDir();
 
   const program = usePlvProgram();
   const programRows = useMemo(
@@ -45,13 +45,12 @@ export default function ClientAppQrScreen() {
       { Icon: JitGift, text: program.rewardHeadline },
       ...program.otherRewards.map((r) => ({ Icon: JitGift, text: r.label })),
       ...(program.wheelLine ? [{ Icon: JitGames, text: program.wheelLine }] : []),
-      ...(program.validityLine ? [{ Icon: Clock, text: program.validityLine }] : []),
+      ...(program.validityLine ? [{ Icon: JitClock, text: program.validityLine }] : []),
     ],
     [program],
   );
 
   const selected = PLV_TEMPLATES.find((d) => d.id === templateId) ?? PLV_TEMPLATES[0];
-  const hairline = theme.mode === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)';
 
   const onPosterLayout = useCallback((e: LayoutChangeEvent) => {
     const w = Math.floor(e.nativeEvent.layout.width);
@@ -88,39 +87,18 @@ export default function ClientAppQrScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.header, { flexDirection: row, paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <ArrowLeft
-            size={22}
-            color={theme.text}
-            strokeWidth={icon.stroke}
-            style={flip}
-          />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
-          {t('home.clientQrHeader')}
-        </Text>
-        <DemoVideoButton id="affiche" variant="header" style={styles.demoBtn} />
-      </View>
+      <ScreenHeader title={t('home.clientPosterStore')} right={<DemoVideoButton id="affiche" variant="header" />} />
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 26 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
-          {t('home.clientQrTitle')}
-        </Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.4}>
+        <Text style={[styles.subtitle, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
           {t('home.clientQrSubtitle')}
         </Text>
 
-        <Text style={[styles.sectionLabel, { color: theme.primary, textAlign }]} maxFontSizeMultiplier={1.2}>
+        <Text style={[styles.sectionTitle, { color: theme.text, textAlign }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>
           {t('home.clientPlvPickerLabel')}
         </Text>
         <ScrollView
@@ -138,25 +116,26 @@ export default function ClientAppQrScreen() {
                 activeOpacity={0.85}
                 style={[
                   styles.pickerItem,
-                  { backgroundColor: theme.bgCard, borderColor: active ? theme.primary : hairline },
-                  active && styles.pickerItemActive,
+                  { backgroundColor: theme.bgCard, borderColor: active ? theme.primary : theme.border },
                 ]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={t(tpl.nameKey)}
               >
-                <LinearGradient
-                  colors={[tpl.swatch[0], tpl.swatch[1]]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.swatch, { aspectRatio: 1 / Math.min(tpl.ratio, 1.2), borderColor: hairline, alignItems: alignEnd }]}
+                {/* The two colours of the template: paper on top, a band of its accent below. */}
+                <View
+                  style={[
+                    styles.swatch,
+                    { aspectRatio: 1 / Math.min(tpl.ratio, 1.2), backgroundColor: tpl.swatch[0], borderColor: theme.border, alignItems: alignEnd },
+                  ]}
                 >
+                  <View style={[styles.swatchBand, { backgroundColor: tpl.swatch[1] }]} />
                   {active ? (
                     <View style={[styles.swatchCheck, { backgroundColor: theme.primary }]}>
                       <Check size={12} color="#FFFFFF" strokeWidth={icon.strokeSmall} />
                     </View>
                   ) : null}
-                </LinearGradient>
+                </View>
                 <Text style={[styles.pickerName, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.25} numberOfLines={1}>
                   {t(tpl.nameKey)}
                 </Text>
@@ -190,13 +169,13 @@ export default function ClientAppQrScreen() {
           </View>
         </View>
 
-        <View style={[styles.programCard, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-          <Text style={[styles.programLabel, { color: theme.primary, textAlign }]} maxFontSizeMultiplier={1.2}>
+        <View style={[styles.programCard, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+          <Text style={[styles.programLabel, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.2}>
             {t('home.clientPlvProgramLabel')}
           </Text>
           {programRows.map((item, i) => (
             <View key={i} style={[styles.programRow, { flexDirection: row }]}>
-              <item.Icon size={16} color={theme.primary} strokeWidth={icon.stroke} />
+              <item.Icon size={18} color={theme.text} strokeWidth={icon.stroke} />
               <Text style={[styles.programText, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
                 {item.text}
               </Text>
@@ -220,7 +199,7 @@ export default function ClientAppQrScreen() {
         </View>
 
         <View style={[styles.useRow, { flexDirection: row }]}>
-          <Printer size={14} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+          <JitPoster size={16} color={theme.textMuted} strokeWidth={icon.stroke} />
           <Text style={[styles.useText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
             {t(selected.useKey)}
           </Text>
@@ -234,8 +213,6 @@ export default function ClientAppQrScreen() {
           loading={exporting}
           disabled={posterW === 0}
           accessibilityLabel={t('home.clientQrExportCta')}
-          gradient={brandGradient}
-          gradientDirection="horizontal"
           style={styles.cta}
         />
 
@@ -249,42 +226,22 @@ export default function ClientAppQrScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 12,
-    paddingBottom: 10,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontFamily: font.bold,
-    letterSpacing: -0.2,
-    flex: 1,
-  },
-  demoBtn: {},
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 4 },
-  title: { fontSize: 19, lineHeight: 25, fontFamily: font.bold, letterSpacing: -0.3 },
-  subtitle: { marginTop: 4, fontSize: 13, lineHeight: 18, fontFamily: font.regular },
-  sectionLabel: { fontSize: 12, fontFamily: font.semibold, marginTop: 18, marginBottom: 8 },
+  subtitle: { fontSize: 14, lineHeight: 20, fontFamily: font.regular, paddingHorizontal: 4 },
+  // Same section title and cards as "Mes outils" on Accueil.
+  sectionTitle: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.3, marginTop: 18, marginBottom: 10 },
 
   picker: { marginHorizontal: -16 },
   pickerTrack: { paddingHorizontal: 16, gap: 10 },
-  pickerItem: { width: 118, borderWidth: 1.5, borderRadius: 16, padding: 8 },
-  pickerItemActive: {
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  swatch: { width: '100%', borderRadius: 8, borderWidth: 1, padding: 6, overflow: 'hidden' },
+  pickerItem: { width: 118, borderWidth: 1.5, borderRadius: 18, padding: 8 },
+  swatch: { width: '100%', borderRadius: 10, borderWidth: 1, padding: 6, overflow: 'hidden' },
+  swatchBand: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '34%' },
   swatchCheck: { width: 20, height: 20, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  pickerName: { marginTop: 8, fontSize: 13, fontFamily: font.bold },
+  pickerName: { marginTop: 8, fontSize: 13, fontFamily: font.semibold },
   pickerUse: { marginTop: 2, fontSize: 11, lineHeight: 14, fontFamily: font.regular },
 
-  previewFrame: { marginTop: 16, borderRadius: 16, padding: 16 },
+  previewFrame: { marginTop: 16, borderRadius: 18, padding: 16 },
   previewInner: { width: '100%', alignItems: 'center' },
   posterShadow: {
     borderRadius: 12,
@@ -296,9 +253,9 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 
-  programCard: { marginTop: 14, borderWidth: 1, borderRadius: 16, padding: 14, gap: 9 },
-  programLabel: { fontSize: 12, fontFamily: font.semibold },
-  programRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  programCard: { marginTop: 12, borderWidth: 1, borderRadius: 18, padding: 14, gap: 10 },
+  programLabel: { fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
+  programRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   programText: { flex: 1, fontSize: 13, lineHeight: 18, fontFamily: font.medium },
   programEdit: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   programEditText: { fontSize: 12, fontFamily: font.medium, flexShrink: 1 },

@@ -4,11 +4,12 @@ import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette } from '@/contexts/ThemeContext';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { font } from '@/constants/design';
-import { CATEGORY_EMOJI } from '@jitplus/shared';
+import { font, icon } from '@/constants/design';
+import { Store } from 'lucide-react-native';
+import { CATEGORY_ICONS } from '@/constants/categories';
+import type { MerchantCategory } from '@/types';
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
-const FALLBACK_EMOJI = CATEGORY_EMOJI.AUTRE;
 
 /** Merchant theme color, else the brand violet (same rule as the client app's getMerchantAccent). */
 function dealAccent(themeColor?: string | null): string {
@@ -35,8 +36,8 @@ interface DealThumbProps {
 }
 
 /**
- * Deal visual: the photo, else the merchant cover darkened with the badge on
- * top, else a gradient of the merchant color with the category emoji.
+ * Deal visual: the photo, else the badge on the darkened merchant cover or on
+ * the merchant color. Without a badge, the line icon of the category.
  */
 function DealThumb({ imageUrl, coverUrl, themeColor, category, badge, width, radius = 12 }: DealThumbProps) {
   const box = { width, height: width, borderRadius: radius };
@@ -67,24 +68,22 @@ function DealThumb({ imageUrl, coverUrl, themeColor, category, badge, width, rad
       <View style={[styles.base, box]}>
         <ExpoImage source={{ uri: resolveImageUrl(coverUrl) }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
         <View style={[StyleSheet.absoluteFill, styles.dim]} />
-        <View style={styles.center}>{badgeText ?? <Text style={{ fontSize: Math.round(scale * 0.36) }}>{emojiOf(category)}</Text>}</View>
+        <View style={styles.center}>{badgeText ?? <CategoryMark category={category} size={Math.round(scale * 0.36)} />}</View>
       </View>
     );
   }
 
   const accent = dealAccent(themeColor);
   return (
-    <LinearGradient colors={[accent, darken(accent, 0.45)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.base, box]}>
-      <View style={styles.center}>
-        <Text style={{ fontSize: Math.round(scale * (badgeText ? 0.26 : 0.36)) }} maxFontSizeMultiplier={1}>{emojiOf(category)}</Text>
-        {badgeText}
-      </View>
+    <LinearGradient colors={[accent, darken(accent, 0.3)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.base, box]}>
+      <View style={styles.center}>{badgeText ?? <CategoryMark category={category} size={Math.round(scale * 0.36)} />}</View>
     </LinearGradient>
   );
 }
 
-function emojiOf(category?: string | null): string {
-  return (category && CATEGORY_EMOJI[category]) || FALLBACK_EMOJI;
+function CategoryMark({ category, size }: { category?: string | null; size: number }) {
+  const Icon = (category && CATEGORY_ICONS[category as MerchantCategory]) || Store;
+  return <Icon size={size} color="#FFFFFF" strokeWidth={icon.stroke} />;
 }
 
 export default React.memo(DealThumb);
@@ -93,5 +92,5 @@ const styles = StyleSheet.create({
   base: { overflow: 'hidden' },
   dim: { backgroundColor: 'rgba(0,0,0,0.5)' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 6, gap: 2 },
-  badge: { color: '#FFFFFF', fontFamily: font.bold, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  badge: { color: '#FFFFFF', fontFamily: font.semibold, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
 });

@@ -5,7 +5,6 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ActivityIndicator, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
-import { GuidedTourProvider } from '@/components/GuidedTour';
 
 const renderTabBar = (props: BottomTabBarProps) => <CustomTabBar {...props} />;
 
@@ -17,7 +16,8 @@ export default function TabLayout() {
   const screenOptions = useMemo(
     () => ({
       headerShown: false,
-      animation: 'fade' as const,
+      // Tabs are peers used all day long: switch instantly, no transition.
+      animation: 'none' as const,
       lazy: true,
       // Scene background = our token so tab screens never flash the stock
       // navigation background (white/grey) during a theme swap.
@@ -47,25 +47,13 @@ export default function TabLayout() {
   if (!isAuthenticated) return null;
 
   return (
-    <GuidedTourProvider>
-      <Tabs
-        tabBar={renderTabBar}
-        screenOptions={screenOptions}
-      >
-        <Tabs.Screen name="index" />
-        <Tabs.Screen name="clients" />
-        <Tabs.Screen
-          name="scan"
-          listeners={() => ({
-            tabPress: (e) => {
-              e.preventDefault();
-              router.push('/scan-qr');
-            },
-          })}
-        />
-        <Tabs.Screen name="messages" />
-        <Tabs.Screen name="team" />
-      </Tabs>
-    </GuidedTourProvider>
+    <Tabs
+      tabBar={renderTabBar}
+      screenOptions={screenOptions}
+    >
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="clients" />
+      <Tabs.Screen name="transactions" />
+    </Tabs>
   );
 }

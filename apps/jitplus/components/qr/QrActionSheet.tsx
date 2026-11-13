@@ -1,7 +1,8 @@
 import { memo } from 'react';
-import { Modal, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Download, Share2 } from 'lucide-react-native';
 import { Text } from '@/components/AppText';
+import BottomSheet from '@/components/BottomSheet';
 import type { useTheme } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
@@ -23,43 +24,43 @@ export default memo(function QrActionSheet({ visible, bottomInset, theme, fonts,
     { key: 'save', Icon: Download, onPress: onSave, title: t('qr.saveTitle'), sub: t('qr.saveSubtitle'), a11y: t('qr.saveAccessibility') },
   ];
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('common.close')} />
-        <View style={[styles.sheet, { backgroundColor: theme.bgCard, paddingBottom: bottomInset + hp(16) }]}>
-          <View style={[styles.handle, { backgroundColor: theme.border }]} />
-          <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]}>{t('qr.actionsTitle')}</Text>
-          {rows.map(({ key, Icon, onPress, title, sub, a11y }) => (
-            <TouchableOpacity
-              key={key}
-              style={[styles.row, { backgroundColor: theme.bgInput }]}
-              onPress={onPress}
-              activeOpacity={0.75}
-              accessibilityRole="button"
-              accessibilityLabel={a11y}
-            >
-              <View style={[styles.icon, { backgroundColor: theme.primaryBg }]}>
-                <Icon size={ms(18)} color={theme.primary} strokeWidth={2} />
-              </View>
-              <View style={styles.rowText}>
-                <Text style={[styles.rowTitle, { color: theme.text, fontFamily: fonts.semibold }]}>{title}</Text>
-                <Text style={[styles.rowSub, { color: theme.textMuted, fontFamily: fonts.regular }]}>{sub}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </Modal>
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      backdropColor="rgba(15,23,42,0.5)"
+      backdropLabel={t('common.close')}
+      handleStyle={styles.handle}
+      style={[styles.sheet, { backgroundColor: theme.bgCard, paddingBottom: bottomInset + hp(16) }]}
+    >
+      <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]}>{t('qr.actionsTitle')}</Text>
+      {rows.map(({ key, Icon, onPress, title, sub, a11y }) => (
+        <TouchableOpacity
+          key={key}
+          style={[styles.row, { backgroundColor: theme.bgInput }]}
+          onPress={onPress}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={a11y}
+        >
+          <View style={[styles.icon, { backgroundColor: theme.primaryBg }]}>
+            <Icon size={ms(18)} color={theme.primary} strokeWidth={2} />
+          </View>
+          <View style={styles.rowText}>
+            <Text style={[styles.rowTitle, { color: theme.text, fontFamily: fonts.semibold }]}>{title}</Text>
+            <Text style={[styles.rowSub, { color: theme.textMuted, fontFamily: fonts.regular }]}>{sub}</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+    </BottomSheet>
   );
 });
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
   sheet: {
     borderTopLeftRadius: radius['2xl'], borderTopRightRadius: radius['2xl'],
-    paddingHorizontal: wp(20), paddingTop: hp(10), gap: hp(10),
+    paddingHorizontal: wp(20), gap: hp(10),
   },
-  handle: { width: wp(40), height: ms(5), borderRadius: 999, alignSelf: 'center', marginBottom: hp(6) },
+  handle: { width: wp(40), height: ms(5), borderRadius: 999, marginBottom: hp(6) },
   title: { fontSize: fontSize.lg, marginBottom: hp(4), letterSpacing: -0.2 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: wp(14),

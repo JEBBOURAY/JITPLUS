@@ -1,8 +1,9 @@
 /**
  * Colour tones of the Accueil promo cards and sheets.
  *
- * - `fill`: backgrounds, buttons with white text, gradients (white text ≥ 4.5:1).
- * - `deep`: end of the hero / banner gradient.
+ * - `fill`: backgrounds, buttons with white text, gradients. White text is
+ *   ≥ 4.5:1 on every fill except `red` and `amber`: keep those for icons and tints.
+ * - `deep`: end of the sheet hero gradient.
  * - `light` / `dark`: the same hue used as text or icon on the light / dark
  *   sheet surfaces (≥ 4.5:1). Never use `fill` as text: most fills are too
  *   dark on the dark theme and too light for small text on white.
@@ -20,3 +21,7 @@ export const PROMO_TONES = {
 } as const;
 
 export type PromoTone = keyof typeof PROMO_TONES;
+
+/** Soft violet surface shared by every Accueil banner: only the accent changes from one to the next. */
+export const PROMO_SURFACE = { light: '#F5F1FE', dark: '#1F1B2E' } as const;
+export const PROMO_OUTLINE = { light: 'rgba(124,58,237,0.14)', dark: 'rgba(255,255,255,0.10)' } as const;

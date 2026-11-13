@@ -45,7 +45,7 @@ export function otpDbOps(repo: {
   };
 }
 
-export const OTP_TOO_MANY_ATTEMPTS_MESSAGE = 'Trop de tentatives. Veuillez redemander un code';
+const OTP_TOO_MANY_ATTEMPTS_MESSAGE = 'Trop de tentatives. Veuillez redemander un code';
 
 /** Outcome of a code check whose attempt was successfully reserved. */
 export type OtpCheckResult = { ok: true } | { ok: false; remaining: number };

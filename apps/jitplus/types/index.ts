@@ -113,7 +113,6 @@ export interface Merchant {
 export interface LoyaltyCard {
   id: string;
   merchantId: string;
-  clientId: string;
   balance: number;
   createdAt: string;
   updatedAt?: string;
@@ -152,6 +151,8 @@ export interface ClientNotification {
   merchantName: string | null;
   merchantCategory: string | null;
   merchantLogoUrl: string | null;
+  /** Deep link (push payload routing keys); absent on older backends. */
+  link?: Record<string, string> | null;
   isRead: boolean;
   readAt: string | null;
   createdAt: string;
@@ -168,38 +169,6 @@ export interface QrTokenResponse {
   expiresAt?: number;
 }
 
-export interface ClientReferral {
-  id: string;
-  merchantName: string;
-  merchantCategory: string;
-  status: 'PENDING' | 'VALIDATED';
-  amount: number;
-  createdAt: string;
-  validatedAt: string | null;
-}
-
-export interface ClientReferralStats {
-  referralCode: string;
-  referralBalance: number;
-  referredCount: number;
-  referrals: ClientReferral[];
-}
-
-// ── Payout ─────────────────────────────────────────────
-
-export type PayoutMethod = 'BANK_TRANSFER' | 'CASH';
-export type PayoutStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
-
-export interface PayoutRequest {
-  id: string;
-  clientId: string;
-  amount: number;
-  method: PayoutMethod;
-  accountDetails: string | null;
-  status: PayoutStatus;
-  createdAt: string;
-  updatedAt: string;
-}
 
 // ── LuckyWheel ───────────────────────────────────────────
 

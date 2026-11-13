@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Linking,
   TextInput,
   Modal,
   Platform,
@@ -15,12 +14,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getErrorMessage } from '@/utils/error';
-import { useReferral } from '@/hooks/useQueryHooks';
+import { useReferral, useUpdateMerchantProfile } from '@/hooks/useQueryHooks';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useMerchantMedia } from '@/hooks/useMerchantMedia';
 import { Check, X } from 'lucide-react-native';
 import { useAuthState, useAuthActions } from '@/contexts/AuthContext';
-import api from '@/services/api';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -31,7 +29,8 @@ import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { CoverHeader, TrialCard, ReferralInlineRow } from '@/components/account';
 import {
   PreferencesSection,
-  AccountSection,
+  SecuritySection,
+  LegalSection,
   DangerSection,
   TeamMemberBanner,
   LuckyWheelCard,
@@ -49,28 +48,11 @@ export default function AccountScreen() {
   const { locale, setLocale, t } = useLanguage();
   const media = useMerchantMedia();
 
-  // Single state so opening one section closes the other without triple re-renders.
-  const [expandedSection, setExpandedSection] = useState<'pref' | 'compte' | null>(null);
-  const togglePref = useCallback(() => setExpandedSection((p) => (p === 'pref' ? null : 'pref')), []);
-  const toggleCompte = useCallback(() => setExpandedSection((p) => (p === 'compte' ? null : 'compte')), []);
-  const prefExpanded = expandedSection === 'pref';
-  const compteExpanded = expandedSection === 'compte';
-  const { isPremium } = usePlanStatus(merchant);
+  const { isPremium, hidePlan } = usePlanStatus(merchant);
 
-  // Dark mode: give each card a clearly visible border so it detaches from the
-  // near-black screen background (shadows alone are invisible on dark).
-  const cardDarkBorder = useMemo(
-    () => (theme.isDark ? { borderWidth: 1, borderColor: theme.border } : null),
-    [theme.isDark, theme.border],
-  );
-
-  // Stable binary dark-mode toggle (keeps the InfoRow memo intact and flips
-  // the theme deterministically in a single tap regardless of current mode).
-  const { isDark: themeIsDark, setDarkMode } = theme;
-  const toggleDark = useCallback(() => setDarkMode(!themeIsDark), [themeIsDark, setDarkMode]);
-
-  const { data: referralData } = useReferral(!!merchant && !isTeamMember);
-  const referralCode = referralData?.referralCode ?? null;
+  // Referral pays out Premium months: not offered to founding members.
+  const { data: referralData } = useReferral(!!merchant && !isTeamMember && !hidePlan);
+  const referralCode = hidePlan ? null : referralData?.referralCode ?? null;
 
   // Inline language switch (pills). Mirrors the RTL-restart flow from LanguageModal.
   const handleSelectLanguage = useCallback(async (code: AppLocale) => {
@@ -100,7 +82,7 @@ export default function AccountScreen() {
 
   const [showNameModal, setShowNameModal] = useState(false);
   const [profileName, setProfileName] = useState('');
-  const [savingName, setSavingName] = useState(false);
+  const updateProfile = useUpdateMerchantProfile();
 
   const handleEditName = useCallback(() => {
     setProfileName(merchant?.nom ?? '');
@@ -112,17 +94,14 @@ export default function AccountScreen() {
   const handleSaveName = useCallback(async () => {
     const trimmed = profileName.trim();
     if (!trimmed || trimmed === merchant?.nom) { setShowNameModal(false); return; }
-    setSavingName(true);
     try {
-      await api.patch('/merchant/profile', { nom: trimmed });
-      updateMerchant({ ...merchant!, nom: trimmed });
+      await updateProfile.mutateAsync({ nom: trimmed });
+      updateMerchant({ nom: trimmed });
       setShowNameModal(false);
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('profileView.profileNameError')));
-    } finally {
-      setSavingName(false);
     }
-  }, [profileName, merchant, updateMerchant, t]);
+  }, [profileName, merchant?.nom, updateProfile, updateMerchant, t]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(t('account.signOut'), t('account.signOutConfirm'), [
@@ -143,7 +122,6 @@ export default function AccountScreen() {
   const goToLegal = useCallback(() => router.push('/legal'), [router]);
   const goToSecurity = useCallback(() => router.push('/security'), [router]);
   const goToNotifications = useCallback(() => router.push('/notification-settings'), [router]);
-  const goToStore = useCallback(() => router.push('/stores'), [router]);
   const goToDevices = useCallback(() => router.push('/security?tab=devices'), [router]);
   const goToDelete = useCallback(() => router.push('/security?tab=delete'), [router]);
 
@@ -155,60 +133,9 @@ export default function AccountScreen() {
 
   const openTeamLuckyWheel = useCallback(() => router.push('/lucky-wheel'), [router]);
 
-  const openSupport = useCallback(() => {
-    const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212755073325';
-    const email = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.com';
-    const msg = t('account.contactSupportMsg');
-
-    const openWhatsApp = async () => {
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
-      try {
-        const can = await Linking.canOpenURL(url);
-        if (!can) throw new Error('unsupported');
-        await Linking.openURL(url);
-      } catch {
-        Alert.alert(t('common.error'), t('common.genericError'));
-      }
-    };
-
-    const openEmail = async () => {
-      const subject = encodeURIComponent('JitPlus Pro — Support');
-      const body = encodeURIComponent(msg);
-      const url = `mailto:${email}?subject=${subject}&body=${body}`;
-      try {
-        const can = await Linking.canOpenURL(url);
-        if (!can) throw new Error('unsupported');
-        await Linking.openURL(url);
-      } catch {
-        Alert.alert(t('common.error'), t('common.genericError'));
-      }
-    };
-
-    Alert.alert(
-      t('account.contactSupportTitle'),
-      t('account.contactSupportVia'),
-      [
-        { text: t('account.contactViaWhatsApp'), onPress: openWhatsApp },
-        { text: t('account.contactViaEmail'), onPress: openEmail },
-        { text: t('common.cancel'), style: 'cancel' },
-      ],
-    );
-  }, [t]);
-
-  const contentContainerStyle = useMemo(
-    () => [styles.contentContainer, { paddingBottom: hp(120) + insets.bottom }],
-    [insets.bottom],
-  );
-
-  const scrollStyle = useMemo(
-    () => ({ backgroundColor: theme.isDark ? theme.bgElevated : theme.bg }),
-    [theme.isDark, theme.bgElevated, theme.bg],
-  );
-
-  const bodyStyle = useMemo(
-    () => [styles.body, { backgroundColor: theme.isDark ? theme.bgElevated : theme.bg }],
-    [theme.isDark, theme.bgElevated, theme.bg],
-  );
+  // The cover renders edge-to-edge: the scroll view and the body sheet that
+  // overlaps it share one surface colour.
+  const surface = { backgroundColor: theme.isDark ? theme.bgElevated : theme.bg };
 
   if (loading) {
     return (
@@ -224,93 +151,75 @@ export default function AccountScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        // Prevent Android clipping artifacts where expanded rows become invisible
-        // while remaining touchable.
+        // Prevent Android clipping artifacts where rows become invisible while
+        // remaining touchable.
         removeClippedSubviews={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={contentContainerStyle}
-        style={scrollStyle}
+        contentContainerStyle={{ paddingBottom: hp(32) + insets.bottom }}
+        style={surface}
       >
         <CoverHeader
           t={t}
           merchant={merchant}
           uploadIsPending={media.logoUploading}
           coverUploadIsPending={media.coverUploading}
-          onLogoPress={media.openLogo}
+          onLogoPress={!isTeamMember ? media.openLogo : undefined}
           onCoverPress={!isTeamMember ? media.openCover : undefined}
           onBackPress={goBack}
           onEditName={!isTeamMember ? handleEditName : undefined}
           topInset={insets.top}
         />
 
-        <View style={bodyStyle}>
-          {isPremium && (
-            <TrialCard
-              t={t}
-              locale={locale}
-              merchant={merchant}
-              router={router}
-              isTeamMember={isTeamMember}
-            />
-          )}
+        <View style={[styles.body, surface]}>
+          {/* Renders nothing on the free plan. */}
+          <TrialCard
+            t={t}
+            locale={locale}
+            merchant={merchant}
+            router={router}
+            isTeamMember={isTeamMember}
+          />
 
           {referralCode && (
-            <ReferralInlineRow
-              theme={theme}
-              t={t}
-              referralCode={referralCode}
-              router={router}
-            />
+            <ReferralInlineRow theme={theme} t={t} referralCode={referralCode} onPress={goToReferral} />
           )}
 
           {isTeamMember && (
-            <TeamMemberBanner theme={theme} teamMember={teamMember} t={t} />
+            <TeamMemberBanner teamMember={teamMember} t={t} />
           )}
 
           {isTeamMember && isPremium && (
-            <LuckyWheelCard
-              theme={theme}
-              cardDarkBorder={cardDarkBorder}
-              onPress={openTeamLuckyWheel}
-              t={t}
-            />
+            <LuckyWheelCard theme={theme} onPress={openTeamLuckyWheel} t={t} />
           )}
 
           <PreferencesSection
             key={`pref-${theme.mode}`}
-            prefExpanded={prefExpanded}
-            togglePref={togglePref}
             theme={theme}
-            cardDarkBorder={cardDarkBorder}
             locale={locale}
             handleSelectLanguage={handleSelectLanguage}
             isTeamMember={isTeamMember}
             referralCode={referralCode}
-            toggleDark={toggleDark}
+            hideReferral={hidePlan}
             goToReferral={goToReferral}
+            goToNotifications={goToNotifications}
             t={t}
           />
 
-          <AccountSection
-            key={`account-${theme.mode}`}
-            compteExpanded={compteExpanded}
-            toggleCompte={toggleCompte}
-            theme={theme}
-            cardDarkBorder={cardDarkBorder}
-            isTeamMember={isTeamMember}
-            goToSecurity={goToSecurity}
-            goToDevices={goToDevices}
-            goToLegal={goToLegal}
-            goToStore={goToStore}
-            goToNotifications={goToNotifications}
-            openSupport={openSupport}
-            t={t}
-          />
+          {!isTeamMember && (
+            <SecuritySection
+              key={`security-${theme.mode}`}
+              theme={theme}
+              goToSecurity={goToSecurity}
+              goToDevices={goToDevices}
+              t={t}
+            />
+          )}
+
+          <LegalSection key={`legal-${theme.mode}`} theme={theme} goToLegal={goToLegal} t={t} />
 
           <DangerSection
             key={`danger-${theme.mode}`}
             theme={theme}
-            cardDarkBorder={cardDarkBorder}
             isTeamMember={isTeamMember}
             handleSignOut={handleSignOut}
             goToDelete={goToDelete}
@@ -369,7 +278,7 @@ export default function AccountScreen() {
                 label={t('common.save')}
                 icon={Check}
                 onPress={handleSaveName}
-                loading={savingName}
+                loading={updateProfile.isPending}
                 disabled={!profileName.trim()}
                 style={[styles.nameModalBtn, styles.nameModalSave]}
               />
@@ -386,11 +295,6 @@ const styles = StyleSheet.create({
 
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  contentContainer: {
-    // No horizontal padding here: the CoverHeader renders edge-to-edge and
-    // the body (below) applies its own horizontal padding.
-  },
-
   // Overlaps the cover by -30 so its rounded top corners sit on the header.
   body: {
     marginTop: -hp(30),
@@ -402,7 +306,7 @@ const styles = StyleSheet.create({
 
   nameModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: wp(24) },
   nameModalCard: { borderRadius: radius.lg, padding: ms(20), gap: hp(16) },
-  nameModalTitle: { fontSize: FS.lg, textAlign: 'center', fontFamily: font.bold },
+  nameModalTitle: { fontSize: FS.lg, textAlign: 'center', fontFamily: font.semibold },
   nameModalInput: { fontSize: FS.md, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: wp(14), paddingVertical: hp(12), fontFamily: font.semibold },
   nameModalActions: { flexDirection: 'row', gap: wp(10) },
   nameModalBtn: { flex: 1 },

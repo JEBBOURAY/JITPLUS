@@ -4,6 +4,7 @@ import { Cache } from 'cache-manager';
 import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
+  TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../../common/repositories';
 import { IMailProvider, MAIL_PROVIDER } from '../../common/interfaces';
 import { pickEmailLang } from '../../mail/transactional-i18n';
@@ -13,6 +14,7 @@ import { planCacheKey } from './plan-cache-key';
 import { MerchantNotifierService } from '../../merchant-inbox/merchant-notifier.service';
 import { MerchantPlan } from '@prisma/client';
 import {
+  FOUNDING_MEMBERS_LIMIT,
   FREE_MAX_CLIENTS,
   FREE_MAX_STORES,
   PREMIUM_MAX_STORES,
@@ -20,7 +22,7 @@ import {
   PLAN_CACHE_TTL,
   TRIAL_DURATION_DAYS,
 } from '../../common/constants';
-import { type AppLang, pickAppLang } from '../../common/utils/app-lang';
+import { pickAppLang } from '../../common/utils/app-lang';
 
 /** Plan limits by tier */
 const PLAN_LIMITS = {
@@ -46,8 +48,17 @@ const PLAN_LIMITS = {
   },
 } as const;
 
+/** Plan fields of a founding member: permanent PREMIUM, offered. */
+const FOUNDING_PLAN_DATA = {
+  foundingMember: true,
+  plan: 'PREMIUM' as MerchantPlan,
+  planActivatedByAdmin: true,
+  planExpiresAt: null,
+  premiumGrant: 'OFFERED' as const,
+  premiumGrantNote: 'Membre fondateur (500 premiers inscrits)',
+};
+
 // ── Localized plan push messages ──
-type PlanLang = AppLang;
 const planLang = pickAppLang;
 
 const PLAN_MESSAGES = {
@@ -93,6 +104,7 @@ export class MerchantPlanService {
     private readonly clientReferralService: ClientReferralService,
     private readonly merchantReferralService: MerchantReferralService,
     private readonly notifier: MerchantNotifierService,
+    @Inject(TRANSACTION_RUNNER) private readonly txRunner: ITransactionRunner,
   ) {}
 
   /** Records the plan change in the merchant inbox, then pushes it when a device is registered. */
@@ -133,6 +145,7 @@ export class MerchantPlanService {
     trialStartedAt: Date | null;
     isTrial: boolean;
     daysRemaining: number | null;
+    foundingMember: boolean;
   }> {
     const cacheKey = planCacheKey(merchantId);
     const cached = await this.cache.get<{
@@ -142,11 +155,13 @@ export class MerchantPlanService {
       trialStartedAt: string | null;
       isTrial: boolean;
       daysRemaining: number | null;
+      foundingMember?: boolean;
     }>(cacheKey);
 
     if (cached) {
       return {
         ...cached,
+        foundingMember: cached.foundingMember === true,
         planExpiresAt: cached.planExpiresAt ? new Date(cached.planExpiresAt) : null,
         trialStartedAt: cached.trialStartedAt ? new Date(cached.trialStartedAt) : null,
       };
@@ -159,8 +174,10 @@ export class MerchantPlanService {
         planExpiresAt: true,
         planActivatedByAdmin: true,
         trialStartedAt: true,
+        foundingMember: true,
       },
     });
+    const { foundingMember } = merchant;
 
     // Admin-activated PREMIUM — permanent or time-limited paid subscription
     if (merchant.planActivatedByAdmin && merchant.plan === 'PREMIUM') {
@@ -180,6 +197,7 @@ export class MerchantPlanService {
             trialStartedAt: merchant.trialStartedAt,
             isTrial: false,
             daysRemaining: 0 as number | null,
+            foundingMember,
           };
           await this.cache.set(cacheKey, expiredResult, PLAN_CACHE_TTL);
           return expiredResult;
@@ -193,6 +211,7 @@ export class MerchantPlanService {
           trialStartedAt: merchant.trialStartedAt,
           isTrial: false,
           daysRemaining,
+          foundingMember,
         };
         await this.cache.set(cacheKey, timedResult, PLAN_CACHE_TTL);
         return timedResult;
@@ -205,6 +224,7 @@ export class MerchantPlanService {
         trialStartedAt: merchant.trialStartedAt,
         isTrial: false,
         daysRemaining: null as number | null,
+        foundingMember,
       };
       await this.cache.set(cacheKey, adminResult, PLAN_CACHE_TTL);
       return adminResult;
@@ -227,6 +247,7 @@ export class MerchantPlanService {
           trialStartedAt: merchant.trialStartedAt,
           isTrial: false,
           daysRemaining: 0 as number | null,
+          foundingMember,
         };
         await this.cache.set(cacheKey, expiredResult, PLAN_CACHE_TTL);
         return expiredResult;
@@ -241,6 +262,7 @@ export class MerchantPlanService {
         trialStartedAt: merchant.trialStartedAt,
         isTrial: true,
         daysRemaining,
+        foundingMember,
       };
       await this.cache.set(cacheKey, trialResult, PLAN_CACHE_TTL);
       return trialResult;
@@ -254,6 +276,7 @@ export class MerchantPlanService {
       trialStartedAt: merchant.trialStartedAt,
       isTrial: false,
       daysRemaining: null as number | null,
+      foundingMember,
     };
     await this.cache.set(cacheKey, result, PLAN_CACHE_TTL);
     return result;
@@ -279,6 +302,26 @@ export class MerchantPlanService {
       trialStartedAt: now,
       planActivatedByAdmin: false,
     };
+  }
+
+  /**
+   * Founding members: the first FOUNDING_MEMBERS_LIMIT sign-ups get permanent,
+   * free PREMIUM (and no plan UI in the Pro app). Called right after sign-up.
+   * The advisory lock serialises concurrent sign-ups so the cap holds exactly.
+   * Returns the plan fields written, or null when every slot is taken.
+   */
+  async claimFoundingSlot(merchantId: string): Promise<typeof FOUNDING_PLAN_DATA | null> {
+    const claimed = await this.txRunner.run(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('founding-members'))`;
+      const taken = await tx.merchant.count({ where: { foundingMember: true } });
+      if (taken >= FOUNDING_MEMBERS_LIMIT) return false;
+      await tx.merchant.update({ where: { id: merchantId }, data: FOUNDING_PLAN_DATA });
+      return true;
+    });
+    if (!claimed) return null;
+    await this.invalidatePlanCache(merchantId);
+    this.logger.log(`Merchant ${merchantId} is a founding member — permanent free PREMIUM`);
+    return FOUNDING_PLAN_DATA;
   }
 
   /**
@@ -390,6 +433,8 @@ export class MerchantPlanService {
         planExpiresAt: null,
         premiumGrant: null,
         premiumGrantNote: null,
+        // Back on FREE: the plan UI must show again.
+        foundingMember: false,
       },
       select: { pushToken: true, notifPush: true, language: true, email: true },
     });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
 import { getNotificationStats, getNotifications } from '../api';

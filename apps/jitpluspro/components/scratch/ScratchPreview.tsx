@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
   },
-  labelText: { color: '#FFFFFF', fontSize: ms(14), fontFamily: font.bold, letterSpacing: 0.4 },
+  labelText: { color: '#FFFFFF', fontSize: ms(14), fontFamily: font.semibold, letterSpacing: 0.4 },
   pills: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
   cardWrap: { alignItems: 'center', justifyContent: 'center' },
   glow: {

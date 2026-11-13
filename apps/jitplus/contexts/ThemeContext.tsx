@@ -22,12 +22,10 @@ export const palette = {
   goldUltraLight: '#FEF3C7',
   // Semantic aliases
   neonBlue: '#38BDF8',
-  neonPink: '#F472B6',
   emerald: '#10B981',
   red: '#EF4444',
   // Neutral spectrum
   white: '#FFFFFF',
-  offWhite: '#FAFAFE',
   gray50: '#F8FAFC',
   gray100: '#F1F5F9',
   gray200: '#E2E8F0',
@@ -36,17 +34,12 @@ export const palette = {
   gray900: '#0F172A',
 };
 
-/** Violet → Gold gradient — "Améthyste Solaire" brand identity */
-export const brandGradient = ['#7C3AED', '#F59E0B'] as const;
-/** Extended 3-stop version for headers */
-export const brandGradientFull = ['#5B21B6', '#7C3AED', '#F59E0B'] as const;
 
 export interface ThemeColors {
   mode: 'light' | 'dark';
   bg: string;
   bgCard: string;
   bgElevated: string;
-  bgHeader: string;
   bgTabBar: string;
   bgTabBarBorder: string;
   bgInput: string;
@@ -55,12 +48,10 @@ export interface ThemeColors {
   text: string;
   textSecondary: string;
   textMuted: string;
-  textInverse: string;
   primary: string;
   primaryLight: string;
   primaryBg: string;
   accent: string;
-  accentBg: string;
   border: string;
   borderLight: string;
   inputBorder: string;
@@ -72,67 +63,62 @@ export interface ThemeColors {
   danger: string;
 }
 
+// Graphite ramp: surfaces stay grey so the merchants' cards carry the colour.
 const lightTheme: ThemeColors = {
   mode: 'light',
-  bg: '#FFFFFF',
+  bg: '#FAFAFA',
   bgCard: '#FFFFFF',
   bgElevated: '#FFFFFF',
-  bgHeader: '#7C3AED',
   bgTabBar: 'rgba(255,255,255,0.97)',
-  bgTabBarBorder: 'rgba(0,0,0,0.06)',
-  bgInput: '#F7F8FA',
-  bgSkeleton: '#F1F2F4',
-  bgSkeletonHighlight: '#FAFAFB',
-  text: '#0F172A',
-  textSecondary: '#334155',
-  // #94A3B8 failed WCAG AA on white (2.6:1); this one passes (4.8:1).
-  textMuted: '#64748B',
-  textInverse: '#FFFFFF',
+  bgTabBarBorder: 'rgba(23,23,23,0.08)',
+  bgInput: '#F4F4F5',
+  bgSkeleton: '#F0F0F1',
+  bgSkeletonHighlight: '#FAFAFA',
+  text: '#171717',
+  textSecondary: '#525252',
+  textMuted: '#737373',
   primary: '#7C3AED',
   primaryLight: '#8B5CF6',
   primaryBg: 'rgba(124,58,237,0.06)',
-  accent: '#F59E0B',
-  accentBg: 'rgba(245,158,11,0.08)',
-  border: 'rgba(0,0,0,0.08)',
-  borderLight: 'rgba(0,0,0,0.04)',
-  inputBorder: '#E2E8F0',
-  inputBg: '#F7F8FA',
-  inputPlaceholder: '#94A3B8',
+  // Gold marks what the client earns: a reward ready, a stamp received.
+  accent: '#B7791F',
+  border: 'rgba(23,23,23,0.10)',
+  borderLight: 'rgba(23,23,23,0.06)',
+  inputBorder: 'rgba(23,23,23,0.14)',
+  inputBg: '#F4F4F5',
+  inputPlaceholder: '#A3A3A3',
   shadowColor: 'rgba(0,0,0,0.06)',
-  success: '#10B981',
-  warning: '#F59E0B',
-  danger: '#EF4444',
+  success: '#16A34A',
+  warning: '#D97706',
+  danger: '#DC2626',
 };
 
 const darkTheme: ThemeColors = {
   mode: 'dark',
-  bg: '#0F172A',
-  bgCard: '#1E293B',
-  bgElevated: '#1E293B',
-  bgHeader: '#4C1D95',
-  bgTabBar: 'rgba(15,23,42,0.97)',
-  bgTabBarBorder: 'rgba(255,255,255,0.08)',
-  bgInput: '#1E293B',
-  bgSkeleton: '#1E293B',
-  bgSkeletonHighlight: '#334155',
-  text: '#F1F5F9',
-  textSecondary: '#CBD5E1',
-  textMuted: '#64748B',
-  textInverse: '#0F172A',
+  bg: '#141415',
+  bgCard: '#19191B',
+  bgElevated: '#232325',
+  bgTabBar: 'rgba(20,20,21,0.97)',
+  bgTabBarBorder: 'rgba(237,237,237,0.08)',
+  bgInput: '#232325',
+  bgSkeleton: '#232325',
+  bgSkeletonHighlight: '#2E2E31',
+  text: '#EDEDED',
+  textSecondary: '#A1A1A6',
+  textMuted: '#85858B',
   primary: '#A78BFA',
   primaryLight: '#C4B5FD',
-  primaryBg: 'rgba(167,139,250,0.15)',
-  accent: '#FBBF24',
-  accentBg: 'rgba(251,191,36,0.12)',
-  border: 'rgba(255,255,255,0.10)',
-  borderLight: 'rgba(255,255,255,0.06)',
-  inputBorder: '#334155',
-  inputBg: '#1E293B',
-  inputPlaceholder: '#64748B',
+  primaryBg: 'rgba(167,139,250,0.14)',
+  accent: '#F5B544',
+  border: 'rgba(237,237,237,0.10)',
+  borderLight: 'rgba(237,237,237,0.06)',
+  inputBorder: 'rgba(237,237,237,0.14)',
+  inputBg: '#19191B',
+  inputPlaceholder: '#6E6E73',
   shadowColor: 'rgba(0,0,0,0.40)',
-  success: '#34D399',
-  warning: '#FBBF24',
-  danger: '#F87171',
+  success: '#4CC38A',
+  warning: '#F5A524',
+  danger: '#E5484D',
 };
 
 export const { ThemeProvider, useTheme } = createThemeProvider<ThemeColors>({

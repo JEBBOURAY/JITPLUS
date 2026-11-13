@@ -6,6 +6,7 @@ import { useIsFocused } from 'expo-router/react-navigation';
 import type { WheelSegment } from '@jitplus/shared/src/luckyWheel';
 import { ms } from '@/utils/responsive';
 import { GAME_GOLD, GAME_STAGE_GRADIENT, GAME_VIOLET } from '@/components/games/GameStage';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { WheelFace } from './WheelFace';
 
 const BULBS = 18;
@@ -27,21 +28,29 @@ export const WheelStage = React.memo(function WheelStage({ size, segments, rotat
   const bulbSize = ms(7);
   const [blink] = useState(() => new Animated.Value(0));
   const isFocused = useIsFocused();
+  // Reduced motion: the bulbs stay lit, still. The spin itself is the feedback.
+  const stillBulbs = useReduceMotion() === true;
 
   // A single timing loops on the native side (a sequence would hop through JS
   // each half). 0 and 1 light the same bulbs, so the restart is seamless.
   useEffect(() => {
-    if (!isFocused) return;
+    if (!isFocused || stillBulbs) return;
     blink.setValue(0);
     const loop = Animated.loop(
       Animated.timing(blink, { toValue: 1, duration: spinning ? 280 : 1800, easing: Easing.linear, useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
-  }, [blink, spinning, isFocused]);
+  }, [blink, spinning, isFocused, stillBulbs]);
 
-  const evenOpacity = useMemo(() => blink.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.35, 1] }), [blink]);
-  const oddOpacity = useMemo(() => blink.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.35, 1, 0.35] }), [blink]);
+  const evenOpacity = useMemo(
+    () => (stillBulbs ? 1 : blink.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.35, 1] })),
+    [blink, stillBulbs],
+  );
+  const oddOpacity = useMemo(
+    () => (stillBulbs ? 1 : blink.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.35, 1, 0.35] })),
+    [blink, stillBulbs],
+  );
   const ptrW = ms(34);
   const ptrH = ms(42);
 

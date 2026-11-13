@@ -1,6 +1,6 @@
 import type { Merchant } from '@/types';
 
-type PlanSource = Pick<Merchant, 'plan' | 'planExpiresAt' | 'planActivatedByAdmin' | 'trialStartedAt'>;
+type PlanSource = Pick<Merchant, 'plan' | 'planExpiresAt' | 'planActivatedByAdmin' | 'trialStartedAt' | 'foundingMember'>;
 const MS_PER_DAY = 86_400_000;
 
 function parseDate(value: string | null | undefined): Date | null {
@@ -23,6 +23,8 @@ export function getPlanStatus(source: PlanSource | null | undefined, now = Date.
 
   return {
     isPremium,
+    /** Founding member: everything is unlocked and no plan / Pro / Premium surface is shown. */
+    hidePlan: isPremium && source?.foundingMember === true,
     isFreePlan: source?.plan === 'FREE' || (source?.plan === 'PREMIUM' && !isPremium),
     isAdminPremium,
     isTrial,

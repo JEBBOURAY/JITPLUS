@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     flex: 1,
     fontSize: 18,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   modalContent: { padding: 16 },
 
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
   },
   pwStrengthLabel: {
     fontSize: 11,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     minWidth: 50,
   },
   pwStrengthLabelLtr: { marginLeft: 6, textAlign: 'right' },
@@ -636,7 +636,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  permBoxTitle: { fontSize: 14, marginBottom: 10, fontFamily: font.bold },
+  permBoxTitle: { fontSize: 14, marginBottom: 10, fontFamily: font.semibold },
   permList: { gap: 4 },
   permItem: { fontSize: 13, lineHeight: 20, fontFamily: font.regular, flex: 1 },
   permRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

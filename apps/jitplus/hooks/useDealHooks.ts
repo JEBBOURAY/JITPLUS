@@ -25,7 +25,7 @@ export { dealArea, type DealAlertUpdate, type DealArea } from '@/services/api/de
 const FEED_STALE_MS = 2 * 60 * 1000;
 const LIST_GC_MS = 5 * 60 * 1000;
 
-export const dealKeys = {
+const dealKeys = {
   feeds: ['deals', 'feed'] as const,
   feed: (q: Omit<DealFeedQuery, 'cursor'>) =>
     ['deals', 'feed', q.tab, q.cityKey ?? null, q.category ?? null, q.lat ?? null, q.lng ?? null] as const,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, I18nManager } from 'react-native';
 import {
   Check,
@@ -26,7 +26,7 @@ import { PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
 import { DealPreviewRow, useDealMerchantLook } from '@/components/deals/DealRows';
 
 // Same tone as the "Gratuit" promo banner that opens this sheet.
-const TONE: PromoTone = 'red';
+const TONE: PromoTone = 'violet';
 const ACCENT = PROMO_TONES[TONE].fill;
 const DAY_MS = 86_400_000;
 
@@ -85,7 +85,8 @@ function DealsGuideSheet({ visible, onClose, onCreate }: DealsGuideSheetProps) {
   const accentInk = ink(TONE);
   const listCard = [styles.listCard, { backgroundColor: softFill, borderColor: hairline }];
   const divider = { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: hairline };
-  const exampleEndsAt = new Date(Date.now() + 5 * DAY_MS).toISOString();
+  // Computed once per mount: reading the clock during render is impure.
+  const [exampleEndsAt] = useState(() => new Date(Date.now() + 5 * DAY_MS).toISOString());
 
   const facts = [
     { value: money(0), label: t('home.dealsGuideFactFree') },
@@ -237,7 +238,7 @@ const styles = StyleSheet.create({
   // Hero key figures
   facts: { flexDirection: 'row', gap: 8, marginTop: 16 },
   fact: { flex: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 10, backgroundColor: 'rgba(0,0,0,0.18)' },
-  factValue: { color: '#FFFFFF', fontSize: 17, fontFamily: 'Lexend_700Bold' },
+  factValue: { color: '#FFFFFF', fontSize: 17, fontFamily: 'Lexend_600SemiBold' },
   factLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 10.5, lineHeight: 14, marginTop: 2, fontFamily: 'Lexend_500Medium' },
 
   // Preview
@@ -272,7 +273,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepNumberText: { color: '#FFFFFF', fontSize: 11.5, fontFamily: 'Lexend_700Bold' },
+  stepNumberText: { color: '#FFFFFF', fontSize: 11.5, fontFamily: 'Lexend_600SemiBold' },
   stepText: { flex: 1, fontSize: 12.5, lineHeight: 18, fontFamily: 'Lexend_500Medium' },
 
   // Gains

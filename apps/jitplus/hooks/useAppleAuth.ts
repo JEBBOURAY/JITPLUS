@@ -94,7 +94,6 @@ export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
   return {
     promptApple,
     isLoading: auth.isLoading,
-    isSuccess: auth.isSuccess,
     error: auth.error,
     isAvailable,
     noAccount: auth.noAccount,

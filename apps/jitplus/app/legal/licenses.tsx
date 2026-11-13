@@ -1,10 +1,8 @@
-import { ScrollView, View, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { Text } from '@/components/AppText';
-import { useRouter } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
+import { LegalNotice, LegalScreen } from '@/components/legal/LegalScreen';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ms } from '@/utils/responsive';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
@@ -44,62 +42,39 @@ const LICENSES: License[] = [
 
 export default function LicensesScreen() {
   const theme = useTheme();
-  const { t, isRTL } = useLanguage();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: theme.bgCard, borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-          <ArrowLeft size={ms(22)} color={theme.text} strokeWidth={2} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('legal.licensesHeader')}</Text>
-        <View style={styles.backBtn} />
+    <LegalScreen title={t('legal.licensesHeader')} gap={8}>
+      <View style={styles.intro}>
+        <LegalNotice centered={false}>{t('legal.licensesIntro')}</LegalNotice>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.section, { backgroundColor: `${theme.primary}10` }]}>
-          <Text style={[styles.body, { color: theme.textMuted }]}>{t('legal.licensesIntro')}</Text>
-        </View>
+      {LICENSES.map((lib) => (
+        <TouchableOpacity
+          key={lib.name}
+          onPress={() => Linking.openURL(lib.url).catch(() => {})}
+          activeOpacity={0.7}
+          accessibilityRole="link"
+          style={[styles.item, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.libName, { color: theme.text }]}>{lib.name}</Text>
+            <Text style={[styles.libUrl, { color: theme.textMuted }]}>{lib.url}</Text>
+          </View>
+          <View style={[styles.licenseBadge, { backgroundColor: `${theme.primary}15` }]}>
+            <Text style={[styles.licenseText, { color: theme.primary }]}>{lib.license}</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
 
-        {LICENSES.map((lib) => (
-          <TouchableOpacity
-            key={lib.name}
-            onPress={() => Linking.openURL(lib.url).catch(() => {})}
-            activeOpacity={0.7}
-            style={[styles.item, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.libName, { color: theme.text }]}>{lib.name}</Text>
-              <Text style={[styles.libUrl, { color: theme.textMuted }]}>{lib.url}</Text>
-            </View>
-            <View style={[styles.licenseBadge, { backgroundColor: `${theme.primary}15` }]}>
-              <Text style={[styles.licenseText, { color: theme.primary }]}>{lib.license}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-
-        <Text style={[styles.footer, { color: theme.textMuted }]}>{t('legal.licensesFooter')}</Text>
-      </ScrollView>
-    </View>
+      <Text style={[styles.footer, { color: theme.textMuted }]}>{t('legal.licensesFooter')}</Text>
+    </LegalScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  backBtn: { width: ms(40), alignItems: 'center' },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: ms(16), fontWeight: '700' },
-  content: { padding: 16, gap: 8 },
-  section: { borderRadius: 14, padding: 16, marginBottom: 8 },
-  body: { fontSize: ms(13), lineHeight: ms(20) },
+  intro: { marginBottom: 8 },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -115,6 +90,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 10,
   },
-  licenseText: { fontSize: ms(11), fontWeight: '700' },
+  licenseText: { fontSize: ms(11), fontWeight: '600' },
   footer: { fontSize: ms(11), textAlign: 'center', marginTop: 16, marginBottom: 32 },
 });

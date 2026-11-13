@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { Stack, useNavigationContainerRef, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from 'expo-router/react-navigation';
 // Per-weight subpaths: the package root require()s every weight (17 TTF files
@@ -125,15 +126,14 @@ function RootLayoutNav() {
         >
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
-          <Stack.Screen name="login" options={{ animation: 'fade', contentStyle: { backgroundColor: '#fff' } }} />
-          <Stack.Screen name="register" options={{ animation: 'slide_from_right', contentStyle: { backgroundColor: '#fff' } }} />
+          <Stack.Screen name="login" options={{ animation: 'fade' }} />
+          <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="verify-otp" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="complete-profile" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="set-password" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="change-password" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="edit-profile" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="profile" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="referral" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="legal" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="scratch/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="scratch/[id]" options={{ animation: 'slide_from_bottom' }} />
@@ -216,6 +216,8 @@ export default function RootLayout() {
         persistOptions={{
           persister: asyncStoragePersister,
           maxAge: CACHE_MAX_AGE,
+          // A new app version may read the cached data differently: start clean.
+          buster: Constants.expoConfig?.version ?? '',
           dehydrateOptions: {
             shouldDehydrateQuery: shouldPersistQuery,
             // Never persist mutations: their mutationFn cannot be serialized,

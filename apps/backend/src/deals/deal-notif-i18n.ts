@@ -1,6 +1,5 @@
-import { type AppLang, pickAppLang } from '../common/utils/app-lang';
+import { pickAppLang } from '../common/utils/app-lang';
 
-type Lang = AppLang;
 const pick = pickAppLang;
 
 /** Inbox entry sent to the merchant when a deal reaches its end date. */

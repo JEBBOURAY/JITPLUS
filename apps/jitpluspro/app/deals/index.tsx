@@ -1,6 +1,16 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
-import { Plus } from 'lucide-react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  TouchableOpacity,
+  Alert,
+} from 'react-native';
+import { ChevronRight, Plus } from 'lucide-react-native';
+import { Image } from 'expo-image';
 import { JitPin } from '@/components/icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,18 +20,29 @@ import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useDir } from '@/hooks/useDir';
 import { useAuthStore } from '@/stores/authStore';
 import { useMerchantDeals } from '@/hooks/queries/deals';
+import { getIntlLocale } from '@/config/currency';
 import { ms } from '@/utils/responsive';
-import { font } from '@/constants/design';
+import { font, icon } from '@/constants/design';
 import { Button, Notice, ScreenHeader } from '@/components/scratch/ScratchUI';
-import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
+import { GameEmptyState, HeaderAddButton, ListSeparator } from '@/components/games/GameList';
 import { formatYmd } from '@/components/scratch/DateField';
 import { moroccoYmdOf } from '@/components/scratch/campaignForm';
+import { SummaryCard } from '@/components/ui/SummaryCard';
 import DealThumb from '@/components/deals/DealThumb';
 import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { DealStatusPill, useDealMerchantLook, type DealMerchantLook } from '@/components/deals/DealRows';
 import { dealBadgeLabel, dealTimeLeftLabel } from '@/components/deals/dealVisual';
 import { DEAL_LIST_TABS, dealLimitReached, dealsForTab, type DealListTab } from '@/components/deals/dealForm';
 import type { MerchantDealDto } from '@jitplus/shared/src/deals';
+
+// Same artwork as the "Bons plans" card of Accueil.
+const DEALS_IMAGE = require('@/assets/images/tools/bons_plans.png');
+
+/** Figures in the app language ("1 248" in French, "1,248" in English). */
+function useNumberFormat() {
+  const { locale } = useLanguage();
+  return useCallback((n: number) => n.toLocaleString(getIntlLocale(locale)), [locale]);
+}
 
 export default function DealsScreen() {
   const shouldWait = useRequireAuth();
@@ -42,6 +63,13 @@ export default function DealsScreen() {
     () => Object.fromEntries(DEAL_LIST_TABS.map((k) => [k, dealsForTab(deals, k).length])) as Record<DealListTab, number>,
     [deals],
   );
+  const totals = useMemo(
+    () => deals.reduce(
+      (acc, d) => ({ views: acc.views + d.stats.views, clicks: acc.clicks + d.stats.linkClicks }),
+      { views: 0, clicks: 0 },
+    ),
+    [deals],
+  );
   const limit = dealLimitReached(limits);
   const limitMessage = limit === 'active'
     ? t('deals.list.limitActive', { max: limits?.maxActive })
@@ -50,6 +78,7 @@ export default function DealsScreen() {
       : null;
 
   const look = useDealMerchantLook();
+  const number = useNumberFormat();
 
   const openDeal = useCallback(
     (id: string) => router.push({ pathname: '/deals/[id]', params: { id } }),
@@ -65,7 +94,7 @@ export default function DealsScreen() {
   const goStores = useCallback(() => router.push('/stores'), [router]);
 
   const renderItem = useCallback(
-    ({ item }: { item: MerchantDealDto }) => <DealListItem deal={item} look={look} onOpen={openDeal} />,
+    ({ item }: { item: MerchantDealDto }) => <DealCard deal={item} look={look} onOpen={openDeal} />,
     [look, openDeal],
   );
 
@@ -80,16 +109,7 @@ export default function DealsScreen() {
 
       {empty && !isError ? (
         <GameEmptyState
-          visual={
-            <DealThumb
-              coverUrl={look.coverUrl}
-              themeColor={look.themeColor}
-              category={look.categorie}
-              badge={t('deals.badge.percent', { value: 20 })}
-              width={ms(112)}
-              radius={20}
-            />
-          }
+          visual={<Image source={DEALS_IMAGE} style={styles.emptyImage} contentFit="contain" accessible={false} />}
           title={t('deals.list.emptyTitle')}
           text={t('deals.list.intro')}
           steps={[t('deals.list.how1'), t('deals.list.how2'), t('deals.list.how3')]}
@@ -99,20 +119,23 @@ export default function DealsScreen() {
         />
       ) : null}
 
-      {limits && !empty && (
-        <Text style={[styles.limits, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
-          {t('deals.list.limits', {
-            active: limits.activeCount,
-            maxActive: limits.maxActive,
-            today: limits.createdToday,
-            maxPerDay: limits.maxPerDay,
-          })}
-        </Text>
-      )}
+      {limits && !empty ? (
+        <SummaryCard
+          label={t('deals.list.heroLabel')}
+          value={limits.activeCount}
+          max={limits.maxActive}
+          stats={[
+            { label: t('deals.list.views'), value: number(totals.views) },
+            { label: t('deals.list.clicks'), value: number(totals.clicks) },
+            { label: t('deals.list.today'), value: `${limits.createdToday}/${limits.maxPerDay}` },
+          ]}
+        />
+      ) : null}
+
       {canManage && limitMessage && !empty && <Notice tone="warning" text={limitMessage} />}
 
       {canManage && limits && !limits.hasLocatedStore && (
-        <View style={[styles.locationBox, { backgroundColor: `${theme.warning}12`, borderColor: `${theme.warning}35` }]}>
+        <View style={[styles.locationBox, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
           <Text style={[styles.locationText, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
             {t('deals.list.needsLocation')}
           </Text>
@@ -121,22 +144,25 @@ export default function DealsScreen() {
       )}
 
       {!empty && (
-        <View style={[styles.tabBar, { flexDirection: row, backgroundColor: theme.bgCard, borderColor: theme.borderLight }]} accessibilityRole="tablist">
+        <View style={[styles.tabBar, { flexDirection: row, backgroundColor: theme.bgCard, borderColor: theme.border }]} accessibilityRole="tablist">
           {DEAL_LIST_TABS.map((key) => {
             const active = key === tab;
-            const label = t('deals.list.tabCount', { label: t(`deals.list.tabs.${key}`), count: counts[key] });
+            const label = t(`deals.list.tabs.${key}`);
             return (
               <TouchableOpacity
                 key={key}
                 onPress={() => setTab(key)}
-                style={[styles.tab, active && { backgroundColor: theme.primary }]}
+                style={[styles.tab, { flexDirection: row }, active && { backgroundColor: theme.primary }]}
                 activeOpacity={0.75}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
-                accessibilityLabel={label}
+                accessibilityLabel={t('deals.list.tabCount', { label, count: counts[key] })}
               >
-                <Text style={[styles.tabText, { color: active ? '#FFFFFF' : theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                <Text style={[styles.tabText, { color: active ? '#FFFFFF' : theme.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
                   {label}
+                </Text>
+                <Text style={[styles.tabCount, { color: active ? 'rgba(255,255,255,0.7)' : theme.textMuted }]} maxFontSizeMultiplier={1.2}>
+                  {counts[key]}
                 </Text>
               </TouchableOpacity>
             );
@@ -155,10 +181,9 @@ export default function DealsScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <ScreenHeader
         title={t('deals.title')}
-        onBack={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
         right={(
           <DemoHeaderActions id="bonsplans">
-            {canManage && !empty ? (
+            {canManage && !empty && !isLoading ? (
               <View style={limitMessage ? styles.dimmed : undefined}>
                 <HeaderAddButton label={t('deals.list.create')} onPress={create} />
               </View>
@@ -166,6 +191,7 @@ export default function DealsScreen() {
           </DemoHeaderActions>
         )}
       />
+
       {isLoading ? (
         <View style={styles.loader}><ActivityIndicator color={theme.primary} /></View>
       ) : (
@@ -174,66 +200,105 @@ export default function DealsScreen() {
           keyExtractor={(d) => d.id}
           renderItem={renderItem}
           ListHeaderComponent={header}
+          showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
           ItemSeparatorComponent={ListSeparator}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.primary} />}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} colors={[theme.primary]} tintColor={theme.primary} />}
         />
       )}
     </View>
   );
 }
 
-const DealListItem = React.memo(function DealListItem({ deal, look, onOpen }: {
+/** One deal: visual, title and status, then its two figures and its dates. */
+const DealCard = React.memo(function DealCard({ deal, look, onOpen }: {
   deal: MerchantDealDto;
   look: DealMerchantLook;
   onOpen: (id: string) => void;
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
+  const { row, textAlign, flip, isRTL } = useDir();
   const day = (ymd: string) => formatYmd(ymd, locale, false);
-  const stats: CampaignLine = { text: t('deals.list.stats', { views: deal.stats.views, clicks: deal.stats.linkClicks }) };
+  const number = useNumberFormat();
   const dates = t('deals.list.dates', { start: day(deal.startsOn), end: day(deal.endsOn) });
   const scope = t(`deals.scope.${deal.scope}`);
 
-  let lines: CampaignLine[];
+  let headline: string;
+  let headlineColor = theme.textSecondary;
   switch (deal.displayStatus) {
     case 'LIVE': {
       const time = dealTimeLeftLabel(deal.endsAt, t);
-      lines = [
-        { text: time.text, color: time.urgent ? theme.warning : undefined, tone: 'secondary' },
-        { text: `${scope} · ${dates}` },
-        stats,
-      ];
+      headline = time.text;
+      if (time.urgent) headlineColor = theme.warning;
       break;
     }
     case 'SCHEDULED':
-      lines = [{ text: t('deals.list.startsOn', { date: day(deal.startsOn) }), tone: 'secondary' }, { text: `${scope} · ${dates}` }];
+      headline = t('deals.list.startsOn', { date: day(deal.startsOn) });
       break;
     case 'REMOVED':
-      lines = [{ text: t('deals.list.removed'), color: theme.danger }, stats];
+      headline = t('deals.list.removed');
+      headlineColor = theme.danger;
       break;
     default:
-      lines = [{ text: t('deals.list.endedOn', { date: day(moroccoYmdOf(new Date(deal.endsAt))) }) }, stats];
+      headline = t('deals.list.endedOn', { date: day(moroccoYmdOf(new Date(deal.endsAt))) });
   }
 
+  const views = number(deal.stats.views);
+  const clicks = number(deal.stats.linkClicks);
+
   return (
-    <CampaignRow
-      leading={
+    <TouchableOpacity
+      onPress={() => onOpen(deal.id)}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={[
+        deal.title,
+        t(`deals.status.${deal.displayStatus}`),
+        headline,
+        `${t('deals.list.views')} ${views}`,
+        `${t('deals.list.clicks')} ${clicks}`,
+        scope,
+        dates,
+      ].join(', ')}
+      style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+    >
+      <View style={[styles.cardTop, { flexDirection: row }]}>
         <DealThumb
           imageUrl={deal.imageUrl}
           coverUrl={look.coverUrl}
           themeColor={look.themeColor}
           category={look.categorie}
           badge={dealBadgeLabel(deal, t)}
-          width={ms(60)}
+          width={ms(64)}
+          radius={14}
         />
-      }
-      title={deal.title}
-      status={<DealStatusPill status={deal.displayStatus} />}
-      lines={lines}
-      onPress={() => onOpen(deal.id)}
-      accessibilityLabel={`${deal.title}, ${t(`deals.status.${deal.displayStatus}`)}`}
-    />
+        <View style={styles.cardBody}>
+          <Text style={[styles.cardTitle, { color: theme.text, textAlign }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
+            {deal.title}
+          </Text>
+          <View style={[styles.cardStatus, { flexDirection: row }]}>
+            <DealStatusPill status={deal.displayStatus} />
+            <Text style={[styles.cardHeadline, { color: headlineColor, textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+              {headline}
+            </Text>
+          </View>
+        </View>
+        <ChevronRight size={18} color={theme.textMuted} strokeWidth={icon.stroke} style={flip} />
+      </View>
+
+      <View style={[styles.cardFooter, { flexDirection: row, borderTopColor: theme.borderLight }]}>
+        <Text style={[styles.figureLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.figureValue, { color: theme.text }]}>{views}</Text> {t('deals.list.views')}
+        </Text>
+        <Text style={[styles.figureLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.figureValue, { color: theme.text }]}>{clicks}</Text> {t('deals.list.clicks')}
+        </Text>
+        <Text style={[styles.cardDates, { color: theme.textMuted, textAlign: isRTL ? 'left' : 'right' }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+          {scope} · {dates}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 });
 
@@ -244,11 +309,24 @@ const styles = StyleSheet.create({
   headerContent: { gap: 12, marginBottom: 14 },
   stretch: { alignSelf: 'stretch' },
   dimmed: { opacity: 0.45 },
-  limits: { fontSize: ms(13), fontFamily: font.medium, paddingHorizontal: 2 },
-  locationBox: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 10 },
+
+  emptyImage: { width: 104, height: 104 },
+  locationBox: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 12 },
   locationText: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
-  tabBar: { borderRadius: 12, borderWidth: 1, padding: 4, gap: 4 },
-  tab: { flex: 1, minHeight: 38, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  tabText: { fontSize: ms(13), fontFamily: font.semibold },
+  tabBar: { borderRadius: 14, borderWidth: 1, padding: 4, gap: 4 },
+  tab: { flex: 1, minHeight: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6 },
+  tabText: { flexShrink: 1, fontSize: ms(13), fontFamily: font.semibold },
+  tabCount: { fontSize: ms(12), fontFamily: font.medium },
   emptyTab: { fontSize: ms(13), fontFamily: font.regular, textAlign: 'center', paddingVertical: 16 },
+
+  card: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 12 },
+  cardTop: { alignItems: 'center', gap: 12 },
+  cardBody: { flex: 1, gap: 8 },
+  cardTitle: { fontSize: 16, lineHeight: 21, fontFamily: font.semibold, letterSpacing: -0.2 },
+  cardStatus: { alignItems: 'center', gap: 8 },
+  cardHeadline: { flexShrink: 1, fontSize: ms(12), fontFamily: font.medium },
+  cardFooter: { alignItems: 'center', gap: 14, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12 },
+  figureLabel: { fontSize: ms(12), fontFamily: font.regular },
+  figureValue: { fontSize: ms(13), fontFamily: font.semibold },
+  cardDates: { flex: 1, fontSize: ms(12), fontFamily: font.regular },
 });

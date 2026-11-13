@@ -32,3 +32,8 @@ export const icon = {
   md: 20,
   lg: 24,
 } as const;
+
+/** Height of the docked tab bar row, without the bottom safe-area inset. */
+export const TAB_BAR_HEIGHT = 62;
+/** Bottom padding that lets a tab screen's content clear the bar (add the safe-area inset). */
+export const TAB_BAR_CLEARANCE = TAB_BAR_HEIGHT + 24;

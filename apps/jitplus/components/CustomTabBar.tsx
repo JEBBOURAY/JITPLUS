@@ -1,11 +1,9 @@
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '@/components/AppText';
 import React, { useCallback } from 'react';
-import { BlurView } from 'expo-blur';
 import { haptic } from '@/utils/haptics';
 import { CreditCard, Compass, BadgePercent, Bell, QrCode } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -30,10 +28,8 @@ const LABEL_KEYS: Record<string, string> = {
   notifications: 'tabs.notifs',
 };
 
-const QR_GRADIENT_ACTIVE = [palette.violet, palette.violetDark] as const;
-const QR_GRADIENT_INACTIVE = [`${palette.violet}20`, `${palette.violetDark}20`] as const;
-const GRADIENT_START = { x: 0, y: 0 } as const;
-const GRADIENT_END = { x: 1, y: 1 } as const;
+const QR_BG_ACTIVE = { backgroundColor: palette.violet } as const;
+const QR_BG_INACTIVE = { backgroundColor: `${palette.violet}20` } as const;
 const FOCUSED_ICON_BG = { backgroundColor: `${palette.violet}15` } as const;
 
 export default React.memo(function CustomTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
@@ -58,16 +54,12 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
 
   return (
     <View style={styles.wrapper}>
-      <BlurView
-        intensity={Platform.OS === 'ios' ? 80 : 120}
-        tint={theme.isDark ? 'dark' : 'light'}
-        style={styles.blurContainer}
-      >
+      <View style={styles.blurContainer}>
         <View
           style={[
             styles.container,
             {
-              backgroundColor: Platform.OS === 'ios' ? 'transparent' : theme.bgTabBar,
+              backgroundColor: theme.bgTabBar,
               borderTopColor: theme.bgTabBarBorder,
               paddingBottom: Math.max(insets.bottom, hp(14)),
             },
@@ -81,7 +73,7 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
 
             const onPress = () => handleTabPress(route, index);
 
-            // Center QR button with gradient
+            // Center QR button
             if (isQR) {
               return (
                 <TouchableOpacity
@@ -93,25 +85,20 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
                   activeOpacity={0.7}
                   style={styles.tab}
                 >
-                  <LinearGradient
-                    colors={isFocused ? QR_GRADIENT_ACTIVE : QR_GRADIENT_INACTIVE}
-                    start={GRADIENT_START}
-                    end={GRADIENT_END}
-                    style={styles.qrCenter}
-                  >
+                  <View style={[styles.qrCenter, isFocused ? QR_BG_ACTIVE : QR_BG_INACTIVE]}>
                     <IconComponent
                       size={ms(24)}
                       color={isFocused ? '#fff' : palette.violet}
                       strokeWidth={1.5}
                     />
-                  </LinearGradient>
+                  </View>
                   <Text
                     maxFontSizeMultiplier={1.3}
                     style={[
                       styles.label,
                       {
                         color: isFocused ? palette.violet : theme.textMuted,
-                        fontWeight: isFocused ? '700' : '500',
+                        fontWeight: isFocused ? '600' : '500',
                       },
                     ]}
                   >
@@ -156,7 +143,7 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
                     styles.label,
                     {
                       color: isFocused ? palette.violet : theme.textMuted,
-                      fontWeight: isFocused ? '700' : '500',
+                      fontWeight: isFocused ? '600' : '500',
                     },
                   ]}
                 >
@@ -169,7 +156,7 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
             );
           })}
         </View>
-      </BlurView>
+      </View>
     </View>
   );
 })
@@ -222,11 +209,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: -hp(12),
-    shadowColor: palette.violet,
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowRadius: 4,
+    elevation: 2,
   },
   badge: {
     position: 'absolute',
@@ -245,7 +232,7 @@ const styles = StyleSheet.create({
   badgeText: {
     color: '#fff',
     fontSize: ms(9),
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: ms(13),
   },
 });

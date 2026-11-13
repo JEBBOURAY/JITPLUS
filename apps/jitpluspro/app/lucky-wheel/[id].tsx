@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { buildWheelSegments, computeOddsBreakdown, prizeColor } from '@jitplus/shared/src/luckyWheel';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getIntlLocale } from '@/config/currency';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useDir } from '@/hooks/useDir';
@@ -159,7 +160,7 @@ export default function LuckyWheelDetail() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <ScreenHeader title={campaign.name} onBack={goBack} right={<WheelStatusPill status={campaign.status} />} />
+      <ScreenHeader title={campaign.name} wrap onBack={goBack} right={<WheelStatusPill status={campaign.status} />} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
         refreshControl={<RefreshControl refreshing={campaignsQuery.isRefetching} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary]} />}
@@ -176,9 +177,9 @@ export default function LuckyWheelDetail() {
             description={campaign.description}
           />
           <View style={[styles.kpiRow, { flexDirection: row }]}>
-            <Kpi label={t('luckyWheel.detail.spins')} value={String(spins)} />
-            <Kpi label={t('luckyWheel.detail.won')} value={String(won)} />
-            <Kpi label={t('luckyWheel.detail.toGive')} value={String(pending.length)} />
+            <Kpi label={t('luckyWheel.detail.spins')} value={spins.toLocaleString(getIntlLocale(locale))} />
+            <Kpi label={t('luckyWheel.detail.won')} value={won.toLocaleString(getIntlLocale(locale))} />
+            <Kpi label={t('luckyWheel.detail.toGive')} value={pending.length.toLocaleString(getIntlLocale(locale))} />
           </View>
           <InfoLine text={t('luckyWheel.detail.period', { period: formatWheelPeriod(campaign, locale) })} />
           <InfoLine text={t('luckyWheel.wizard.winRateValue', { pct: winRate })} />
@@ -294,7 +295,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
   kpiRow: { gap: 8 },
   kpi: { flex: 1, borderRadius: 12, padding: 10, gap: 4 },
-  kpiValue: { fontSize: ms(17), fontFamily: font.bold },
+  kpiValue: { fontSize: ms(17), fontFamily: font.semibold },
   kpiLabel: { fontSize: ms(11), fontFamily: font.regular },
   prizeRow: { gap: 6, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   prizeTop: { alignItems: 'center', gap: 8 },

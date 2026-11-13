@@ -1,16 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import {
-  ArrowUpRight,
-  RefreshCw,
-  ShoppingBag,
-  SlidersHorizontal,
-  type LucideIcon,
-} from 'lucide-react-native';
-import {
+  JitCard,
   JitGames,
   JitGift,
+  JitSettings,
   JitStamp,
+  JitStore,
   JitTicket,
 } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -22,7 +19,7 @@ import { font, icon } from '@/constants/design';
 import type { ClientDetailTransaction, Transaction, TransactionType } from '@/types';
 
 /** Fields the activity rows read; the client-detail endpoint omits the client and staff info. */
-export type ActivityItem = ClientDetailTransaction & Partial<Pick<Transaction, 'client' | 'performedByName' | 'teamMember'>>;
+type ActivityItem = ClientDetailTransaction & Partial<Pick<Transaction, 'client' | 'performedByName' | 'teamMember'>>;
 
 // Home/history list row: either a date-group header or a transaction.
 // isFirst/isLast mark the row's position inside its date group so the list can draw one card per group.
@@ -99,14 +96,15 @@ export function buildHomeRows(
   return rows;
 }
 
+// JitPlus icons only, drawn plain (no tinted tile).
 const ACTIVITY_ICONS: Record<TransactionType, LucideIcon> = {
-  EARN_STAMPS: ArrowUpRight,
+  EARN_STAMPS: JitStamp,
   REDEEM_REWARD: JitGift,
-  ADJUST_STAMPS: SlidersHorizontal,
-  LOYALTY_PROGRAM_CHANGE: RefreshCw,
+  ADJUST_STAMPS: JitSettings,
+  LOYALTY_PROGRAM_CHANGE: JitCard,
   LUCKY_WHEEL_WIN: JitGames,
   COUPON_REDEEM: JitTicket,
-  PURCHASE: ShoppingBag,
+  PURCHASE: JitStore,
 };
 
 const TYPE_LABEL_KEYS: Record<TransactionType, string> = {
@@ -123,35 +121,20 @@ function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-/** Compact "Aujourd'hui, 16:35" / "Hier, 18:47" / "12 oct., 09:10" formatter. */
-function formatRelativeTime(date: Date, t: (k: string) => string, locale: string): string {
-  const { today, yesterday } = dayBounds();
-  const ts = date.getTime();
-  const time = formatTime(date);
-  if (ts >= today) return `${t('activity.today')}, ${time}`;
-  if (ts >= yesterday) return `${t('activity.yesterday')}, ${time}`;
-  const d = date.toLocaleDateString(getIntlLocale(locale), { day: 'numeric', month: 'short' });
-  return `${d}, ${time}`;
-}
-
 /**
- * Shared activity row for the home "Recent activity" card, the full history and the client profile.
- * `detailed` (history, client profile) shows only the time, since rows sit under a date header,
- * plus a muted line with the amount, staff member, reward or note.
- * `showType` titles the row with the transaction type instead of the client name (client profile).
+ * One activity row of the full history and of the client profile. Rows sit
+ * under a date header, so only the time is shown, plus a muted line with the
+ * amount, staff member, reward or note. `showType` titles the row with the
+ * transaction type instead of the client name (client profile).
  */
-export const TransactionRow = React.memo(function TransactionRow({
+const TransactionRow = React.memo(function TransactionRow({
   item,
   isFirst = false,
-  detailed = false,
   showType = false,
-  onPress,
 }: {
   item: ActivityItem;
   isFirst?: boolean;
-  detailed?: boolean;
   showType?: boolean;
-  onPress?: () => void;
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
@@ -163,15 +146,14 @@ export const TransactionRow = React.memo(function TransactionRow({
   const isProgram = item.type === 'LOYALTY_PROGRAM_CHANGE';
   const isWheel = item.type === 'LUCKY_WHEEL_WIN';
   const isCoupon = item.type === 'COUPON_REDEEM';
-  const isPurchase = item.type === 'PURCHASE';
   const isCancelled = item.status === 'CANCELLED';
 
-  // Single brand color for every activity type; cancelled rows fade to muted instead of turning red.
-  const color = isCancelled ? theme.textMuted : theme.primary;
-  const IconComp = ACTIVITY_ICONS[item.type] ?? ArrowUpRight;
+  // One ink for every activity type; cancelled rows fade to muted instead of turning red.
+  const color = isCancelled ? theme.textMuted : theme.text;
+  const IconComp = ACTIVITY_ICONS[item.type] ?? JitStamp;
   const title = showType
     ? t(TYPE_LABEL_KEYS[item.type])
-    : [item.client?.prenom, item.client?.nom].filter(Boolean).join(' ') || '?';
+    : [item.client?.prenom, item.client?.nom].filter(Boolean).join(' ') || t('clients.unnamed');
 
   let amountText: string | null = null;
   let amountColor = theme.textMuted;
@@ -184,9 +166,6 @@ export const TransactionRow = React.memo(function TransactionRow({
     amountText = t('home.redeemed');
   } else if (isProgram) {
     amountText = showType ? null : t('home.programChanged');
-  } else if (isPurchase && !detailed && item.amount > 0) {
-    // No stamp moved: the purchase amount is the meaningful value (detailed rows show it in the sub-line).
-    amountText = formatCurrency(item.amount, currency, getIntlLocale(locale));
   } else if (item.stamps) {
     amountText = `${item.stamps < 0 ? '−' : '+'}${Math.abs(item.stamps)}`;
     amountColor = isCancelled ? theme.textMuted : theme.text;
@@ -194,22 +173,21 @@ export const TransactionRow = React.memo(function TransactionRow({
   }
 
   const date = new Date(item.createdAt);
-  const when = isNaN(date.getTime()) ? null : detailed ? formatTime(date) : formatRelativeTime(date, t, locale);
+  const when = isNaN(date.getTime()) ? null : formatTime(date);
   const performerName = item.performedByName || item.teamMember?.nom || null;
+  // "Cancelled" goes first: at the end it is the part an ellipsis cuts.
   const subLine = [
-    when,
-    detailed && item.amount > 0 ? formatCurrency(item.amount, currency, getIntlLocale(locale)) : null,
-    detailed && performerName ? t('activity.by', { name: performerName }) : null,
     isCancelled ? t('activity.cancelled') : null,
+    when,
+    item.amount > 0 ? formatCurrency(item.amount, currency, getIntlLocale(locale)) : null,
+    performerName ? t('activity.by', { name: performerName }) : null,
   ].filter(Boolean).join(' · ');
 
-  const detailLine = detailed
-    ? [
-        (isAdjust || isProgram || isWheel || isCoupon) && item.note ? stripEmojis(item.note) : null,
-        !isEarn && !isProgram && item.reward ? stripEmojis(item.reward.titre) : null,
-        isReward && !isCancelled && item.giftStatus === 'FULFILLED' ? t('gift.fulfilled') : null,
-      ].filter(Boolean).join(' · ')
-    : '';
+  const detailLine = [
+    (isAdjust || isProgram || isWheel || isCoupon) && item.note ? stripEmojis(item.note) : null,
+    !isEarn && !isProgram && item.reward ? stripEmojis(item.reward.titre) : null,
+    isReward && !isCancelled && item.giftStatus === 'FULFILLED' ? t('gift.fulfilled') : null,
+  ].filter(Boolean).join(' · ');
 
   const rowStyle = [
     styles.row,
@@ -220,9 +198,7 @@ export const TransactionRow = React.memo(function TransactionRow({
 
   const content = (
     <>
-      <View style={[styles.icon, { backgroundColor: `${color}1A` }]} importantForAccessibility="no">
-        <IconComp size={18} color={color} strokeWidth={icon.stroke} />
-      </View>
+      <IconComp size={22} color={color} strokeWidth={icon.stroke} />
       <View style={styles.info}>
         <Text
           style={[styles.title, { color: theme.text, textAlign: dir.textAlign }, isCancelled && styles.strike]}
@@ -255,20 +231,6 @@ export const TransactionRow = React.memo(function TransactionRow({
     </>
   );
 
-  if (onPress) {
-    return (
-      <TouchableOpacity
-        style={rowStyle}
-        activeOpacity={0.6}
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={t('home.viewAll')}
-      >
-        {content}
-      </TouchableOpacity>
-    );
-  }
   return (
     <View style={rowStyle} accessible accessibilityLabel={a11yLabel}>
       {content}
@@ -297,12 +259,12 @@ export const HistoryListItem = React.memo(function HistoryListItem({
     <View
       style={[
         styles.groupCard,
-        { backgroundColor: theme.bgCard, borderColor: theme.borderLight },
+        { backgroundColor: theme.bgCard, borderColor: theme.border },
         row.isFirst && styles.groupCardFirst,
         row.isLast && styles.groupCardLast,
       ]}
     >
-      <TransactionRow item={row.tx} isFirst={row.isFirst} detailed showType={showType} />
+      <TransactionRow item={row.tx} isFirst={row.isFirst} showType={showType} />
     </View>
   );
 });
@@ -310,20 +272,13 @@ export const HistoryListItem = React.memo(function HistoryListItem({
 const styles = StyleSheet.create({
   row: {
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     minHeight: 60,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   rowFirstNoBorder: { borderTopWidth: 0 },
-  icon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   info: { flex: 1 },
   title: {
     fontSize: 15,
@@ -337,7 +292,7 @@ const styles = StyleSheet.create({
   },
   amount: {
     fontSize: 14,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.2,
   },
   strike: { textDecorationLine: 'line-through', opacity: 0.5 },
@@ -359,12 +314,12 @@ const styles = StyleSheet.create({
   },
   groupCardFirst: {
     borderTopWidth: 1,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
   },
   groupCardLast: {
     borderBottomWidth: 1,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
   },
 });

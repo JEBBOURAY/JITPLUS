@@ -8,7 +8,7 @@ import type { Server, ServerOptions } from 'socket.io';
 const PRISMA_ONLY_PARAMS = ['connection_limit', 'pool_timeout', 'connect_timeout', 'schema', 'pgbouncer', 'statement_cache_size', 'socket_timeout'];
 
 /** DATABASE_URL (Prisma flavour) → connection string usable by `pg`. */
-export function toPgConnectionString(databaseUrl: string): string {
+function toPgConnectionString(databaseUrl: string): string {
   const url = new URL(databaseUrl);
   for (const p of PRISMA_ONLY_PARAMS) url.searchParams.delete(p);
   return url.toString();

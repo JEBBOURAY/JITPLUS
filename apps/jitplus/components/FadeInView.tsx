@@ -1,6 +1,8 @@
-import { useEffect, useRef, useMemo, useState } from 'react';
-import { Animated, ViewStyle, AccessibilityInfo } from 'react-native';
+import { useEffect, useRef, useMemo } from 'react';
+import { Animated, Easing, ViewStyle, AccessibilityInfo } from 'react-native';
 import { hp } from '@/utils/responsive';
+
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 interface FadeInViewProps {
   delay?: number;
@@ -8,49 +10,44 @@ interface FadeInViewProps {
   from?: 'bottom' | 'left' | 'right' | 'none';
   distance?: number;
   style?: ViewStyle;
+  /** false = render in place at once (read on mount only), e.g. a list row seen before. */
+  animate?: boolean;
   children: React.ReactNode;
 }
 
 export default function FadeInView({
   delay = 0,
-  duration = 500,
+  duration = 250,
   from = 'bottom',
   distance = hp(20),
   style,
+  animate = true,
   children,
 }: FadeInViewProps) {
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translate = useRef(new Animated.Value(distance)).current;
+  const opacity = useRef(new Animated.Value(animate ? 0 : 1)).current;
+  const translate = useRef(new Animated.Value(animate ? distance : 0)).current;
 
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => sub.remove();
-  }, []);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      opacity.setValue(1);
-      translate.setValue(0);
-      return;
-    }
-    const animation = Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration,
-        delay,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translate, {
-        toValue: 0,
-        duration,
-        delay,
-        useNativeDriver: true,
-      }),
-    ]);
-    animation.start();
-    return () => animation.stop();
+    let animation: Animated.CompositeAnimation | null = null;
+    let cancelled = false;
+    if (!animate) return;
+    const run = (reduceMotion: boolean) => {
+      if (cancelled) return;
+      // "Reduce motion" is read before starting: show the content at once.
+      if (reduceMotion) {
+        opacity.setValue(1);
+        translate.setValue(0);
+        return;
+      }
+      animation = Animated.parallel([
+        Animated.timing(opacity, { toValue: 1, duration, delay, easing: EASE_OUT, useNativeDriver: true }),
+        Animated.timing(translate, { toValue: 0, duration, delay, easing: EASE_OUT, useNativeDriver: true }),
+      ]);
+      animation.start();
+    };
+    AccessibilityInfo.isReduceMotionEnabled().then(run).catch(() => run(false));
+    return () => { cancelled = true; animation?.stop(); };
+  // Entrance animation: runs once with the props of the first render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

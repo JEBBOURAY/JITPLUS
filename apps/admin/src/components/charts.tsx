@@ -4,7 +4,7 @@ import { fmtNumber } from '../utils/format';
 
 // ── Section helpers ──────────────────────────────────────────────────────────
 
-export function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
       <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: C.text }}>{children}</h3>

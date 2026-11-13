@@ -27,12 +27,8 @@ export const MAX_STAGGER_DELAY_MS = 300;
 export const SWIPE_THRESHOLD_RATIO = 0.3;
 /** Minimum horizontal movement to start tracking a swipe (px) */
 export const PAN_MIN_DX = 10;
-/** Duration for swipe-off animation (ms) */
-export const SWIPE_DISMISS_DURATION_MS = 200;
 /** Duration for row collapse after swipe (ms) */
 export const ROW_COLLAPSE_DURATION_MS = 180;
-/** Spring bounciness for swipe bounce-back */
-export const SPRING_BOUNCINESS = 8;
 
 // ── Map (discover) ──
 /** Default map animate duration (ms) */
@@ -86,5 +82,5 @@ export function getReviewUrl(): string {
   return getStoreUrl();
 }
 
-/** Unified support contact email — used across Profile & Referral screens. */
+/** Unified support contact email — used across the Profile and legal screens. */
 export const SUPPORT_EMAIL = 'contact@jitplus.com';

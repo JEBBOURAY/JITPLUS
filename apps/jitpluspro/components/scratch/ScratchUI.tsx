@@ -19,25 +19,39 @@ import { ms } from '@/utils/responsive';
 import { font, icon as iconTokens } from '@/constants/design';
 import type { ScratchCampaignStatus } from '@jitplus/shared/src/scratch';
 
-/** Same look as the "Ma boutique" ScreenHeader (components/stores/StoreUi). */
-export function ScreenHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: React.ReactNode }) {
+/**
+ * Same look as the "Ma boutique" ScreenHeader (components/stores/StoreUi).
+ * Without `onBack` there is no back arrow: the system back gesture is the way out.
+ * `wrap`: the title is a user-given name shown nowhere else on the screen, so it
+ * takes two lines and shrinks a little instead of being cut after ~12 characters.
+ */
+export function ScreenHeader({ title, onBack, right, wrap = false }: {
+  title: string;
+  onBack?: () => void;
+  right?: React.ReactNode;
+  wrap?: boolean;
+}) {
   const theme = useTheme();
   const { t, isRTL } = useLanguage();
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.header, { paddingTop: insets.top + 12, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-      <TouchableOpacity
-        onPress={onBack}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        style={styles.backButton}
-        accessibilityRole="button"
-        accessibilityLabel={t('common.back')}
-      >
-        <ArrowLeft size={iconTokens.md} color={theme.text} strokeWidth={iconTokens.stroke} style={isRTL ? styles.flipX : undefined} />
-      </TouchableOpacity>
+      {onBack ? (
+        <TouchableOpacity
+          onPress={onBack}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <ArrowLeft size={iconTokens.md} color={theme.text} strokeWidth={iconTokens.stroke} style={isRTL ? styles.flipX : undefined} />
+        </TouchableOpacity>
+      ) : null}
       <Text
         style={[styles.headerTitle, { color: theme.text, textAlign: isRTL ? 'right' : 'left' }]}
-        numberOfLines={1}
+        numberOfLines={wrap ? 2 : 1}
+        adjustsFontSizeToFit={wrap}
+        minimumFontScale={wrap ? 0.75 : undefined}
         accessibilityRole="header"
         maxFontSizeMultiplier={1.3}
       >
@@ -322,9 +336,9 @@ export function Notice({ text, tone = 'info' }: { text: string; tone?: 'info' | 
 
 const styles = StyleSheet.create({
   flipX: { transform: [{ scaleX: -1 }] },
-  header: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10, gap: 12 },
+  header: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10, gap: 12, minHeight: 50 },
   backButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, fontSize: 24, fontFamily: font.bold, letterSpacing: -0.5 },
+  headerTitle: { flex: 1, fontSize: 24, fontFamily: font.semibold, letterSpacing: -0.5 },
   section: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 12 },
   sectionHeader: { alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   sectionTitle: { flexShrink: 1, fontSize: ms(15), fontFamily: font.semibold },

@@ -36,6 +36,33 @@ function optimisticIncrementUnread(
 }
 
 /**
+ * Refetch the unread badge from the server. Used for pushes: the same
+ * notification also arrives over the WebSocket (and again when it is tapped),
+ * so adding 1 on each path counted it two or three times.
+ */
+function refreshUnread(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+}
+
+/** A stamp can grant a lucky-wheel ticket: the wallet and the tickets move together. */
+function invalidateStamps(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
+  queryClient.invalidateQueries({ queryKey: queryKeys.luckyWheelDraws });
+}
+
+/**
+ * Everything the socket keeps fresh. The socket is closed while the app is in
+ * the background, so events sent meanwhile are lost: catch up on reconnect.
+ */
+function invalidateLiveData(queryClient: ReturnType<typeof useQueryClient>) {
+  invalidateStamps(queryClient);
+  invalidateScratchCards(queryClient);
+  queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
+  queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+  refreshUnread(queryClient);
+}
+
+/**
  * Listen for real-time events on the socket and invalidate/update cache.
  * Call this once in your root layout (e.g. RootLayoutNav).
  */
@@ -50,7 +77,13 @@ export function useRealtimeEvents(socket: Socket | null) {
     }
 
     // Track WS connection state for polling hooks
-    const onConnect = () => setWsConnected(true);
+    // The first connection follows a fresh fetch; later ones follow a gap.
+    let connectedBefore = socket.connected;
+    const onConnect = () => {
+      setWsConnected(true);
+      if (connectedBefore) invalidateLiveData(queryClient);
+      connectedBefore = true;
+    };
     const onDisconnect = () => setWsConnected(false);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
@@ -59,8 +92,7 @@ export function useRealtimeEvents(socket: Socket | null) {
 
     // ── Stamps balance updated ───────────────────────────────
     const onStampsUpdated = (payload: StampsUpdatedPayload) => {
-      // Invalidate the stamps overview so it refetches with new balance
-      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
+      invalidateStamps(queryClient);
       useWsStore.getState().pushStampsEvent(payload);
 
       if (__DEV__) {
@@ -152,16 +184,17 @@ export function handleFcmDataPayload(
     case 'reward_available':
     case 'reward_redeemed':
       // Only invalidate stamps — notification list will be refreshed by its own staleTime
-      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
+      invalidateStamps(queryClient);
       break;
-    case 'notification_new': {
-      // Optimistic +1 badge is enough — skip redundant invalidateQueries on
-      // unreadCount to avoid a second network request that overwrites the
-      // optimistic value before the server round-trip completes.
-      optimisticIncrementUnread(queryClient);
+    case 'lucky_wheel_ticket':
+    case 'stamps_expiring':
+      invalidateStamps(queryClient);
+      refreshUnread(queryClient);
+      break;
+    case 'notification_new':
+      refreshUnread(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       break;
-    }
     // Automated campaign events — invalidate relevant caches
     case 'welcome_series':
     case 'reengagement':
@@ -170,18 +203,18 @@ export function handleFcmDataPayload(
     case 'admin_broadcast':
     // The daily deals digest also writes an entry in the notifications tab.
     case 'deals_digest':
-      optimisticIncrementUnread(queryClient);
+      refreshUnread(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       break;
     case 'reward_reminder':
-      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
-      optimisticIncrementUnread(queryClient);
+      invalidateStamps(queryClient);
+      refreshUnread(queryClient);
       break;
     // Scratch cards & coupons
     case 'scratch_card_received':
     case 'scratch_card_expiring':
       invalidateScratchCards(queryClient);
-      optimisticIncrementUnread(queryClient);
+      refreshUnread(queryClient);
       break;
     case 'coupon_expiring':
     case 'coupon_cancelled':
@@ -191,20 +224,23 @@ export function handleFcmDataPayload(
       if (data.couponId) {
         queryClient.invalidateQueries({ queryKey: scratchKeys.coupon(data.couponId) });
       }
-      optimisticIncrementUnread(queryClient);
+      refreshUnread(queryClient);
       break;
     case 'coupon_redeemed':
       queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
       if (data.couponId) {
         queryClient.invalidateQueries({ queryKey: scratchKeys.coupon(data.couponId) });
       }
-      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
-      optimisticIncrementUnread(queryClient);
+      invalidateStamps(queryClient);
+      refreshUnread(queryClient);
       break;
     case 'weekly_digest':
-      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
+      invalidateStamps(queryClient);
       break;
     default:
+      // Unknown events still write an entry in the notifications tab.
+      refreshUnread(queryClient);
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       if (__DEV__) console.log('[FCM] Unhandled event type:', data.event);
   }
 }
@@ -228,7 +264,8 @@ export function pushStampsEventFromNotification(
     .getQueryData<StampsOverview>(queryKeys.stamps)
     ?.cards.find((c) => c.merchantId === data.merchantId);
   useWsStore.getState().pushStampsEvent({
-    clientId: card?.clientId ?? '',
+    // Not part of the push payload, and nothing downstream reads it.
+    clientId: '',
     merchantId: data.merchantId,
     merchantName: data.merchantName || card?.merchant?.nomBoutique || '',
     stamps: Number(data.stamps) || 0,

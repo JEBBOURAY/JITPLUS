@@ -1,6 +1,5 @@
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type TextStyle, type TouchableOpacityProps } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { radius } from '@/utils/responsive';
@@ -19,15 +18,13 @@ interface Props extends TouchableOpacityProps {
   /** Mirror the icon in Arabic (arrows, chevrons). */
   flipIconInRTL?: boolean;
   labelStyle?: StyleProp<TextStyle>;
-  /** Gradient drawn over the variant background. */
+  /** @deprecated Ignored: buttons use the flat variant color. Kept so existing callers compile. */
   gradient?: readonly [string, string, ...string[]];
+  /** @deprecated Ignored, see `gradient`. */
   gradientDirection?: 'diagonal' | 'horizontal';
   /** Overrides the icon and spinner color. */
   iconColor?: string;
 }
-
-const GRADIENT_START = { x: 0, y: 0 };
-const GRADIENT_END = { diagonal: { x: 1, y: 1 }, horizontal: { x: 1, y: 0 } } as const;
 
 export function ActionButton({
   label,
@@ -40,8 +37,8 @@ export function ActionButton({
   iconPosition = 'start',
   flipIconInRTL = false,
   labelStyle,
-  gradient,
-  gradientDirection = 'diagonal',
+  gradient: _gradient,
+  gradientDirection: _gradientDirection,
   iconColor,
   ...props
 }: Props) {
@@ -82,15 +79,6 @@ export function ActionButton({
         style,
       ]}
     >
-      {gradient && (
-        // Rounded instead of clipped: overflow hidden would cut the iOS shadow callers add.
-        <LinearGradient
-          colors={gradient}
-          start={GRADIENT_START}
-          end={GRADIENT_END[gradientDirection]}
-          style={[StyleSheet.absoluteFill, { borderRadius: StyleSheet.flatten(style)?.borderRadius ?? (size === 'lg' ? radius.lg : radius.md) }]}
-        />
-      )}
       {loading ? (
         <ActivityIndicator color={iconFg} />
       ) : (

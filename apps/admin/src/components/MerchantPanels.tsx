@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getErrorMessage } from '@jitplus/shared';
 import {
   addFollowUpNote, deleteFollowUpNote, getMerchantFollowUp, getMerchantPayments, setPremiumGrant, updateMerchantFollowUp, voidPayment,

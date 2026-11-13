@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { View, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Pressable, ScrollView, StyleSheet, Platform, I18nManager } from 'react-native';
 import { MapPin, ChevronRight } from 'lucide-react-native';
 import { Text } from '@/components/AppText';
 import MerchantLogo from '@/components/MerchantLogo';
@@ -8,6 +8,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Merchant } from '@/types';
 import { pointKey, pointName } from '@/utils/merchantPoint';
 import { ms, fontSize as FS } from '@/utils/responsive';
+
+// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
+const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 const ResultRow = memo(function ResultRow({ merchant, onPress }: {
   merchant: Merchant;
@@ -32,7 +35,7 @@ const ResultRow = memo(function ResultRow({ merchant, onPress }: {
         <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{pointName(merchant)}</Text>
         {!!sub && <Text style={[styles.sub, { color: theme.textMuted }]} numberOfLines={1}>{sub}</Text>}
       </View>
-      <ChevronRight size={ms(14)} color={theme.textMuted} strokeWidth={2} />
+      <ChevronRight size={ms(14)} color={theme.textMuted} strokeWidth={2} style={DIR_FLIP} />
     </Pressable>
   );
 });
@@ -91,7 +94,7 @@ const styles = StyleSheet.create({
   name: { fontSize: FS.md, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   sub: { fontSize: FS.xs, marginTop: ms(2), fontFamily: 'Lexend_400Regular' },
   seeAll: { paddingVertical: ms(12), alignItems: 'center' },
-  seeAllText: { fontSize: FS.sm, fontWeight: '700', color: palette.violet, fontFamily: 'Lexend_600SemiBold' },
+  seeAllText: { fontSize: FS.sm, fontWeight: '600', color: palette.violet, fontFamily: 'Lexend_600SemiBold' },
   emptyDropdown: { alignItems: 'center', justifyContent: 'center', paddingVertical: ms(20), gap: ms(8) },
   emptyText: { fontSize: FS.sm, fontFamily: 'Lexend_400Regular', textAlign: 'center' },
 });

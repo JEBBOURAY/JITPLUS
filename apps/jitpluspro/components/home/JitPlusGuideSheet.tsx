@@ -1,181 +1,228 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, I18nManager } from 'react-native';
-import {
-  Check,
-  Clock,
-  Compass,
-  ChevronRight,
-} from 'lucide-react-native';
-import { JitLock, JitStar } from '@/components/icons';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation } from 'react-native';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Play } from 'lucide-react-native';
+import { JitLock, JitSettings } from '@/components/icons';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import PromoSheet, { SheetSectionLabel, useSheetColors } from '@/components/home/PromoSheet';
-import { PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
-import { useGuideProgress, type GuideStepId, type GuideStepState } from '@/components/home/useGuideProgress';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
+import PromoSheet, { useSheetColors, type LucideIcon } from '@/components/home/PromoSheet';
+import { ProgressBar } from '@/components/ui/SummaryCard';
+import type { GuideProgress, GuideStepId, GuideStepState } from '@/components/home/useGuideProgress';
 import { GUIDE_STEP_META as STEP_META, guideStepKey, type GuideStepPart as StepPart } from '@/components/home/guideSteps';
-
-const TONE: PromoTone = 'violet';
-const ACCENT = PROMO_TONES[TONE].fill;
-const DONE = PROMO_TONES.emerald.fill;
-const GOLD = palette.gold;
 
 interface JitPlusGuideSheetProps {
   visible: boolean;
+  /** Computed by the caller (HomeGuide), which also uses it outside the sheet. */
+  progress: GuideProgress;
   onClose: () => void;
   /** Runs the action of a step (navigate, open the sharing tools…). */
   onStepAction: (id: GuideStepId) => void;
-  onStartTour: () => void;
+  /** Opens the list of demo videos. */
+  onOpenDemos: () => void;
+  /** Reopens the page-by-page setup wizard; omitted once the onboarding is completed. */
+  onResumeSetup?: () => void;
 }
 
 interface StepRowProps {
   step: GuideStepState;
-  index: number;
-  last: boolean;
+  first: boolean;
   isNext: boolean;
+  open: boolean;
   stepText: (id: GuideStepId, part: StepPart) => string;
+  onToggle: (id: GuideStepId) => void;
   onAction: (id: GuideStepId) => void;
 }
 
-function StepRow({ step, index, last, isNext, stepText, onAction }: StepRowProps) {
+/**
+ * One step, as a single line: its icon (a check once done) and its title.
+ * Tapping it unfolds the explanation and the link to the screen where it is done.
+ */
+function StepRow({ step, first, isNext, open, stepText, onToggle, onAction }: StepRowProps) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { surface, softFill, hairline, muted, ink } = useSheetColors();
-  const isRTL = I18nManager.isRTL;
-  const meta = STEP_META[step.id];
-  const idle = theme.mode === 'dark' ? 'rgba(255,255,255,0.14)' : '#E2E8F0';
-  const railColor = step.done ? DONE : isNext ? ACCENT : idle;
-  const actionColor = isNext ? '#FFFFFF' : step.done ? theme.textSecondary : ink(TONE);
+  const dir = useDir();
+  const { hairline, muted } = useSheetColors();
+  const { Icon } = STEP_META[step.id];
+  const title = stepText(step.id, 'Title');
   const cta = stepText(step.id, 'Cta');
+  const Chevron = open ? ChevronUp : ChevronDown;
+
+  const marker = step.done ? (
+    <View style={[styles.marker, styles.markerOutline, { borderColor: theme.success }]}>
+      <Check size={18} color={theme.success} strokeWidth={icon.strokeSmall} />
+    </View>
+  ) : step.locked ? (
+    <View style={[styles.marker, styles.markerOutline, { borderColor: theme.border }]}>
+      <JitLock size={16} color={muted} strokeWidth={icon.strokeSmall} />
+    </View>
+  ) : (
+    <View style={[styles.marker, { backgroundColor: isNext ? theme.primary : theme.primaryBg }]}>
+      <Icon size={18} color={isNext ? '#FFFFFF' : theme.primary} strokeWidth={icon.stroke} />
+    </View>
+  );
+
+  const heading = (
+    <View style={styles.stepHeading}>
+      {isNext ? (
+        <Text style={[styles.nextTag, { color: theme.primary, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.2}>
+          {t('home.guideStatusNext')}
+        </Text>
+      ) : null}
+      <Text
+        style={[styles.stepTitle, { color: step.done ? muted : theme.text, textAlign: dir.textAlign }]}
+        maxFontSizeMultiplier={1.3}
+      >
+        {title}
+      </Text>
+      {step.locked ? (
+        <Text style={[styles.lockedText, { color: muted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
+          {t('home.guideLocked')}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const border = !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: hairline };
+
+  // A team member cannot act on an owner's step: nothing to unfold.
+  if (step.locked) {
+    return (
+      <View style={[styles.step, styles.stepLocked, { flexDirection: dir.row }, border]}>
+        {marker}
+        {heading}
+      </View>
+    );
+  }
 
   return (
-    <View style={[styles.stepRow, isRTL && styles.rowRtl]}>
-      <View style={styles.stepRail}>
-        <View
-          style={[
-            styles.stepDot,
-            { borderColor: railColor, backgroundColor: step.done || isNext ? railColor : surface },
-          ]}
-        >
-          {step.done ? (
-            <Check size={13} color="#FFFFFF" strokeWidth={3} />
-          ) : step.locked ? (
-            <JitLock size={11} color={muted} strokeWidth={2.4} />
-          ) : (
-            <Text style={[styles.stepDotText, { color: isNext ? '#FFFFFF' : muted }]} maxFontSizeMultiplier={1.1}>
-              {index + 1}
-            </Text>
-          )}
-        </View>
-        {!last ? <View style={[styles.stepConnector, { backgroundColor: step.done ? `${DONE}66` : hairline }]} /> : null}
-      </View>
-
-      <View
-        style={[
-          styles.stepCard,
-          { backgroundColor: softFill, borderColor: hairline },
-          isNext && styles.stepCardNext,
-          step.locked && styles.stepCardLocked,
-        ]}
+    <View style={border}>
+      <TouchableOpacity
+        onPress={() => onToggle(step.id)}
+        activeOpacity={0.7}
+        style={[styles.step, { flexDirection: dir.row }]}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: open, checked: step.done }}
       >
-        <View style={[styles.stepHead, isRTL && styles.rowRtl]}>
-          <View style={[styles.stepIcon, { backgroundColor: `${PROMO_TONES[meta.tone].fill}1A` }]}>
-            <meta.Icon size={15} color={ink(meta.tone)} strokeWidth={2.2} />
-          </View>
-          <Text style={[styles.stepTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-            {stepText(step.id, 'Title')}
+        {marker}
+        {heading}
+        <Chevron size={18} color={muted} strokeWidth={icon.stroke} />
+      </TouchableOpacity>
+
+      {open ? (
+        <View style={styles.stepDetail}>
+          <Text style={[styles.stepText, { color: muted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>
+            {stepText(step.id, 'Text')}
           </Text>
-          {step.done ? (
-            <View style={[styles.pill, styles.pillDone]}>
-              <Text style={[styles.pillText, { color: ink('emerald') }]} maxFontSizeMultiplier={1.15}>{t('home.guideStatusDone')}</Text>
-            </View>
-          ) : (
-            <View style={[styles.pill, isRTL && styles.rowRtl, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#EEF2F7' }]}>
-              <Clock size={10} color={theme.textSecondary} strokeWidth={2.4} />
-              <Text style={[styles.pillText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.15}>{t('home.guideStepDuration')}</Text>
-            </View>
-          )}
-        </View>
-
-        {isNext ? (
-          <Text style={[styles.nextTag, { color: ink(TONE) }]} maxFontSizeMultiplier={1.2}>
-            {t('home.guideStatusNext').toUpperCase()}
-          </Text>
-        ) : null}
-
-        <Text style={[styles.stepText, { color: muted }]} maxFontSizeMultiplier={1.4}>
-          {stepText(step.id, 'Text')}
-        </Text>
-
-        {step.locked ? (
-          <View style={[styles.lockedRow, isRTL && styles.rowRtl]}>
-            <JitLock size={12} color={muted} strokeWidth={2.2} />
-            <Text style={[styles.lockedText, { color: muted }]} maxFontSizeMultiplier={1.3}>
-              {t('home.guideLocked')}
-            </Text>
-          </View>
-        ) : (
           <TouchableOpacity
             onPress={() => onAction(step.id)}
-            activeOpacity={0.8}
-            style={[
-              styles.stepAction,
-              isRTL && styles.rowRtl,
-              isNext
-                ? styles.stepActionNext
-                : { borderColor: step.done ? hairline : `${ACCENT}55` },
-            ]}
+            activeOpacity={0.7}
+            hitSlop={LINK_HIT_SLOP}
+            style={[styles.link, { flexDirection: dir.row, alignSelf: dir.alignStart }]}
             accessibilityRole="button"
             accessibilityLabel={step.done ? `${t('home.guideRedo')} : ${cta}` : cta}
           >
-            <Text style={[styles.stepActionText, { color: actionColor }]} maxFontSizeMultiplier={1.25}>
+            <Text style={[styles.linkText, { color: step.done ? theme.textSecondary : theme.primary }]} maxFontSizeMultiplier={1.25}>
               {step.done ? t('home.guideRedo') : cta}
             </Text>
-            <ChevronRight size={14} color={actionColor} strokeWidth={2.4} style={isRTL ? styles.flipX : undefined} />
+            <ChevronRight
+              size={14}
+              color={step.done ? theme.textSecondary : theme.primary}
+              strokeWidth={icon.strokeSmall}
+              style={dir.flip}
+            />
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      ) : null}
     </View>
   );
 }
 
+/** A "go further" row: plain icon, title and one line of explanation. */
+function MoreRow({ Icon, title, text, first, onPress }: {
+  Icon: LucideIcon;
+  title: string;
+  text: string;
+  first: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const dir = useDir();
+  const { hairline, muted } = useSheetColors();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={[
+        styles.more,
+        { flexDirection: dir.row },
+        !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: hairline },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${text}`}
+    >
+      <Icon size={22} color={theme.text} strokeWidth={icon.stroke} />
+      <View style={styles.flex1}>
+        <Text style={[styles.stepTitle, { color: theme.text, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>{title}</Text>
+        <Text style={[styles.moreText, { color: muted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>{text}</Text>
+      </View>
+      <ChevronRight size={18} color={muted} strokeWidth={icon.stroke} style={dir.flip} />
+    </TouchableOpacity>
+  );
+}
+
 /**
- * "Maîtrisez JitPlus en 5 minutes": one-minute steps from creating the
- * loyalty card to bringing customers back. Each step is ticked from the
- * merchant's real data and links straight to the screen where it is done; the
- * guided tour of the Accueil stays available as an extra.
+ * "Guide de départ": one-minute steps from creating the loyalty card to
+ * bringing customers back. Each step is ticked from the merchant's real data
+ * and shows as a single line; only one is unfolded at a time (the next one to
+ * do by default), with its explanation and the link to the screen where it is
+ * done. The video tutorials stay available as an extra. White sheet, same
+ * bordered cards as Accueil.
  */
-function JitPlusGuideSheet({ visible, onClose, onStepAction, onStartTour }: JitPlusGuideSheetProps) {
+function JitPlusGuideSheet({ visible, progress, onClose, onStepAction, onOpenDemos, onResumeSetup }: JitPlusGuideSheetProps) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { softFill, hairline, muted, ink } = useSheetColors();
-  const isRTL = I18nManager.isRTL;
-  const progress = useGuideProgress(visible);
+  const dir = useDir();
   const ratio = progress.total > 0 ? progress.doneCount / progress.total : 0;
   const { nextId } = progress;
+  const card = { backgroundColor: theme.bgCard, borderColor: theme.border };
 
   const stepText = (id: GuideStepId, part: StepPart) => t(guideStepKey(id, part));
 
+  // Step unfolded by the merchant; `undefined` until they touch one, which
+  // leaves the next step to do open. Reset each time the sheet opens.
+  const [picked, setPicked] = useState<GuideStepId | null | undefined>(undefined);
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) setPicked(undefined);
+  }
+  const openId = picked === undefined ? nextId : picked;
+  const toggleStep = useCallback(
+    (id: GuideStepId) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setPicked(id === openId ? null : id);
+    },
+    [openId],
+  );
+
   const cta = nextId
     ? { label: t('home.guideNextCta', { action: stepText(nextId, 'Cta') }), Icon: STEP_META[nextId].Icon, onPress: () => onStepAction(nextId) }
-    : { label: t('home.guideTourCta'), Icon: Compass, onPress: onStartTour };
+    : { label: t('home.guideDemosCta'), Icon: Play, onPress: onOpenDemos };
 
   const heroFooter = (
     <View
-      style={styles.progressBox}
+      style={styles.progress}
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: progress.total, now: progress.doneCount }}
     >
-      <View style={[styles.progressHead, isRTL && styles.rowRtl]}>
-        {progress.allDone ? <JitStar size={14} color={GOLD} strokeWidth={2.2} /> : null}
-        <Text style={styles.progressText} maxFontSizeMultiplier={1.25}>
-          {progress.allDone
-            ? t('home.guideAllDone')
-            : t('home.guideProgress', { done: progress.doneCount, total: progress.total })}
-        </Text>
-      </View>
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${Math.round(ratio * 100)}%` }]} />
-      </View>
+      <Text style={[styles.progressText, { color: theme.text, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.25}>
+        {progress.allDone
+          ? t('home.guideAllDone')
+          : t('home.guideProgress', { done: progress.doneCount, total: progress.total })}
+      </Text>
+      <ProgressBar ratio={ratio} />
     </View>
   );
 
@@ -183,137 +230,80 @@ function JitPlusGuideSheet({ visible, onClose, onStepAction, onStartTour }: JitP
     <PromoSheet
       visible={visible}
       onClose={onClose}
-      tone={TONE}
-      heroLabel={t('home.guideHeroLabel')}
+      tone="violet"
+      plain
+      heroLabel={t('home.setupLabel')}
       title={t('home.promoGuideTitle')}
       subtitle={t('home.guideHeroSubtitle')}
-      heroBadge={<Image source={require('@/assets/images/jitplusprologo.png')} style={styles.heroLogo} resizeMode="contain" />}
       heroFooter={heroFooter}
       cta={cta}
     >
-      <SheetSectionLabel text={t('home.guideStepsLabel')} tone={TONE} />
-      {progress.steps.map((s, i) => (
-        <StepRow
-          key={s.id}
-          step={s}
-          index={i}
-          last={i === progress.steps.length - 1}
-          isNext={s.id === nextId}
-          stepText={stepText}
-          onAction={onStepAction}
-        />
-      ))}
+      <Text style={[styles.sectionTitle, { color: theme.text, textAlign: dir.textAlign }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>
+        {t('home.guideStepsLabel')}
+      </Text>
+      <View style={[styles.card, card]}>
+        {progress.steps.map((s, i) => (
+          <StepRow
+            key={s.id}
+            step={s}
+            first={i === 0}
+            isNext={s.id === nextId}
+            open={s.id === openId}
+            stepText={stepText}
+            onToggle={toggleStep}
+            onAction={onStepAction}
+          />
+        ))}
+      </View>
 
-      <SheetSectionLabel text={t('home.guideMoreLabel')} tone={TONE} />
-      <TouchableOpacity
-        onPress={onStartTour}
-        activeOpacity={0.85}
-        style={[styles.tourCard, isRTL && styles.rowRtl, { backgroundColor: softFill, borderColor: hairline }]}
-        accessibilityRole="button"
-        accessibilityLabel={t('home.guideTourTitle')}
-      >
-        <View style={styles.tourIcon}>
-          <Compass size={18} color={ink(TONE)} strokeWidth={2.2} />
-        </View>
-        <View style={styles.flex1}>
-          <Text style={[styles.tourTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-            {t('home.guideTourTitle')}
-          </Text>
-          <Text style={[styles.tourText, { color: muted }]} maxFontSizeMultiplier={1.4}>
-            {t('home.guideTourText')}
-          </Text>
-        </View>
-        <ChevronRight size={16} color={muted} strokeWidth={2.2} style={isRTL ? styles.flipX : undefined} />
-      </TouchableOpacity>
+      <Text style={[styles.sectionTitle, { color: theme.text, textAlign: dir.textAlign }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>
+        {t('home.guideMoreLabel')}
+      </Text>
+      <View style={[styles.card, card]}>
+        <MoreRow Icon={Play} title={t('home.qaDemos')} text={t('home.toolDemosHint')} first onPress={onOpenDemos} />
+        {onResumeSetup && (
+          <MoreRow
+            Icon={JitSettings}
+            title={t('home.setupResumeTitle')}
+            text={t('home.setupResumeCta')}
+            first={false}
+            onPress={onResumeSetup}
+          />
+        )}
+      </View>
     </PromoSheet>
   );
 }
 
 export default React.memo(JitPlusGuideSheet);
 
+const LINK_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 };
+const MARKER_SIZE = 36;
+
 const styles = StyleSheet.create({
-  rowRtl: { flexDirection: 'row-reverse' },
-  flipX: { transform: [{ scaleX: -1 }] },
   flex1: { flex: 1 },
-  heroLogo: { width: 34, height: 34 },
 
-  progressBox: {
-    marginTop: 16,
-    borderRadius: 14,
-    padding: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  progressHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  progressText: { color: '#FFFFFF', fontSize: 12.5, fontFamily: 'Lexend_600SemiBold', flexShrink: 1 },
-  progressTrack: {
-    marginTop: 8,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', borderRadius: 3, backgroundColor: GOLD },
+  progress: { marginTop: 16, gap: 8 },
+  progressText: { fontSize: 13, fontFamily: font.semibold },
 
-  // Steps timeline
-  stepRow: { flexDirection: 'row', gap: 12 },
-  stepRail: { width: 26, alignItems: 'center' },
-  stepDot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-  stepDotText: { fontSize: 12, fontFamily: 'Lexend_700Bold' },
-  stepConnector: { flex: 1, width: 2, borderRadius: 1, marginTop: 4, marginBottom: -8 },
-  stepCard: { flex: 1, borderRadius: 16, borderWidth: 1, padding: 13, marginBottom: 10 },
-  stepCardNext: { backgroundColor: `${ACCENT}0D`, borderColor: `${ACCENT}55` },
-  stepCardLocked: { opacity: 0.7 },
-  stepHead: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  stepIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  stepTitle: { flex: 1, fontSize: 13.5, lineHeight: 18, fontFamily: 'Lexend_600SemiBold' },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  pillDone: { backgroundColor: `${DONE}1A` },
-  pillText: { fontSize: 10.5, fontFamily: 'Lexend_600SemiBold' },
-  nextTag: { fontSize: 9.5, letterSpacing: 1, fontFamily: 'Lexend_700Bold', marginTop: 8 },
-  stepText: { fontSize: 12, lineHeight: 17.5, marginTop: 6, fontFamily: 'Lexend_400Regular' },
-  stepAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 4,
-    marginTop: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingVertical: 7,
-    paddingHorizontal: 11,
-  },
-  stepActionNext: { backgroundColor: ACCENT, borderColor: ACCENT },
-  stepActionText: { fontSize: 12, fontFamily: 'Lexend_600SemiBold' },
-  lockedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
-  lockedText: { fontSize: 11.5, fontFamily: 'Lexend_500Medium', flexShrink: 1 },
+  // Same section title and card as "Mes outils" on Accueil.
+  sectionTitle: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.3, marginTop: 18, marginBottom: 10 },
+  card: { borderRadius: 18, borderWidth: 1, overflow: 'hidden' },
 
-  // Guided tour
-  tourCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 13 },
-  tourIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: `${ACCENT}1A`,
-  },
-  tourTitle: { fontSize: 13.5, fontFamily: 'Lexend_600SemiBold' },
-  tourText: { fontSize: 11.5, lineHeight: 16.5, marginTop: 2, fontFamily: 'Lexend_400Regular' },
+  step: { alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
+  stepLocked: { opacity: 0.7 },
+  marker: { width: MARKER_SIZE, height: MARKER_SIZE, borderRadius: MARKER_SIZE / 2, alignItems: 'center', justifyContent: 'center' },
+  markerOutline: { borderWidth: 1.5 },
+  stepHeading: { flex: 1, gap: 2 },
+  // Aligned with the title, under the marker column.
+  stepDetail: { paddingStart: 14 + MARKER_SIZE + 12, paddingEnd: 14, paddingBottom: 14, marginTop: -2 },
+  nextTag: { fontSize: 12, fontFamily: font.semibold },
+  stepTitle: { fontSize: 15, lineHeight: 20, fontFamily: font.semibold, letterSpacing: -0.2 },
+  stepText: { fontSize: 13, lineHeight: 19, fontFamily: font.regular },
+  link: { alignItems: 'center', gap: 2, marginTop: 8 },
+  linkText: { fontSize: 13, fontFamily: font.semibold },
+  lockedText: { fontSize: 12, fontFamily: font.medium },
+
+  more: { alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 14 },
+  moreText: { fontSize: 12, lineHeight: 17, marginTop: 2, fontFamily: font.regular },
 });

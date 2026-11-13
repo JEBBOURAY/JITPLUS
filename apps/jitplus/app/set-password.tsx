@@ -1,24 +1,29 @@
-import { useState, useRef, useEffect, useCallback, useMemo, memo, type RefObject } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
-  ScrollView, Animated, Image,
+  ScrollView, Animated, Image, I18nManager,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
 import { router, useNavigation } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Lock, Eye, EyeOff, ArrowLeft, ArrowRight, CheckCircle2, type LucideIcon } from 'lucide-react-native';
+import { Lock, ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
+import { PasswordField, PasswordStrengthBar } from '@/components/PasswordField';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useFocusAfterTransition } from '@/hooks/useFocusAfterTransition';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
-import { getPasswordStrength, isValidPassword as checkPassword, MAX_PASSWORD_LENGTH } from '@/utils/passwordStrength';
+import { getPasswordStrength, isValidPassword as checkPassword } from '@/utils/passwordStrength';
+import { SPRING_SMOOTH, rnSpring } from '@/utils/motion';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
+const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 /**
  * Forgot-password step 2, reached from verify-otp. The OTP session opened
@@ -57,8 +62,8 @@ export default function SetPasswordScreen() {
 
   useEffect(() => {
     const anim = Animated.stagger(200, [
-      Animated.spring(headerAnim, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 6 }),
-      Animated.spring(formAnim, { toValue: 1, useNativeDriver: true, speed: 10, bounciness: 4 }),
+      Animated.spring(headerAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
+      Animated.spring(formAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
     ]);
     anim.start();
     return () => anim.stop();
@@ -119,7 +124,7 @@ export default function SetPasswordScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
-          <ArrowLeft size={ms(22)} color={theme.text} />
+          <ArrowLeft size={ms(22)} color={theme.text} style={DIR_FLIP} />
         </TouchableOpacity>
 
         <KeyboardAvoidingView
@@ -170,12 +175,7 @@ export default function SetPasswordScreen() {
               />
 
               {password.length > 0 && (
-                <View style={styles.strengthContainer}>
-                  <View style={styles.strengthBarTrack}>
-                    <View style={[styles.strengthBarFill, { width: `${strength.pct * 100}%`, backgroundColor: strength.color }]} />
-                  </View>
-                  <Text style={[styles.strengthLabel, { color: strength.color }]}>{strength.label}</Text>
-                </View>
+                <PasswordStrengthBar strength={strength} />
               )}
 
               <PasswordField
@@ -207,7 +207,7 @@ export default function SetPasswordScreen() {
                 {isLoading ? <ActivityIndicator color="#fff" /> : (
                   <>
                     <Text style={[styles.buttonText, { opacity: canSubmit ? 1 : 0.5 }]}>{t('setPassword.submit')}</Text>
-                    <ArrowRight size={ms(18)} color={canSubmit ? '#fff' : 'rgba(255,255,255,0.5)'} />
+                    <ArrowRight size={ms(18)} color={canSubmit ? '#fff' : 'rgba(255,255,255,0.5)'} style={DIR_FLIP} />
                   </>
                 )}
               </TouchableOpacity>
@@ -218,64 +218,6 @@ export default function SetPasswordScreen() {
     </View>
   );
 }
-
-interface PasswordFieldProps {
-  inputRef: RefObject<TextInput | null>;
-  icon: LucideIcon;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder: string;
-  /** Requirement met: violet border and icon. */
-  valid: boolean;
-  /** Error border; takes precedence over `valid`. */
-  invalid: boolean;
-  returnKeyType: 'next' | 'done';
-  onSubmitEditing?: () => void;
-}
-
-/** Password input with its own show/hide toggle, so toggling re-renders the field only. */
-const PasswordField = memo(function PasswordField({
-  inputRef, icon: Icon, value, onChangeText, placeholder, valid, invalid, returnKeyType, onSubmitEditing,
-}: PasswordFieldProps) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const [visible, setVisible] = useState(false);
-  const toggleVisible = useCallback(() => setVisible((v) => !v), []);
-  const EyeIcon = visible ? EyeOff : Eye;
-
-  return (
-    <View style={styles.inputContainer}>
-      <View style={[styles.inputWrapper, {
-        backgroundColor: theme.inputBg,
-        borderColor: invalid ? theme.danger : valid ? palette.violet : theme.inputBorder,
-        borderWidth: valid ? 2 : 1.5,
-      }]}>
-        <Icon size={ms(18)} color={valid ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
-        <TextInput
-          ref={inputRef}
-          style={[styles.input, { color: theme.text }]}
-          placeholder={placeholder}
-          placeholderTextColor={theme.inputPlaceholder}
-          value={value}
-          onChangeText={onChangeText}
-          secureTextEntry={!visible}
-          autoCapitalize="none"
-          returnKeyType={returnKeyType}
-          maxLength={MAX_PASSWORD_LENGTH}
-          onSubmitEditing={onSubmitEditing}
-        />
-        <TouchableOpacity
-          onPress={toggleVisible}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={visible ? t('login.hidePassword') : t('login.showPassword')}
-        >
-          <EyeIcon size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -296,32 +238,13 @@ const styles = StyleSheet.create({
   formSection: { paddingHorizontal: wp(4) },
   titleBlock: { marginBottom: hp(24) },
   title: {
-    fontSize: ms(26), fontWeight: '700', letterSpacing: -0.3,
+    fontSize: ms(26), fontWeight: '600', letterSpacing: -0.3,
     marginBottom: hp(8),
   },
   subtitle: {
     fontSize: fontSize.sm, lineHeight: ms(22),
     marginBottom: hp(8),
   },
-
-  inputContainer: { marginBottom: hp(16) },
-  inputWrapper: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: radius.lg, paddingHorizontal: wp(14), height: hp(58),
-  },
-  input: {
-    flex: 1, fontSize: fontSize.md, fontWeight: '500', marginLeft: wp(10),
-  },
-
-  strengthContainer: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(10),
-    marginTop: -hp(8), marginBottom: hp(16), paddingHorizontal: wp(4),
-  },
-  strengthBarTrack: {
-    flex: 1, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', overflow: 'hidden',
-  },
-  strengthBarFill: { height: 4, borderRadius: 2 },
-  strengthLabel: { fontSize: fontSize.xs, fontWeight: '700', width: wp(48) },
 
   mismatchText: { fontSize: fontSize.xs, marginTop: hp(4), marginBottom: hp(4), marginLeft: wp(4) },
 
@@ -330,5 +253,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg, height: hp(56), gap: wp(8),
     paddingHorizontal: wp(20),
   },
-  buttonText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '700', letterSpacing: 0.5 },
+  buttonText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '600' },
 });

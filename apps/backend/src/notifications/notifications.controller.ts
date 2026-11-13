@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { NotificationsService } from './notifications.service';
@@ -25,6 +25,18 @@ export class NotificationsController {
     return this.notificationsService.sendToAll(user.userId, dto);
   }
 
+  /** Dry run of the content filter, so the app reports a refusal before the final confirmation. */
+  @Post('check-content')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  checkContent(@Body() dto: SendNotificationDto): void {
+    this.notificationsService.assertBroadcastContentAllowed(dto);
+  }
+
+  @Get('broadcast-status')
+  async getBroadcastStatus(@CurrentUser() user: JwtPayload) {
+    return this.notificationsService.getBroadcastStatus(user.userId);
+  }
+
   @Post('send-email-to-all')
   @UseGuards(PremiumGuard)
   @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
@@ -42,6 +54,4 @@ export class NotificationsController {
   async getHistory(@Query() { page, limit }: PaginationQueryDto, @CurrentUser() user: JwtPayload) {
     return this.notificationsService.getHistory(user.userId, page, limit);
   }
-
-
 }

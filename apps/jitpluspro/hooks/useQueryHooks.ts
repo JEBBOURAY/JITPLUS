@@ -1,6 +1,7 @@
 export { queryKeys } from './queries/keys';
 export { useStores, useCreateStore, useUpdateStore, useDeleteStore } from './queries/stores';
 export { useRewards } from './queries/rewards';
+export { useCompleteOnboarding } from './queries/onboarding';
 export { usePlan, useReferral, useApplyReferralMonths } from './queries/plan';
 export {
   useDashboardKpis,
@@ -17,12 +18,13 @@ export {
   useRecordTransaction,
 } from './queries/clientStatus';
 export { useHomeStats, useTransactions } from './queries/transactions';
-export { useClients, useClientList } from './queries/clients';
+export { useHasClients, useClientList } from './queries/clients';
 export {
   useNotificationHistory,
-  useEmailQuota,
+  useHasSentNotification,
   useSendPushNotification,
-  useSendEmail,
+  useBroadcastStatus,
+  useCheckNotificationContent,
 } from './queries/notifications';
 export {
   useUploadMerchantLogo,

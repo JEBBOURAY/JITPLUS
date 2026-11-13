@@ -42,6 +42,7 @@ import { useClientDetail, useAdjustStamps } from '@/hooks/useQueryHooks';
 import { isValidUUID } from '@/utils/validation';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
+import { initialsOf } from '@/utils/initials';
 import { HistoryListItem, buildHomeRows } from '@/components/TransactionRow';
 
 const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -76,6 +77,9 @@ function ContactRow({
       <Text
         style={[styles.contactText, { color: muted ? theme.textMuted : theme.textSecondary, textAlign: dir.textAlign }]}
         numberOfLines={1}
+        // Long emails keep their domain visible; the merchant can copy it.
+        ellipsizeMode="middle"
+        selectable
       >
         {text}
       </Text>
@@ -251,7 +255,7 @@ export default function ClientDetailScreen() {
   }
 
   const displayName = [client.prenom, client.nom].filter(Boolean).join(' ') || '?';
-  const initial = (client.prenom || client.nom || '?').charAt(0).toUpperCase();
+  const initial = initialsOf([client.prenom, client.nom], 1);
   const adjustTitle = t(adjustMode === 'add' ? 'clientDetail.adjustAddTitle' : 'clientDetail.adjustRemoveTitle', { unit: t('common.stamps') });
   const cardStyle = [styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }];
   const sectionTitleStyle = [styles.sectionTitle, { color: theme.text, textAlign: dir.textAlign }];
@@ -289,7 +293,7 @@ export default function ClientDetailScreen() {
           <View style={[styles.avatar, { backgroundColor: `${theme.primary}1A` }]} importantForAccessibility="no">
             <Text style={[styles.avatarText, { color: theme.primary }]}>{initial}</Text>
           </View>
-          <Text style={[styles.profileName, { color: theme.text }]} numberOfLines={1}>{displayName}</Text>
+          <Text style={[styles.profileName, { color: theme.text }]} numberOfLines={2}>{displayName}</Text>
           <Text style={[styles.memberSince, { color: theme.textMuted }]}>
             {t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}
           </Text>
@@ -388,7 +392,8 @@ export default function ClientDetailScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.bgCard }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.bgCard, paddingBottom: insets.bottom + 24 }]}>
+            <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
             <View style={[styles.modalHeader, { flexDirection: dir.row }]}>
               <Text style={[styles.modalTitle, { color: theme.text, textAlign: dir.textAlign }]}>
                 {adjustTitle}
@@ -413,6 +418,7 @@ export default function ClientDetailScreen() {
               placeholderTextColor={theme.textMuted}
               value={adjustStamps}
               onChangeText={(v) => setAdjustStamps(v.replace(/[^0-9]/g, ''))}
+              maxLength={6}
               autoFocus
             />
 
@@ -436,6 +442,7 @@ export default function ClientDetailScreen() {
               onPress={handleAdjustStamps}
               style={styles.modalConfirmBtn}
             />
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -457,7 +464,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.3,
   },
 
@@ -473,7 +480,7 @@ const styles = StyleSheet.create({
   listCard: { paddingVertical: 0 },
   sectionTitle: {
     fontSize: 16,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.3,
     marginTop: 20,
     marginBottom: 10,
@@ -488,11 +495,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  avatarText: { fontSize: 24, fontFamily: font.bold },
-  profileName: { fontSize: 20, fontFamily: font.bold, letterSpacing: -0.3 },
+  avatarText: { fontSize: 24, fontFamily: font.semibold },
+  profileName: { fontSize: 20, fontFamily: font.semibold, letterSpacing: -0.3, textAlign: 'center' },
   memberSince: { fontSize: 13, marginTop: 4, fontFamily: font.regular },
   stampsRow: { alignItems: 'baseline', gap: 6, marginTop: 12 },
-  stampsValue: { fontSize: 22, fontFamily: font.bold, letterSpacing: -0.4 },
+  stampsValue: { fontSize: 22, fontFamily: font.semibold, letterSpacing: -0.4 },
   stampsLabel: { fontSize: 13, fontFamily: font.medium },
   adjustButtons: { alignSelf: 'stretch', gap: 10, marginTop: 16 },
 
@@ -521,14 +528,14 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
+    maxHeight: '90%',
   },
   modalHeader: {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
-  modalTitle: { fontSize: 20, fontFamily: font.bold },
+  modalTitle: { flexShrink: 1, fontSize: 20, fontFamily: font.semibold },
   modalLabel: { fontSize: 14, marginBottom: 6, marginTop: 12, fontFamily: font.semibold },
   modalInput: {
     fontSize: 16,

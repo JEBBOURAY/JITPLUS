@@ -24,11 +24,15 @@ import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 import FormError from '@/components/FormError';
 import StarLoader from '@/components/StarLoader';
 import { useFocusAfterTransition } from '@/hooks/useFocusAfterTransition';
+import Reanimated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
+import { SPRING_SMOOTH, rnSpring } from '@/utils/motion';
+import { hapticError } from '@/utils/haptics';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const OTP_LENGTH = 6;
 const RESEND_DELAY_S = 60;
-const MAX_ATTEMPTS = 5;
+// Same as the server (OTP_MAX_ATTEMPTS): it rejects the code after 3 wrong tries.
+const MAX_ATTEMPTS = 3;
 const COOLDOWN_MS = 5_000; // 5 seconds between attempts
 const LOCKOUT_MS = 2 * 60 * 1_000; // 2-minute lockout after max attempts
 
@@ -57,14 +61,35 @@ export default function VerifyOtpScreen() {
   const [headerAnim] = useState(() => new Animated.Value(0));
   const [cardAnim] = useState(() => new Animated.Value(0));
 
+  const reduceMotion = useReducedMotion();
+  // Rejected code: the row shakes (no shake under reduced motion) and an error haptic fires.
+  const shakeX = useSharedValue(0);
+  const rejectCode = useCallback(() => {
+    hapticError();
+    if (reduceMotion) return;
+    shakeX.set(withSequence(
+      withTiming(-6, { duration: 50 }),
+      withTiming(6, { duration: 60 }),
+      withTiming(-4, { duration: 60 }),
+      withTiming(4, { duration: 60 }),
+      withTiming(0, { duration: 50 }),
+    ));
+  }, [reduceMotion, shakeX]);
+  const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shakeX.get() }] }));
+
   useEffect(() => {
+    if (reduceMotion) {
+      headerAnim.setValue(1);
+      cardAnim.setValue(1);
+      return;
+    }
     const anim = Animated.stagger(200, [
-      Animated.spring(headerAnim, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 6 }),
-      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, speed: 10, bounciness: 4 }),
+      Animated.spring(headerAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
+      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
     ]);
     anim.start();
     return () => anim.stop();
-  }, [headerAnim, cardAnim]);
+  }, [headerAnim, cardAnim, reduceMotion]);
 
   // Restore persisted lockout state (survives app restart)
   useEffect(() => {
@@ -87,11 +112,13 @@ export default function VerifyOtpScreen() {
       const secsLeft = Math.ceil((lockoutUntilRef.current - now) / 1000);
       setError(t('verifyOtp.tooManyAttempts') + ` (${secsLeft}s)`);
       setCode('');
+      rejectCode();
       return;
     }
     if (now - lastAttemptRef.current < COOLDOWN_MS) {
       setError(t('verifyOtp.tooFast'));
       setCode('');
+      rejectCode();
       return;
     }
     if (attemptCountRef.current >= MAX_ATTEMPTS) {
@@ -101,6 +128,7 @@ export default function VerifyOtpScreen() {
       SecureStore.setItemAsync(SS_ATTEMPT_COUNT, '0').catch(() => {});
       setError(t('verifyOtp.tooManyAttempts'));
       setCode('');
+      rejectCode();
       return;
     }
     attemptCountRef.current += 1;
@@ -121,6 +149,7 @@ export default function VerifyOtpScreen() {
       // Server returns remaining attempts in the error message
       setError(result.error || t('verifyOtp.invalidCode'));
       setCode('');
+      rejectCode();
       return;
     }
     SecureStore.deleteItemAsync(SS_LOCKOUT_UNTIL).catch(() => {});
@@ -136,7 +165,7 @@ export default function VerifyOtpScreen() {
       await AsyncStorage.setItem('showWelcome', '1');
       goHomeAfterLogin(router);
     }
-  }, [code, telephone, isRegisterFlow, isForgotPasswordFlow, verifyOtpEmail, verifyOtpForReset, t]);
+  }, [code, telephone, isRegisterFlow, isForgotPasswordFlow, verifyOtpEmail, verifyOtpForReset, t, rejectCode]);
 
   useEffect(() => {
     if (code.length === OTP_LENGTH && !isLoading) {
@@ -177,7 +206,7 @@ export default function VerifyOtpScreen() {
           >
           <Animated.View style={[styles.header, {
             opacity: headerAnim,
-            transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-30, 0] }) }],
+            transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: reduceMotion ? [0, 0] : [-30, 0] }) }],
           }]}>
             <View style={styles.shieldIcon}>
               <Image
@@ -197,8 +226,9 @@ export default function VerifyOtpScreen() {
           <Animated.View style={[styles.card, {
             backgroundColor: theme.bgCard,
             opacity: cardAnim,
-            transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }],
+            transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: reduceMotion ? [0, 0] : [40, 0] }) }],
           }]}>
+            <Reanimated.View style={shakeStyle}>
             <TouchableOpacity
               style={[styles.codeContainer, { gap: codeGap }]}
               activeOpacity={1}
@@ -230,6 +260,7 @@ export default function VerifyOtpScreen() {
                 );
               })}
             </TouchableOpacity>
+            </Reanimated.View>
 
             <TextInput
               ref={inputRef}
@@ -317,9 +348,9 @@ const styles = StyleSheet.create({
     gap: ms(6),
   },
   logoImage: { width: ms(32), height: ms(32) },
-  title: { fontSize: fontSize['3xl'], fontWeight: '700', marginBottom: hp(10), letterSpacing: -0.3 },
+  title: { fontSize: fontSize['3xl'], fontWeight: '600', marginBottom: hp(10), letterSpacing: -0.3 },
   subtitle: { fontSize: fontSize.md, textAlign: 'center', lineHeight: ms(24) },
-  phone: { fontWeight: '700' },
+  phone: { fontWeight: '600' },
 
   card: {
     borderRadius: radius['2xl'], padding: wp(28),
@@ -328,7 +359,7 @@ const styles = StyleSheet.create({
   },
   codeContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: hp(24) },
   codeBox: { borderRadius: radius.md, justifyContent: 'center', alignItems: 'center' },
-  codeDigit: { fontSize: fontSize['2xl'], fontWeight: '700' },
+  codeDigit: { fontSize: fontSize['2xl'], fontWeight: '600' },
   cursor: { position: 'absolute', bottom: hp(10), width: wp(18), height: 2.5, borderRadius: 2 },
   hiddenInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
 
@@ -337,5 +368,5 @@ const styles = StyleSheet.create({
 
   resendContainer: { alignItems: 'center', gap: hp(8) },
   resendText: { fontSize: fontSize.sm },
-  resendButton: { fontSize: fontSize.md, fontWeight: '700' },
+  resendButton: { fontSize: fontSize.md, fontWeight: '600' },
 });

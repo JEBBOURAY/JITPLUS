@@ -14,7 +14,6 @@ import { wp, hp, ms } from '@/utils/responsive';
 import { formatDate } from '@/utils/date';
 import MerchantLogo from '@/components/MerchantLogo';
 import Skeleton from '@/components/Skeleton';
-import FadeInView from '@/components/FadeInView';
 import { useClientCoupons, type ClientCouponStatus } from '@/hooks/useScratchHooks';
 import { diffDaysYmd, formatRewardValue, toYmd } from '@jitplus/shared/src/scratch';
 import type { CouponDto } from '@jitplus/shared/src/scratch';
@@ -60,36 +59,36 @@ export default function CouponsScreen() {
       statusLine = t('scratch.conditions.expiresAt', { date: formatDate(item.expiresAt, locale) });
     }
 
+    const merchantName = item.merchant?.nom || t('common.shop');
+    // Rows render bare: a virtualized list must not replay an entrance on every recycle or tab switch.
     return (
-      <FadeInView>
-        <TouchableOpacity
-          style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-          activeOpacity={0.75}
-          onPress={() => router.push({ pathname: '/coupons/[id]', params: { id: item.id } })}
-          accessibilityRole="button"
-          accessibilityLabel={`${reward}, ${item.merchant?.nom ?? ''}`}
-        >
-          <MerchantLogo logoUrl={item.merchant?.logoUrl} merchantName={item.merchant?.nom} style={styles.logo} />
-          <View style={styles.cardInfo}>
-            <Text style={[styles.cardReward, { color: theme.text }]} numberOfLines={1}>{reward}</Text>
-            <Text style={[styles.cardMerchant, { color: theme.textSecondary }]} numberOfLines={1}>
-              {item.merchant?.nom ?? ''}
-            </Text>
-            <Text
-              style={[
-                styles.cardStatus,
-                { color: isCancelled ? theme.danger : soon ? theme.warning : theme.textMuted },
-              ]}
-              numberOfLines={1}
-            >
-              {statusLine}
-            </Text>
-          </View>
-          <View style={[styles.cardBadge, { backgroundColor: `${palette.violet}14` }]}>
-            <Ticket size={ms(18)} color={palette.violet} />
-          </View>
-        </TouchableOpacity>
-      </FadeInView>
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
+        activeOpacity={0.75}
+        onPress={() => router.push({ pathname: '/coupons/[id]', params: { id: item.id } })}
+        accessibilityRole="button"
+        accessibilityLabel={`${reward}, ${merchantName}`}
+      >
+        <MerchantLogo logoUrl={item.merchant?.logoUrl} merchantName={merchantName} style={styles.logo} />
+        <View style={styles.cardInfo}>
+          <Text style={[styles.cardReward, { color: theme.text }]} numberOfLines={2}>{reward}</Text>
+          <Text style={[styles.cardMerchant, { color: theme.textSecondary }]} numberOfLines={1}>
+            {merchantName}
+          </Text>
+          <Text
+            style={[
+              styles.cardStatus,
+              { color: isCancelled ? theme.danger : soon ? theme.warning : theme.textMuted },
+            ]}
+            numberOfLines={1}
+          >
+            {statusLine}
+          </Text>
+        </View>
+        <View style={[styles.cardBadge, { backgroundColor: `${palette.violet}14` }]}>
+          <Ticket size={ms(18)} color={palette.violet} />
+        </View>
+      </TouchableOpacity>
     );
   }, [theme, t, locale, router]);
 
@@ -172,10 +171,10 @@ export default function CouponsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: wp(20) },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(14) },
-  headerTitle: { fontSize: ms(19), fontWeight: '700' },
+  headerTitle: { fontSize: ms(19), fontWeight: '600' },
   tabs: { flexDirection: 'row', borderRadius: 12, padding: 4, marginBottom: hp(12) },
   tab: { flex: 1, alignItems: 'center', paddingVertical: hp(8), borderRadius: 9 },
-  tabText: { fontSize: ms(13), fontWeight: '700' },
+  tabText: { fontSize: ms(13), fontWeight: '600' },
   listContent: { paddingBottom: hp(24), gap: hp(10) },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   card: {
@@ -184,7 +183,7 @@ const styles = StyleSheet.create({
   },
   logo: { width: ms(44), height: ms(44), borderRadius: ms(12) },
   cardInfo: { flex: 1 },
-  cardReward: { fontSize: ms(15), fontWeight: '700' },
+  cardReward: { fontSize: ms(15), fontWeight: '600' },
   cardMerchant: { fontSize: ms(12), fontWeight: '500', marginTop: 1 },
   cardStatus: { fontSize: ms(11), fontWeight: '600', marginTop: 3 },
   cardBadge: { width: ms(36), height: ms(36), borderRadius: ms(10), alignItems: 'center', justifyContent: 'center' },

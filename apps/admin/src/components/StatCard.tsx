@@ -1,4 +1,3 @@
-import React from 'react';
 import { C, S } from '../theme';
 
 interface Props {

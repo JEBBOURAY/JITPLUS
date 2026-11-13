@@ -2,12 +2,7 @@ import { StyleSheet } from 'react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
-export const GRAD_START = { x: 0, y: 0 } as const;
-export const GRAD_END_HORIZ = { x: 1, y: 0 } as const;
-export const GRAD_END_DIAG = { x: 1, y: 1 } as const;
-export const ACTIVE_COLORS: [string, string] = [palette.violet, palette.violetDark];
 export const DISABLED_COLORS: [string, string] = ['#D4D0E8', '#C4BFD9'];
-export const AVATAR_COLORS: [string, string] = [palette.gold, palette.violetVivid];
 
 export const ICON_20 = ms(20);
 export const ICON_18 = ms(18);
@@ -52,7 +47,7 @@ export const s = StyleSheet.create({
     width: ms(52), height: ms(52), borderRadius: ms(26),
     alignItems: 'center', justifyContent: 'center', marginBottom: hp(14),
   },
-  stepTitle: { fontSize: ms(22), fontWeight: '700', letterSpacing: -0.3, marginBottom: hp(6), textAlign: 'center' },
+  stepTitle: { fontSize: ms(22), fontWeight: '600', letterSpacing: -0.3, marginBottom: hp(6), textAlign: 'center' },
   stepSubtitle: { fontSize: fontSize.sm, textAlign: 'center', lineHeight: ms(20), paddingHorizontal: wp(8) },
 
   // Avatar preview
@@ -65,8 +60,8 @@ export const s = StyleSheet.create({
     width: ms(48), height: ms(48), borderRadius: ms(24),
     alignItems: 'center', justifyContent: 'center',
   },
-  initials: { fontSize: fontSize.lg, fontWeight: '700', color: '#fff' },
-  avatarName: { fontSize: fontSize.lg, fontWeight: '700', letterSpacing: -0.2 },
+  initials: { fontSize: fontSize.lg, fontWeight: '600', color: '#fff' },
+  avatarName: { fontSize: fontSize.lg, fontWeight: '600', letterSpacing: -0.2 },
   avatarLabel: { fontSize: fontSize.xs, marginTop: hp(2) },
 
   // Fields
@@ -93,7 +88,7 @@ export const s = StyleSheet.create({
     padding: wp(16), borderRadius: radius.lg, borderWidth: 1,
     marginBottom: hp(12),
   },
-  birthdayTitle: { fontSize: fontSize.sm, fontWeight: '700', marginBottom: hp(4) },
+  birthdayTitle: { fontSize: fontSize.sm, fontWeight: '600', marginBottom: hp(4) },
   birthdayDesc: { fontSize: fontSize.xs, lineHeight: ms(18) },
 
   // No password block
@@ -102,7 +97,7 @@ export const s = StyleSheet.create({
     width: ms(64), height: ms(64), borderRadius: ms(32),
     alignItems: 'center', justifyContent: 'center', marginBottom: hp(14),
   },
-  noPasswordTitle: { fontSize: fontSize.lg, fontWeight: '700', marginBottom: hp(6) },
+  noPasswordTitle: { fontSize: fontSize.lg, fontWeight: '600', marginBottom: hp(6) },
   noPasswordDesc: { fontSize: fontSize.sm, textAlign: 'center', lineHeight: ms(20) },
 
   // Terms checkbox
@@ -141,5 +136,5 @@ export const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     borderRadius: radius.xl, height: hp(52), gap: wp(8),
   },
-  mainBtnText: { color: '#fff', fontSize: fontSize.md, fontWeight: '700', letterSpacing: 0.3 },
+  mainBtnText: { color: '#fff', fontSize: fontSize.md, fontWeight: '600', letterSpacing: 0.3 },
 });

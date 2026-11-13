@@ -41,8 +41,6 @@ const styles = StyleSheet.create({
   wrap: { marginBottom: hp(20) },
   title: {
     fontSize: FS.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
     marginBottom: hp(8),
     marginHorizontal: wp(6),
     textAlign: 'left',

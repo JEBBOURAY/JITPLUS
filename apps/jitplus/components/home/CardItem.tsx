@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
-import { View, StyleSheet, Animated, Easing, I18nManager } from 'react-native';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import { View, StyleSheet, I18nManager } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useIsFocused } from 'expo-router';
 import { AlertCircle, ChevronRight, Gift } from 'lucide-react-native';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { LoyaltyCard } from '@/types';
@@ -18,13 +17,10 @@ import { getCardProgress } from '@/utils/cardProgress';
 /** Above this goal, individual stamps get too small to read: show a progress bar instead. */
 const MAX_DOT_STAMPS = 12;
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
-const GOLD_GRADIENT = [palette.goldLight, palette.gold] as const;
 /** Fallback mark shown inside a stamp when the merchant has no logo. */
 const STAMP_LOGO = require('@/assets/images/jitpluslogo-app.png');
 const TINT_START = { x: 0, y: 0 } as const;
 const TINT_END = { x: 1, y: 1 } as const;
-const GRADIENT_H_START = { x: 0, y: 0 } as const;
-const GRADIENT_H_END = { x: 1, y: 0 } as const;
 
 const CardItem = React.memo(function CardItem({
   card,
@@ -56,23 +52,6 @@ const CardItem = React.memo(function CardItem({
 
   const { goal, earned, remaining, ratio, isComplete } = getCardProgress(card);
   const useDots = goal <= MAX_DOT_STAMPS;
-
-  // Gentle pulse on the reward pill only — the card itself stays calm.
-  // Paused while another tab is shown: tabs stay mounted.
-  const isFocused = useIsFocused();
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!isComplete || !isFocused) { pulseAnim.setValue(0); return; }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [isComplete, isFocused, pulseAnim]);
-  const pulseScale = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] });
 
   const lastVisitLabel = useMemo(
     () => timeAgo(card.updatedAt || card.createdAt, locale),
@@ -280,14 +259,14 @@ const CardItem = React.memo(function CardItem({
               {/* ── Footer: status · last visit ── */}
               <View style={styles.footer}>
                 {isComplete ? (
-                  <Animated.View style={[styles.rewardPillWrap, { transform: [{ scale: pulseScale }] }]}>
-                    <LinearGradient colors={GOLD_GRADIENT} start={GRADIENT_H_START} end={GRADIENT_H_END} style={styles.rewardPill}>
+                  <View style={styles.rewardPillWrap}>
+                    <View style={styles.rewardPill}>
                       <Gift size={ms(13)} color="#FFFFFF" strokeWidth={2.2} />
                       <Text style={[styles.rewardPillText, { fontFamily: fontBold }]} numberOfLines={1}>
                         {t('home.rewardReadyShort')}
                       </Text>
-                    </LinearGradient>
-                  </Animated.View>
+                    </View>
+                  </View>
                 ) : (
                   <Text style={[styles.status, { color: colors.secondary, fontFamily: fontMedium }]} numberOfLines={1}>
                     {t('home.stampsLeft', { count: remaining })}
@@ -361,6 +340,7 @@ const styles = StyleSheet.create({
   rewardPill: {
     flexDirection: 'row', alignItems: 'center', gap: wp(5),
     paddingHorizontal: wp(10), paddingVertical: hp(4), borderRadius: 999,
+    backgroundColor: palette.goldDark,
   },
   rewardPillText: { color: '#FFFFFF', fontSize: fontSize.xs },
 

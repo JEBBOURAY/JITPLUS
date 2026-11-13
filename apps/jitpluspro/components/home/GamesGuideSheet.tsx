@@ -212,7 +212,7 @@ function GamesGuideSheet({ visible, onClose, onStart }: GamesGuideSheetProps) {
                 <g.Icon size={18} color={toneInk} strokeWidth={2} />
               </View>
               <Text style={[styles.gameName, { color: toneInk }]} maxFontSizeMultiplier={1.2}>
-                {g.name.toUpperCase()}
+                {g.name}
               </Text>
               <Text style={[styles.gameTagline, { color: theme.text }]} maxFontSizeMultiplier={1.25}>
                 {g.tagline}
@@ -302,8 +302,8 @@ const styles = StyleSheet.create({
   gamesRow: { flexDirection: 'row', gap: 10 },
   gameCard: { flex: 1, borderRadius: 16, borderWidth: 1, padding: 12 },
   gameIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  gameName: { fontSize: 9.5, letterSpacing: 0.9, fontFamily: 'Lexend_700Bold' },
-  gameTagline: { fontSize: 13.5, lineHeight: 18, fontFamily: 'Lexend_700Bold', marginTop: 3 },
+  gameName: { fontSize: 12, fontFamily: 'Lexend_500Medium' },
+  gameTagline: { fontSize: 13.5, lineHeight: 18, fontFamily: 'Lexend_600SemiBold', marginTop: 3 },
   gameText: { fontSize: 11.5, lineHeight: 16, marginTop: 5, fontFamily: 'Lexend_400Regular' },
   gameTags: { fontSize: 10.5, marginTop: 8, fontFamily: 'Lexend_600SemiBold' },
 
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepDotText: { fontSize: 12, fontFamily: 'Lexend_700Bold' },
+  stepDotText: { fontSize: 12, fontFamily: 'Lexend_600SemiBold' },
   stepConnector: { flex: 1, width: 2, marginVertical: 3 },
   stepBody: { flex: 1, paddingBottom: 14 },
   stepBodyLast: { paddingBottom: 0 },
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11 },
   pickGoal: { flex: 1, fontSize: 12.5, lineHeight: 17.5, fontFamily: 'Lexend_500Medium' },
   pickBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  pickBadgeText: { fontSize: 11, fontFamily: 'Lexend_700Bold' },
+  pickBadgeText: { fontSize: 11, fontFamily: 'Lexend_600SemiBold' },
 
   // Combo callout
   callout: {

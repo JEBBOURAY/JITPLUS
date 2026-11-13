@@ -9,17 +9,16 @@ export const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
 /** Layout shared by every block of the register screen (fields, labels, buttons). */
 export const formStyles = StyleSheet.create({
   flex1: { flex: 1 },
-  field: { marginBottom: hp(18) },
-  label: { fontSize: fontSize.sm, marginBottom: hp(8), fontFamily: font.semibold },
+  field: { marginBottom: hp(12) },
+  label: { fontSize: fontSize.sm, marginBottom: hp(6), fontFamily: font.semibold },
   labelInline: { marginBottom: 0 },
-  labelRow: { alignItems: 'center', gap: wp(6), marginBottom: hp(8) },
-  optionalTag: { fontSize: fontSize.xs, fontFamily: font.regular },
+  labelRow: { alignItems: 'center', gap: wp(6), marginBottom: hp(6) },
   inputRow: {
     alignItems: 'center',
     borderWidth: 1.5,
     borderRadius: radius.md,
     paddingHorizontal: wp(14),
-    height: hp(52),
+    height: hp(48),
     gap: wp(10),
   },
   input: { flex: 1, fontSize: fontSize.md, fontFamily: font.medium },
@@ -37,8 +36,8 @@ export const formStyles = StyleSheet.create({
     backgroundColor: palette.charbon,
     borderColor: palette.charbon,
     ...Platform.select({
-      ios: { shadowColor: '#1F2937', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6 },
-      android: { elevation: 4 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3 },
+      android: { elevation: 2 },
     }),
   },
   secondaryBtn: { backgroundColor: `${palette.charbon}0D`, borderColor: `${palette.charbon}28` },
@@ -46,7 +45,7 @@ export const formStyles = StyleSheet.create({
   // Bottom-sheet style pickers (category, language).
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: wp(18) },
   pickerSheet: { borderRadius: radius['2xl'], padding: wp(16), maxHeight: hp(560) },
-  pickerTitle: { fontSize: ms(16), fontFamily: font.bold, marginBottom: hp(10) },
+  pickerTitle: { fontSize: ms(16), fontFamily: font.semibold, marginBottom: hp(10) },
   pickerRow: { alignItems: 'center', gap: wp(10), paddingVertical: hp(12), paddingHorizontal: wp(12), borderRadius: radius.md },
   pickerRowText: { flex: 1, fontSize: ms(14), fontFamily: font.medium },
 });

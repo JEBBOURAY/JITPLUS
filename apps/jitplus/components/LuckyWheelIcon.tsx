@@ -163,7 +163,7 @@ const wheelLabelStyle = StyleSheet.create({
   base: {
     position: 'absolute',
     color: '#FFF',
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'center',
   },
 });

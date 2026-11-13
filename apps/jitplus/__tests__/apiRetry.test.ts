@@ -59,13 +59,13 @@ describe('createApiClient retry interceptor', () => {
 
   it('sends a failing POST only once', async () => {
     const { adapter, calls } = failingAdapter(504);
-    await expect(client().post('/client/referral/payout', { amount: 100 }, { adapter })).rejects.toThrow();
+    await expect(client().post('/client/merchants/m1/join', {}, { adapter })).rejects.toThrow();
     expect(calls).toEqual(['post']);
   });
 
   it('retries a failing GET once', async () => {
     const { adapter, calls } = failingAdapter(503);
-    await expect(client().get('/client/referral', { adapter })).rejects.toThrow();
+    await expect(client().get('/client/stamps', { adapter })).rejects.toThrow();
     expect(calls).toEqual(['get', 'get']);
   });
 

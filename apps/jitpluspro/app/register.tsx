@@ -1,9 +1,7 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
-  Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
@@ -17,8 +15,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowRight, Check, LogIn, ShieldCheck } from 'lucide-react-native';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import { ArrowRight, Check } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
@@ -35,7 +33,6 @@ import { useHapticWhenValid } from '@/hooks/useHapticWhenValid';
 import { useRegisterDraft, type RegisterDraft } from '@/hooks/useRegisterDraft';
 import { useReferralCode, referralCodeFromLink } from '@/hooks/useReferralCode';
 import { useStoreLocation } from '@/hooks/useStoreLocation';
-import { useDir } from '@/hooks/useDir';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { AccountStep, type AccountField } from '@/components/register/AccountStep';
 import { StoreStep, type StoreField } from '@/components/register/StoreStep';
@@ -44,8 +41,8 @@ import { CategoryPickerModal, LanguagePickerModal } from '@/components/register/
 import { WelcomeOverlay } from '@/components/register/WelcomeOverlay';
 import { formStyles } from '@/components/register/formStyles';
 import type { MerchantCategory } from '@/types';
-import { font, icon } from '@/constants/design';
-import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
+import { wp, hp } from '@/utils/responsive';
+import { spring } from '@/utils/sheetPhysics';
 
 type FormField = AccountField | StoreField;
 
@@ -59,7 +56,6 @@ export default function RegisterScreen() {
   const theme = useTheme();
   const { googleRegister, appleRegister, register: authRegister } = useAuth();
   const { t, locale } = useLanguage();
-  const dir = useDir();
 
   // ── Form state ──
   const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
@@ -79,6 +75,10 @@ export default function RegisterScreen() {
   const [detectedCountry] = useState(detectCountry);
   const [phoneNumber, setPhoneNumber] = useState(detectedCountry.dial);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  // Online-only business: no store position to give.
+  const [isEcommerce, setIsEcommerce] = useState(false);
+  // Bumped to open the map when the position is the missing piece.
+  const [mapOpenRequest, setMapOpenRequest] = useState(0);
 
   // Invitation link (…/pro/register?ref=CODE): the sponsor's code is filled in.
   const { ref: refParam } = useLocalSearchParams<{ ref?: string }>();
@@ -141,12 +141,12 @@ export default function RegisterScreen() {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, []);
 
-  // Google / Apple already gave us the account: go straight to the store step.
+  // Google / Apple gave us the account; the merchant still accepts the terms
+  // on this step before continuing to the store step.
   const handleGoogleToken = useCallback((idToken: string) => {
     setGoogleIdToken(idToken);
     setAppleIdentityToken(null);
-    goToStep(2);
-  }, [goToStep]);
+  }, []);
   const google = useGoogleIdToken(handleGoogleToken);
 
   const handleAppleToken = useCallback(
@@ -156,9 +156,8 @@ export default function RegisterScreen() {
       if (data.familyName !== undefined) setAppleFamilyName(data.familyName);
       setAppleRawNonce(data.rawNonce);
       setGoogleIdToken(null);
-      goToStep(2);
     },
-    [goToStep],
+    [],
   );
   const apple = useAppleIdToken(handleAppleToken);
 
@@ -176,8 +175,8 @@ export default function RegisterScreen() {
   const [footerAnim] = useState(() => new Animated.Value(0));
   useEffect(() => {
     const anim = Animated.stagger(120, [
-      Animated.spring(headerAnim, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 6 }),
-      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, speed: 10, bounciness: 4 }),
+      Animated.spring(headerAnim, { toValue: 1, useNativeDriver: true, ...spring(1, 0.4) }),
+      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...spring(1, 0.4) }),
       Animated.timing(footerAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
     ]);
     anim.start();
@@ -208,8 +207,9 @@ export default function RegisterScreen() {
     phoneNumber: normalizedPhone,
     categorie,
     ...locationValues,
+    ...(isEcommerce && { isEcommerce: true }),
     referralCode: referralCode.trim(),
-  }), [email, nomCommerce, normalizedPhone, categorie, locationValues, referralCode]);
+  }), [email, nomCommerce, normalizedPhone, categorie, locationValues, isEcommerce, referralCode]);
 
   const restoreDraft = useCallback((d: RegisterDraft) => {
     // The restored values render after this call; keep haptics quiet until then.
@@ -220,6 +220,7 @@ export default function RegisterScreen() {
     if (d.phoneNumber) handlePhoneChange(d.phoneNumber);
     if (d.categorie) setCategorie(d.categorie as MerchantCategory);
     restoreLocation(d);
+    if (d.isEcommerce) setIsEcommerce(true);
     // A code from an invitation link wins over the one in the draft.
     if (d.referralCode && !linkReferral) fillReferral(d.referralCode);
   }, [handleEmailChange, handlePhoneChange, restoreLocation, linkReferral, fillReferral]);
@@ -230,6 +231,9 @@ export default function RegisterScreen() {
   const parsedPhone = useMemo(() => parsePhone(phoneNumber, detectedCountry.code), [phoneNumber, detectedCountry.code]);
   const phoneValid = isValidPhoneForCountry(parsedPhone.localPart, parsedPhone.country);
   const storeNameValid = nomCommerce.trim().length > 0;
+  const hasPosition = locationValues.latitude != null && locationValues.longitude != null;
+  // The map position is required unless the business is online only.
+  const locationValid = isEcommerce || hasPosition;
   const emailValid = isValidEmail(email);
   // The address as sent to the server (checks, sign-up, login prefill).
   const normalizedEmail = email.trim().toLowerCase();
@@ -238,19 +242,22 @@ export default function RegisterScreen() {
 
   // Same order as on screen, so the merchant is sent to the topmost problem.
   const firstInvalidAccountField = useMemo((): FormField | null => {
-    if (isSocialAuth) return null;
+    // Google / Apple: the account is given, only the terms remain.
+    if (isSocialAuth) return termsAccepted ? null : 'terms';
     if (!emailValid || emailTaken) return 'email';
     if (!passwordValid) return 'password';
     if (password !== confirmPassword) return 'confirm';
+    if (!termsAccepted) return 'terms';
     return null;
-  }, [isSocialAuth, emailValid, emailTaken, passwordValid, password, confirmPassword]);
+  }, [isSocialAuth, emailValid, emailTaken, passwordValid, password, confirmPassword, termsAccepted]);
 
   const firstInvalidStoreField = useMemo((): FormField | null => {
     if (!storeNameValid) return 'name';
+    if (!categorie) return 'category';
     if (!phoneValid || phoneTaken) return 'phone';
-    if (!termsAccepted) return 'terms';
+    if (!locationValid) return 'location';
     return null;
-  }, [storeNameValid, phoneValid, phoneTaken, termsAccepted]);
+  }, [storeNameValid, categorie, phoneValid, phoneTaken, locationValid]);
 
   const canSubmit = !firstInvalidAccountField && !firstInvalidStoreField;
 
@@ -260,10 +267,13 @@ export default function RegisterScreen() {
   useHapticWhenValid(passwordOk, hapticsMutedRef);
 
   const showNameError = submitAttempted && !storeNameValid;
+  const showCategoryError = submitAttempted && !categorie;
   const showPhoneRequired = submitAttempted && !parsedPhone.localPart;
+  const showPhoneInvalid = submitAttempted && !!parsedPhone.localPart && !phoneValid;
   const showEmailRequired = submitAttempted && !email.trim();
   const showEmailInvalid = (emailBlurred || submitAttempted) && !!email.trim() && !emailValid;
   const showTermsError = submitAttempted && !termsAccepted;
+  const showLocationError = submitAttempted && !locationValid;
 
   const handleFieldLayout = useCallback((field: FormField, e: LayoutChangeEvent) => {
     fieldYRef.current[field] = e.nativeEvent.layout.y;
@@ -276,9 +286,13 @@ export default function RegisterScreen() {
     if (!field) return;
     const y = bodyYRef.current + (fieldYRef.current[field] ?? 0);
     scrollRef.current?.scrollTo({ y: Math.max(0, y - hp(16)), animated: true });
-    const input = { name: nameRef, phone: phoneRef, email: emailRef, password: passwordRef, confirm: confirmRef, terms: null }[field];
+    const input = { name: nameRef, category: null, phone: phoneRef, location: null, email: emailRef, password: passwordRef, confirm: confirmRef, terms: null }[field];
     if (input) setTimeout(() => input.current?.focus(), 350);
     else Keyboard.dismiss();
+    // The category is a picker, not an input: open it once the scroll has settled.
+    if (field === 'category') setTimeout(() => setShowCategoryPicker(true), 350);
+    // Same for the position: the full-screen map opens on the spot.
+    if (field === 'location') setTimeout(() => setMapOpenRequest((n) => n + 1), 350);
   }, []);
 
   // ── Server checks ──
@@ -331,12 +345,13 @@ export default function RegisterScreen() {
 
   // ── Actions ──
   const handleContinue = useCallback(async () => {
-    if (isSocialAuth) {
-      goToStep(2);
-      return;
-    }
     if (firstInvalidAccountField) {
       revealMissing(firstInvalidAccountField);
+      return;
+    }
+    if (isSocialAuth) {
+      hapticSuccess();
+      goToStep(2);
       return;
     }
     // Make sure the address is free before leaving the step. Reuses the on-blur
@@ -462,6 +477,15 @@ export default function RegisterScreen() {
     finishSignup, t,
   ]);
 
+  // Stable handlers: the step components get the same function on every render.
+  const toggleTerms = useCallback(() => setTermsAccepted((v) => !v), []);
+  const openTerms = useCallback(() => router.push('/legal'), [router]);
+  const openCategoryPicker = useCallback(() => setShowCategoryPicker(true), []);
+  const toggleEcommerce = useCallback(() => setIsEcommerce((v) => !v), []);
+  const openLanguagePicker = useCallback(() => { Keyboard.dismiss(); setShowLangPicker(true); }, []);
+  const loginWithEmail = useCallback(() => goToLogin(normalizedEmail), [goToLogin, normalizedEmail]);
+  const loginInstead = useCallback(() => goToLogin(), [goToLogin]);
+
   // ── Back navigation ──
   // On the store step, "back" returns to the account step instead of leaving.
   const handleBack = useCallback(() => {
@@ -503,7 +527,7 @@ export default function RegisterScreen() {
               <RegisterHeader
                 step={step}
                 onBack={handleBack}
-                onOpenLanguage={() => { Keyboard.dismiss(); setShowLangPicker(true); }}
+                onOpenLanguage={openLanguagePicker}
                 disabled={isLoading}
               />
             </Animated.View>
@@ -532,7 +556,7 @@ export default function RegisterScreen() {
                   emailTaken={emailTaken}
                   showEmailInvalid={showEmailInvalid}
                   showEmailRequired={showEmailRequired}
-                  onLoginWithEmail={() => goToLogin(normalizedEmail)}
+                  onLoginWithEmail={loginWithEmail}
                   password={password}
                   setPassword={setPassword}
                   confirmPassword={confirmPassword}
@@ -546,14 +570,19 @@ export default function RegisterScreen() {
                   submitAttempted={submitAttempted}
                   onFieldLayout={handleFieldLayout}
                   onSubmit={continueFromKeyboard}
+                  termsAccepted={termsAccepted}
+                  onToggleTerms={toggleTerms}
+                  onOpenTerms={openTerms}
+                  showTermsError={showTermsError}
                 />
               ) : (
                 <StoreStep
                   nomCommerce={nomCommerce}
                   onNameChange={setNomCommerce}
                   showNameError={showNameError}
+                  showCategoryError={showCategoryError}
                   categorie={categorie}
-                  onOpenCategory={() => setShowCategoryPicker(true)}
+                  onOpenCategory={openCategoryPicker}
                   phoneNumber={phoneNumber}
                   onPhoneChange={handlePhoneChange}
                   onPhoneBlur={handlePhoneBlur}
@@ -561,13 +590,14 @@ export default function RegisterScreen() {
                   phoneChecking={phoneChecking}
                   phoneTaken={phoneTaken}
                   showPhoneRequired={showPhoneRequired}
-                  onLoginInstead={() => goToLogin()}
+                  showPhoneInvalid={showPhoneInvalid}
+                  onLoginInstead={loginInstead}
                   location={location}
+                  isEcommerce={isEcommerce}
+                  onToggleEcommerce={toggleEcommerce}
+                  showLocationError={showLocationError}
+                  mapOpenRequest={mapOpenRequest}
                   referral={referral}
-                  termsAccepted={termsAccepted}
-                  onToggleTerms={() => setTermsAccepted((v) => !v)}
-                  onOpenTerms={() => router.push('/legal')}
-                  showTermsError={showTermsError}
                   nameRef={nameRef}
                   phoneRef={phoneRef}
                   isLoading={isLoading}
@@ -577,12 +607,6 @@ export default function RegisterScreen() {
             </Animated.View>
 
             <Animated.View style={[styles.actions, { opacity: footerAnim }]}>
-              {isSocialAuth && step === 2 && (
-                <View style={[styles.noVerifRow, { flexDirection: dir.row }]}>
-                  <ShieldCheck size={ms(15)} color={theme.success} strokeWidth={icon.stroke} />
-                  <Text style={[styles.noVerifText, { color: theme.textMuted }]}>{t('registerExtra.noEmailVerifNeeded')}</Text>
-                </View>
-              )}
               {/* Always tappable: when something is missing, it shows what and where. */}
               <ActionButton
                 label={step === 1 ? t('registerExtra.continueBtn') : t('registerExtra.finishBtn')}
@@ -594,26 +618,6 @@ export default function RegisterScreen() {
                 style={formStyles.primaryBtn}
               />
             </Animated.View>
-
-            {step === 1 && (
-              <Animated.View style={[styles.footer, { opacity: footerAnim }]}>
-                <TouchableOpacity
-                  onPress={() => router.push('/login')}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                  style={[styles.loginPrompt, { flexDirection: dir.row, backgroundColor: `${palette.charbon}06`, borderColor: `${palette.charbon}18` }]}
-                >
-                  <View style={[styles.loginIconWrap, { backgroundColor: palette.charbon }]}>
-                    <LogIn size={ms(16)} color="#fff" strokeWidth={icon.stroke} style={dir.flip} />
-                  </View>
-                  <View style={formStyles.flex1}>
-                    <Text style={[styles.loginPromptTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('register.alreadyAccount')}</Text>
-                    <Text style={[styles.loginPromptSub, { color: palette.charbon, textAlign: dir.textAlign }]}>{t('register.loginLink')}</Text>
-                  </View>
-                  <ArrowRight size={ms(16)} color={palette.charbon} strokeWidth={icon.stroke} style={dir.flip} />
-                </TouchableOpacity>
-              </Animated.View>
-            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -627,7 +631,7 @@ export default function RegisterScreen() {
       <LanguagePickerModal visible={showLangPicker} onClose={() => setShowLangPicker(false)} />
 
       {welcomeName !== null && (
-        <WelcomeOverlay storeName={welcomeName} onDone={() => router.replace('/(tabs)')} />
+        <WelcomeOverlay storeName={welcomeName} onDone={() => router.replace('/setup')} />
       )}
     </View>
   );
@@ -636,19 +640,5 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, paddingHorizontal: wp(20), paddingTop: hp(2), paddingBottom: hp(6) },
   body: { marginBottom: hp(2) },
-  actions: { marginTop: hp(2), marginBottom: hp(4) },
-  noVerifRow: { alignItems: 'center', justifyContent: 'center', gap: wp(6), marginBottom: hp(10) },
-  noVerifText: { fontSize: fontSize.xs, fontFamily: font.medium },
-  footer: { marginTop: hp(8), marginBottom: hp(12) },
-  loginPrompt: {
-    alignItems: 'center',
-    paddingHorizontal: wp(14),
-    paddingVertical: hp(14),
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: wp(10),
-  },
-  loginIconWrap: { width: ms(34), height: ms(34), borderRadius: ms(17), alignItems: 'center', justifyContent: 'center' },
-  loginPromptTitle: { fontSize: fontSize.sm, marginBottom: 2, fontFamily: font.medium },
-  loginPromptSub: { fontSize: fontSize.sm, fontFamily: font.bold },
+  actions: { marginTop: hp(4), marginBottom: hp(2) },
 });

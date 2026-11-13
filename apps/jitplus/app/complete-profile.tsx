@@ -4,9 +4,8 @@ import { Text, TextInput } from '@/components/AppText';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { User, Gift, Shield } from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,7 +19,7 @@ import { NameStep } from '@/components/completeProfile/NameStep';
 import { PasswordStep } from '@/components/completeProfile/PasswordStep';
 import { BirthdayStep } from '@/components/completeProfile/BirthdayStep';
 import { BottomActionBar } from '@/components/completeProfile/BottomActionBar';
-import { s, ACTIVE_COLORS, GRAD_START, GRAD_END_DIAG, ICON_20 } from '@/components/completeProfile/styles';
+import { s, ICON_20 } from '@/components/completeProfile/styles';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const RE_NAME_STRIP = /[^\p{L}\p{M}\s'-]/gu;
@@ -137,7 +136,7 @@ export default function CompleteProfileScreen() {
   const canProceed = step === 0 ? canNextStep0 : step === 1 ? canNextStep1 : termsAccepted;
 
   return (
-    <View style={[s.root, { backgroundColor: '#fff' }]}>
+    <View style={[s.root, { backgroundColor: theme.bg }]}>
       <SafeAreaView style={s.safe}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -163,9 +162,9 @@ export default function CompleteProfileScreen() {
 
             <Animated.View style={[s.card, { backgroundColor: theme.bgCard }, stepStyle]}>
               <View style={s.stepHeader}>
-                <LinearGradient colors={ACTIVE_COLORS} start={GRAD_START} end={GRAD_END_DIAG} style={s.stepIconCircle}>
+                <View style={[s.stepIconCircle, { backgroundColor: palette.violet }]}>
                   <StepIcon size={ICON_20} color="#fff" strokeWidth={2} />
-                </LinearGradient>
+                </View>
                 <Text style={[s.stepTitle, { color: theme.text }]}>{stepTitles[step]}</Text>
                 <Text style={[s.stepSubtitle, { color: theme.textMuted }]}>{stepSubtitles[step]}</Text>
               </View>

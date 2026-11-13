@@ -85,7 +85,7 @@ let _env: AdminEnv = loadEnv();
 let _envListeners: Array<(env: AdminEnv) => void> = [];
 
 export function getEnv(): AdminEnv { return _env; }
-export function getBaseUrl(): string { return ENV_URLS[_env]; }
+function getBaseUrl(): string { return ENV_URLS[_env]; }
 
 export function setEnv(env: AdminEnv) {
   if (!ENV_SWITCH_ENABLED) return;

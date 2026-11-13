@@ -1,7 +1,5 @@
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ArrowLeft, ChevronDown, Globe } from 'lucide-react-native';
-import { JitGift } from '@/components/icons';
-import BrandName from '@/components/BrandName';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
@@ -19,7 +17,7 @@ interface Props {
   disabled?: boolean;
 }
 
-/** Back button, language chip, brand, progress bar and the step's title. */
+/** Back button, language chip, progress bar and the step's title. */
 export function RegisterHeader({ step, onBack, onOpenLanguage, disabled }: Props) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
@@ -56,11 +54,6 @@ export function RegisterHeader({ step, onBack, onOpenLanguage, disabled }: Props
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.brand, { flexDirection: dir.row }]}>
-        <Image source={require('@/assets/images/jitplusprologo.png')} style={styles.logo} resizeMode="contain" />
-        <BrandName fontSize={24} />
-      </View>
-
       <View style={styles.progress} accessible accessibilityLabel={stepText}>
         <View style={[styles.progressRow, { flexDirection: dir.row }]}>
           {Array.from({ length: STEP_COUNT }, (_, i) => (
@@ -79,41 +72,19 @@ export function RegisterHeader({ step, onBack, onOpenLanguage, disabled }: Props
         <Text style={[styles.title, { color: theme.text, textAlign: dir.textAlign }]}>
           {step === 1 ? t('register.title') : t('registerExtra.step2Title')}
         </Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted, textAlign: dir.textAlign }]}>
-          {step === 1 ? t('register.subtitle') : t('registerExtra.step2Subtitle')}
-        </Text>
-        {step === 1 && (
-          <View style={[styles.trialBadge, { flexDirection: dir.row, alignSelf: dir.alignStart, backgroundColor: `${palette.violet}10`, borderColor: `${palette.violet}30` }]}>
-            <JitGift size={ms(15)} color={palette.violet} strokeWidth={icon.stroke} />
-            <Text style={[styles.trialBadgeText, { color: palette.violet }]}>{t('registerExtra.trialBadge')}</Text>
-          </View>
-        )}
       </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  topBar: { alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(8) },
+  topBar: { alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(10) },
   langChip: { alignItems: 'center', gap: wp(6), paddingHorizontal: wp(10), height: ms(36), borderRadius: 999 },
   langChipText: { fontSize: fontSize.sm, fontFamily: font.semibold },
-  brand: { alignItems: 'center', gap: ms(8), marginBottom: hp(10) },
-  logo: { width: ms(36), height: ms(36), borderRadius: 8 },
-  progress: { marginBottom: hp(14) },
+  progress: { marginBottom: hp(10) },
   progressRow: { gap: wp(6) },
   progressSegment: { flex: 1, height: ms(4), borderRadius: ms(2) },
   progressText: { marginTop: hp(6), fontSize: fontSize.xs, fontFamily: font.semibold },
-  titleWrap: { marginBottom: hp(6) },
-  title: { fontSize: ms(24), letterSpacing: -0.5, marginBottom: hp(1), fontFamily: font.bold },
-  subtitle: { fontSize: fontSize.sm, lineHeight: ms(20), fontFamily: font.medium },
-  trialBadge: {
-    marginTop: hp(10),
-    borderRadius: 999,
-    borderWidth: 1.5,
-    paddingHorizontal: wp(12),
-    paddingVertical: hp(6),
-    alignItems: 'center',
-    gap: wp(6),
-  },
-  trialBadgeText: { fontSize: fontSize.xs, fontFamily: font.semibold },
+  titleWrap: { marginBottom: hp(4) },
+  title: { fontSize: ms(24), letterSpacing: -0.5, marginBottom: hp(1), fontFamily: font.semibold },
 });

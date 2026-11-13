@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import {
-  View, Pressable, TouchableOpacity, type ViewStyle,
+  View, Pressable, TouchableOpacity, type ViewStyle, I18nManager,
 } from 'react-native';
 import { Text } from '@/components/AppText';
 import {
@@ -15,6 +15,9 @@ import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
 import { formatDistance } from '@/utils/distance';
 import { discoverStyles as styles } from './discoverStyles';
 import { pointName } from '@/utils/merchantPoint';
+
+// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
+const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 export const FallbackMerchantCard = memo(function FallbackMerchantCard({
   merchant,
@@ -48,14 +51,14 @@ export const FallbackMerchantCard = memo(function FallbackMerchantCard({
         )}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(2) }}>
           <MapPin size={ms(11)} color={theme.textMuted} strokeWidth={2} />
-          <Text style={[styles.fallbackAddr, { color: theme.textMuted }]} numberOfLines={1}>
+          <Text style={[styles.fallbackAddr, { color: theme.textMuted, flexShrink: 1 }]} numberOfLines={1}>
             {merchant.adresse || merchant.ville || t('discover.positionAvailable')}
           </Text>
         </View>
         {distance !== null && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(3), marginTop: hp(3) }}>
             <Navigation size={ms(10)} color={palette.violet} strokeWidth={2} />
-            <Text style={{ fontSize: FS.xs, fontWeight: '700', color: palette.violet }}>
+            <Text style={{ fontSize: FS.xs, fontWeight: '600', color: palette.violet }}>
               {formatDistance(distance)}
             </Text>
           </View>
@@ -109,7 +112,7 @@ export const MerchantCallout = memo(function MerchantCallout({
           )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(5) }}>
             <MapPin size={ms(11)} color={theme.textMuted} strokeWidth={2} />
-            <Text style={{ fontSize: FS.xs, color: theme.textMuted }} numberOfLines={1}>
+            <Text style={{ flexShrink: 1, fontSize: FS.xs, color: theme.textMuted }} numberOfLines={1}>
               {merchant.adresse || merchant.ville || ''}
             </Text>
           </View>
@@ -134,7 +137,7 @@ export const MerchantCallout = memo(function MerchantCallout({
               accessibilityRole="button"
             >
               <BadgePercent size={ms(12)} color={theme.danger} strokeWidth={2.2} />
-              <Text style={{ flexShrink: 1, fontSize: FS.xs, fontWeight: '700', color: theme.danger }} numberOfLines={1}>
+              <Text style={{ flexShrink: 1, fontSize: FS.xs, fontWeight: '600', color: theme.danger }} numberOfLines={1}>
                 {merchant.topDeal?.title ?? t(pluralKey('deals.map.count', dealCount), { count: dealCount })}
               </Text>
             </Pressable>
@@ -149,7 +152,7 @@ export const MerchantCallout = memo(function MerchantCallout({
           >
             <Navigation size={ms(16)} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
-          <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} />
+          <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} style={DIR_FLIP} />
         </View>
       </Pressable>
     </View>

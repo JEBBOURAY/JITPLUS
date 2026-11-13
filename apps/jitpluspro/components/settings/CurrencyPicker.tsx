@@ -1,35 +1,34 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, FlatList, ActivityIndicator } from 'react-native';
-import { Banknote, Check, ChevronRight } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import { Check } from 'lucide-react-native';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 import { useDir } from '@/hooks/useDir';
 import { font, icon as iconTokens } from '@/constants/design';
 import { CURRENCY_LIST, type Currency, type CurrencyCode } from '@/config/currency';
+import BottomSheet from '@/components/ui/BottomSheet';
 import { fieldFill } from './surface';
 
 interface Props {
   theme: ThemeColors;
   t: (key: string, params?: Record<string, unknown>) => string;
   value: Currency;
-  saving: boolean;
+  visible: boolean;
   onSelect: (code: CurrencyCode) => void;
+  onClose: () => void;
 }
 
 /**
- * Devise des montants (achat par tampon, roue, coupons…). Ouvert à tous les
- * plans et enregistré dès la sélection, comme les cadeaux.
+ * Bottom sheet listing the currencies (amount per stamp, wheel, coupons…).
+ * Open to every plan; the parent saves the choice as soon as it is picked.
  */
-function CurrencyPicker({ theme, t, value, saving, onSelect }: Props) {
-  const [open, setOpen] = useState(false);
-  const { row, textAlign, flip } = useDir();
-  const insets = useSafeAreaInsets();
+function CurrencyPicker({ theme, t, value, visible, onSelect, onClose }: Props) {
+  const { row, textAlign } = useDir();
   const fill = fieldFill(theme);
 
   const pick = useCallback((code: CurrencyCode) => {
-    setOpen(false);
+    onClose();
     if (code !== value.code) onSelect(code);
-  }, [value.code, onSelect]);
+  }, [value.code, onSelect, onClose]);
 
   const renderItem = useCallback(({ item }: { item: Currency }) => {
     const active = item.code === value.code;
@@ -61,75 +60,38 @@ function CurrencyPicker({ theme, t, value, saving, onSelect }: Props) {
   }, [value.code, theme, fill, row, textAlign, pick]);
 
   return (
-    <>
-      <TouchableOpacity
-        style={[styles.trigger, { flexDirection: row, backgroundColor: fill }]}
-        onPress={() => setOpen(true)}
-        disabled={saving}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel={t('settingsPage.currencyLabel')}
-        accessibilityValue={{ text: `${value.name} (${value.code})` }}
-      >
-        <Banknote size={18} color={theme.primary} strokeWidth={iconTokens.stroke} />
-        <View style={styles.itemBody}>
-          <Text style={[styles.fieldLabel, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
-            {t('settingsPage.currencyLabel')}
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      scrollable
+      style={styles.sheet}
+      header={(
+        <>
+          <Text style={[styles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+            {t('settingsPage.currencySheetTitle')}
           </Text>
-          <Text style={[styles.itemSub, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
-            {value.name} · {value.symbol}
+          <Text style={[styles.subtitle, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.4}>
+            {t('settingsPage.currencySheetSubtitle')}
           </Text>
-        </View>
-        {saving ? (
-          <ActivityIndicator size="small" color={theme.primary} />
-        ) : (
-          <ChevronRight size={18} color={theme.textMuted} strokeWidth={iconTokens.stroke} style={flip} />
-        )}
-      </TouchableOpacity>
-
-      <Modal visible={open} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setOpen(false)}>
-        <View style={styles.backdrop}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setOpen(false)}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.close')}
-          />
-          <View
-            style={[styles.sheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + 12, 24) }]}
-            accessibilityViewIsModal
-          >
-            <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-            <Text style={[styles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
-              {t('settingsPage.currencySheetTitle')}
-            </Text>
-            <Text style={[styles.subtitle, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.4}>
-              {t('settingsPage.currencySheetSubtitle')}
-            </Text>
-            <FlatList
-              data={CURRENCY_LIST}
-              keyExtractor={(c) => c.code}
-              renderItem={renderItem}
-              style={styles.list}
-              showsVerticalScrollIndicator={false}
-            />
-          </View>
-        </View>
-      </Modal>
-    </>
+        </>
+      )}
+    >
+      <FlatList
+        data={CURRENCY_LIST}
+        keyExtractor={(c) => c.code}
+        renderItem={renderItem}
+        style={styles.list}
+        showsVerticalScrollIndicator={false}
+      />
+    </BottomSheet>
   );
 }
 
 export default React.memo(CurrencyPicker);
 
 const styles = StyleSheet.create({
-  trigger: { alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12 },
-  fieldLabel: { fontSize: 14, fontFamily: font.medium },
-
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 10, maxHeight: '82%' },
-  grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 999, marginBottom: 14 },
-  title: { fontSize: 18, fontFamily: font.bold, letterSpacing: -0.3 },
+  sheet: { maxHeight: '82%' },
+  title: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.3 },
   subtitle: { fontSize: 13, lineHeight: 18, fontFamily: font.regular, marginTop: 4, marginBottom: 12 },
   list: { flexGrow: 0 },
 

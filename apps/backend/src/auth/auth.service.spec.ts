@@ -101,6 +101,7 @@ const mockMailService = {
 const mockPlanService = {
   getTrialData: jest.fn().mockReturnValue({ plan: 'PREMIUM', trialStartedAt: new Date() }),
   isPremium: jest.fn().mockResolvedValue(true),
+  claimFoundingSlot: jest.fn().mockResolvedValue(null),
 };
 
 const mockReferralService = {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, FlatList, Pressable,
-  Platform, TouchableOpacity, Linking, Keyboard,
+  Platform, TouchableOpacity, Keyboard,
   useWindowDimensions, Alert,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Search, MapPin, X, LocateFixed, SlidersHorizontal, List } from 'lucide-react-native';
 import { pluralKey } from '@jitplus/shared';
+import { openDirections } from '@jitplus/shared/src/openLinks';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -138,14 +139,7 @@ export default function DiscoverScreen() {
 
   const openInMaps = useCallback((m: Merchant) => {
     if (m.latitude == null || m.longitude == null) return;
-    const label = encodeURIComponent(pointName(m));
-    const web = `https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`;
-    const url = Platform.select({
-      ios: `maps://app?daddr=${m.latitude},${m.longitude}&q=${label}`,
-      android: `google.navigation:q=${m.latitude},${m.longitude}&label=${label}`,
-      default: web,
-    });
-    Linking.openURL(url).catch(() => { Linking.openURL(web).catch(() => {}); });
+    void openDirections(m.latitude, m.longitude, pointName(m));
   }, []);
 
   // A list row or search result: on the map when it has a position, else its page.
@@ -359,12 +353,12 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: ms(8), paddingHorizontal: ms(18), borderRadius: ms(24), maxWidth: '60%',
     ...Platform.select({ ios: { shadowColor: '#000', shadowOpacity: 0.1, shadowOffset: { width: 0, height: 3 }, shadowRadius: 10 }, android: { elevation: 4 } }),
   },
-  pillText: { fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
+  pillText: { fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   chipActive: { backgroundColor: palette.violet, borderColor: palette.violet },
   fallbackIcon: {
     width: ms(88), height: ms(88), borderRadius: ms(24), backgroundColor: `${palette.gold}15`,
     alignItems: 'center', justifyContent: 'center', marginBottom: hp(16),
   },
   textAction: { marginTop: hp(10) },
-  actionText: { color: palette.violet, fontWeight: '700' },
+  actionText: { color: palette.violet, fontWeight: '600' },
 });

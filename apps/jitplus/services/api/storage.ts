@@ -95,12 +95,7 @@ export async function persistSession(): Promise<void> {
   });
 }
 
-export async function getRememberMe(): Promise<boolean> {
-  const val = await getStored(REMEMBER_ME_KEY);
-  return val === 'true';
-}
-
-export async function clearRememberMe(): Promise<void> {
+async function clearRememberMe(): Promise<void> {
   _shouldPersist = true;
   await removeStored(REMEMBER_ME_KEY);
 }
@@ -161,7 +156,7 @@ export async function getCachedProfile<T = unknown>(): Promise<T | null> {
   } catch { return null; }
 }
 
-export async function clearCachedProfile(): Promise<void> {
+async function clearCachedProfile(): Promise<void> {
   memoryTokens[PROFILE_CACHE_KEY] = null;
   if (Platform.OS === 'web') return;
   try { await AsyncStorage.removeItem(PROFILE_CACHE_KEY); } catch { /* non-fatal */ }

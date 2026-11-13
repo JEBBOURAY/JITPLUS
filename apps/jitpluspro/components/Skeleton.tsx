@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react';
-import { View, DimensionValue, StyleSheet, ViewStyle, useWindowDimensions, Animated } from 'react-native';
+import { View, DimensionValue, StyleSheet, ViewStyle, useWindowDimensions, Animated, Easing } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDir } from '@/hooks/useDir';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 // Ref-counted: the shared loop runs only while at least one instance is mounted.
 const _shimmerProgress = new Animated.Value(0);
@@ -15,6 +16,8 @@ function startShimmerLoop() {
       Animated.timing(_shimmerProgress, {
         toValue: 1,
         duration: 1200,
+        // A constant sweep: an eased loop would pause at each end.
+        easing: Easing.linear,
         useNativeDriver: true,
       }),
     );
@@ -44,11 +47,15 @@ function ShimmerBlock({
 }) {
   const theme = useTheme();
   const { width: SCREEN_W } = useWindowDimensions();
+  const reduceMotion = useReduceMotion();
+  // Reduced motion: a static placeholder block, no sweep.
+  const animate = reduceMotion === false;
 
   useEffect(() => {
+    if (!animate) return;
     startShimmerLoop();
     return stopShimmerLoop;
-  }, []);
+  }, [animate]);
 
   const translateX = useMemo(
     () => _shimmerProgress.interpolate({
@@ -71,16 +78,18 @@ function ShimmerBlock({
         style,
       ]}
     >
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            backgroundColor: theme.bgSkeletonHighlight,
-            opacity: 0.5,
-          },
-          { transform: [{ translateX }] },
-        ]}
-      />
+      {animate && (
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: theme.bgSkeletonHighlight,
+              opacity: 0.5,
+            },
+            { transform: [{ translateX }] },
+          ]}
+        />
+      )}
     </View>
   );
 }

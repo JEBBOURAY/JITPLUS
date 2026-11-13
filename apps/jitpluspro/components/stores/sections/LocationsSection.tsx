@@ -101,8 +101,8 @@ const markerStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
-      ios: { shadowColor: palette.violet, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 },
-      android: { elevation: 6 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3 },
+      android: { elevation: 2 },
     }),
   },
   logo: { width: MARKER_LOGO, height: MARKER_LOGO, borderRadius: 7 },
@@ -132,6 +132,8 @@ const StoreCard = React.memo(function StoreCard({ store, category, logoUrl, isRe
   const dir = useDir();
   const fill = fieldFill(theme);
   const address = formatAddress(store);
+  // A logo URL that 404s falls back to the category icon instead of a blank tile.
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
 
   return (
     <View style={[styles.card, { backgroundColor: theme.bgCard }, surfaceShadow(theme)]}>
@@ -144,8 +146,8 @@ const StoreCard = React.memo(function StoreCard({ store, category, logoUrl, isRe
       >
         <View style={[styles.cardTopRow, { flexDirection: dir.row }]}>
           <View style={[styles.cardAvatar, { backgroundColor: theme.primaryBg }, !store.isActive && styles.dimmed]}>
-            {logoUrl
-              ? <ExpoImage source={resolveImageUrl(logoUrl)} style={styles.cardAvatarLogo} contentFit="cover" cachePolicy="memory-disk" />
+            {logoUrl && logoUrl !== failedLogoUrl
+              ? <ExpoImage source={resolveImageUrl(logoUrl)} style={styles.cardAvatarLogo} contentFit="cover" cachePolicy="memory-disk" onError={() => setFailedLogoUrl(logoUrl)} />
               : <MerchantCategoryIcon category={category} size={24} />}
           </View>
           <View style={styles.cardInfo}>
@@ -497,8 +499,8 @@ const styles = StyleSheet.create({
   dimmed: { opacity: 0.5 },
 
   mapWrap: { height: 168, borderRadius: 12, overflow: 'hidden', marginBottom: 14 },
-  addBtnRaised: { backgroundColor: palette.violet, borderColor: palette.violet, borderBottomWidth: 3, borderBottomColor: palette.violetDark, shadowColor: palette.violet, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.24, shadowRadius: 10, elevation: 3 },
-  addBtnLocked: { backgroundColor: palette.gold + '2E', borderColor: 'transparent', borderBottomWidth: 3 },
+  addBtnRaised: { backgroundColor: palette.violet, borderColor: palette.violet },
+  addBtnLocked: { backgroundColor: palette.gold + '2E', borderColor: 'transparent' },
   addBtnLockedText: { color: LOCKED_GOLD },
   limitText: { textAlign: 'center' },
 

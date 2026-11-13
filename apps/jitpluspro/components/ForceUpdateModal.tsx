@@ -5,10 +5,9 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Download, AlertTriangle, Wrench } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme, brandGradient, brandGradientFull, palette } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { font, icon } from '@/constants/design';
@@ -49,26 +48,16 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
-      <LinearGradient
-        colors={brandGradientFull}
-        style={[styles.topStrip, { height: insets.top + 8 }]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-      />
+      <View style={[styles.topStrip, { height: insets.top + 8, backgroundColor: palette.violetDark }]} />
 
       <View style={[styles.content, { paddingBottom: insets.bottom + 32 }]}>
-        <LinearGradient
-          colors={isUpdate ? brandGradient : [palette.violet, palette.charbonDark]}
-          style={styles.iconBg}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
+        <View style={[styles.iconBg, { backgroundColor: palette.violet }]}>
           {isUpdate ? (
             <Download color={palette.white} size={44} strokeWidth={icon.stroke} />
           ) : (
             <Wrench color={palette.white} size={44} strokeWidth={icon.stroke} />
           )}
-        </LinearGradient>
+        </View>
 
         <Text style={[styles.title, { color: theme.text }]}>
           {isUpdate
@@ -150,15 +139,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
-    shadowColor: palette.charbon,
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 6,
+    elevation: 2,
   },
   title: {
     fontSize: 24,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     textAlign: 'center',
     lineHeight: 32,
   },

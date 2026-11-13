@@ -47,3 +47,8 @@ export function rescaleStamps(value: number, oldRef: number, newRef: number, min
 export function cardSlots(rewardCosts: number[], stampsForReward: number): number {
   return rewardCosts.length > 0 ? Math.min(...rewardCosts) : stampsForReward;
 }
+
+/** The gift that sizes the card the client sees: the cheapest one (first on a tie), or null without gifts. */
+export function cheapestReward<T extends { cout: number }>(rewards: readonly T[]): T | null {
+  return rewards.length > 0 ? rewards.reduce((min, r) => (r.cout < min.cout ? r : min)) : null;
+}

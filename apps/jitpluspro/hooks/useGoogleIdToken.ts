@@ -1,15 +1,10 @@
 /**
- * Lightweight Google ID token capture hook for registration flow.
- * Unlike useGoogleAuth (login), this does NOT call any backend endpoint.
- * It only obtains the Google ID token so the register form can submit it later.
- *
- * Uses @react-native-google-signin/google-signin (native SDK) for production builds.
- * In Expo Go the native module is unavailable — the hook degrades gracefully.
+ * Google ID token capture for the registration flow: unlike useGoogleAuth
+ * (login) it calls no backend endpoint, the register form submits the token later.
  */
 import { useCallback, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { GoogleSignin, isErrorWithCode, statusCodes } from '@/utils/googleSignin';
-import { WEB_CLIENT_ID } from '@/config/google';
+import { requestGoogleIdToken } from '@/utils/socialSignIn';
 
 interface UseGoogleIdTokenResult {
   isLoading: boolean;
@@ -25,58 +20,10 @@ export function useGoogleIdToken(onToken: (idToken: string) => void): UseGoogleI
   const promptGoogle = useCallback(async () => {
     setError('');
     setIsLoading(true);
-
-    if (!GoogleSignin || !isErrorWithCode || !statusCodes) {
-      setIsLoading(false);
-      setError(t('googleAuth.notConfigured'));
-      return;
-    }
-
-    if (!WEB_CLIENT_ID) {
-      setIsLoading(false);
-      setError(t('googleAuth.notConfigured'));
-      return;
-    }
-
-    try {
-      await GoogleSignin.hasPlayServices();
-
-      const response = await GoogleSignin.signIn();
-
-      // V16 API: cancellation returns { type: 'cancelled' }
-      if ('type' in response && response.type === 'cancelled') {
-        setIsLoading(false);
-        return;
-      }
-
-      const idToken = response.data?.idToken;
-
-      if (!idToken) {
-        setIsLoading(false);
-        setError(t('googleAuth.noIdToken'));
-        return;
-      }
-
-      setIsLoading(false);
-      onToken(idToken);
-    } catch (err) {
-      setIsLoading(false);
-
-      if (isErrorWithCode && statusCodes && isErrorWithCode(err)) {
-        if (
-          err.code === statusCodes.SIGN_IN_CANCELLED ||
-          err.code === statusCodes.IN_PROGRESS
-        ) {
-          return;
-        }
-        if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-          setError(t('googleAuth.playServicesUnavailable'));
-          return;
-        }
-      }
-
-      setError(t('googleAuth.launchError'));
-    }
+    const outcome = await requestGoogleIdToken(t);
+    setIsLoading(false);
+    if (outcome.ok) onToken(outcome.value);
+    else if (outcome.error) setError(outcome.error);
   }, [onToken, t]);
 
   return { isLoading, error, promptGoogle };

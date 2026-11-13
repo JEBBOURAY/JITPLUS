@@ -1,5 +1,6 @@
 import { MAX_AMOUNT_DIGITS } from '@/constants/app';
 import { computeStampsForAmount } from '@/utils/stamps';
+import { initialsOf } from '@/utils/initials';
 
 export type EarningMode = 'PER_VISIT' | 'PER_AMOUNT';
 
@@ -147,9 +148,5 @@ export function parseAmount(text: string): number {
 }
 
 export function initials(prenom?: string | null, nom?: string | null): string {
-  const letters = [prenom, nom]
-    .map((part) => (part ?? '').trim().charAt(0))
-    .filter(Boolean)
-    .join('');
-  return letters.toUpperCase() || '?';
+  return initialsOf([prenom, nom]);
 }

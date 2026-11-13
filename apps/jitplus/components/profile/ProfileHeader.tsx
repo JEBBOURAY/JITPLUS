@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
+import { intlLocaleTag } from '@jitplus/shared/src/currency';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/AppText';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BadgeCheck, Pencil } from 'lucide-react-native';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -11,7 +11,6 @@ import { getInitials } from '@/utils/profileCompletion';
 import { fontSize as FS, hp, ms, radius, wp } from '@/utils/responsive';
 import type { Client } from '@/types';
 
-const LOCALE_TAGS: Record<string, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
 
 interface ProfileHeaderProps {
   client: Client | null;
@@ -30,7 +29,7 @@ function ProfileHeader({ client, isLoading, onEdit }: ProfileHeaderProps) {
     const date = new Date(createdAt);
     if (Number.isNaN(date.getTime())) return null;
     try {
-      const label = new Intl.DateTimeFormat(LOCALE_TAGS[locale] ?? 'fr-FR', { month: 'long', year: 'numeric' }).format(date);
+      const label = new Intl.DateTimeFormat(intlLocaleTag(locale), { month: 'long', year: 'numeric' }).format(date);
       return t('profile.memberSince', { date: label });
     } catch {
       return null;
@@ -44,16 +43,11 @@ function ProfileHeader({ client, isLoading, onEdit }: ProfileHeaderProps) {
   return (
     <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
       <View style={styles.identityRow}>
-        <LinearGradient
-          colors={[palette.violet, palette.violetVivid, palette.gold]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.avatarRing}
-        >
+        <View style={[styles.avatarRing, { backgroundColor: `${palette.violet}2E` }]}>
           <View style={[styles.avatarInner, { backgroundColor: theme.isDark ? palette.violetDeep : palette.violet }]}>
-            <Text style={[styles.avatarText, { fontFamily: fonts.bold }]}>{getInitials(client)}</Text>
+            <Text style={[styles.avatarText, { fontFamily: fonts.bold }]} maxFontSizeMultiplier={1.2}>{getInitials(client)}</Text>
           </View>
-        </LinearGradient>
+        </View>
 
         <View style={styles.identityText}>
           {isLoading ? (
@@ -68,7 +62,7 @@ function ProfileHeader({ client, isLoading, onEdit }: ProfileHeaderProps) {
               </Text>
               {!!contact && (
                 <View style={styles.contactRow}>
-                  <Text style={[styles.contact, { color: theme.textSecondary, fontFamily: fonts.regular }]} numberOfLines={1}>
+                  <Text style={[styles.contact, { color: theme.textSecondary, fontFamily: fonts.regular }]} numberOfLines={1} ellipsizeMode="middle">
                     {contact}
                   </Text>
                   {contactVerified && <BadgeCheck size={ms(14)} color={palette.emerald} strokeWidth={2.2} />}

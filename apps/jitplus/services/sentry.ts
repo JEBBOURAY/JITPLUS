@@ -44,7 +44,9 @@ function startSentry(): void {
     integrations: [navigationIntegration],
     attachScreenshot: false, // Screenshots can capture PII (names, cards, balances)
     attachViewHierarchy: false,
-    ignoreErrors: ['No refresh token', 'Session expired', 'Network Error', 'ECONNABORTED'],
+    // Axios puts the code in `error.code`, which ignoreErrors never sees; a
+    // timeout's message is "timeout of 15000ms exceeded".
+    ignoreErrors: ['No refresh token', 'Session expired', 'Network Error', 'ECONNABORTED', /timeout of \d+ms exceeded/],
     beforeSend: async (event) => ((await optOut) ? null : scrubSentryEvent(event)),
     beforeSendTransaction: async (event) => ((await optOut) ? null : event),
   });

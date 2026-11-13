@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import i18n from '@/i18n';
 import { logWarn } from '@/utils/devLogger';
-import { isExpoGo, loadNotifications } from '@/utils/expoNotifications';
+import { isExpoGo, loadNotifications } from '@jitplus/shared/src/expoNotifications';
 
 const Notifications = loadNotifications();
 

@@ -11,15 +11,13 @@ import {
   Platform,
   RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
   ArrowLeft,
   Check,
   X,
   Clock,
-  MessageSquare,
   Mail,
   MessageCircle,
   Repeat,
@@ -38,6 +36,7 @@ import {
 } from '@/components/icons';
 import { hapticLight, hapticSuccess } from '@/utils/haptics';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
+import { getPlanStatus } from '@/utils/plan';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -221,13 +220,7 @@ export default function PlanScreen() {
         icon: <JitBell size={16} color={theme.primary} strokeWidth={icon.stroke} />,
         label: t('account.planFeaturePush'),
         free: true,
-        premium: t('account.planFeaturePushPremium'),
-      },
-      {
-        icon: <MessageSquare size={16} color={theme.primary} strokeWidth={icon.stroke} />,
-        label: t('account.planFeatureMessages'),
-        free: false,
-        premium: t('account.planFeatureMessagesPremium'),
+        premium: true,
       },
       {
         icon: <UserCheck size={16} color={theme.primary} strokeWidth={icon.stroke} />,
@@ -256,6 +249,9 @@ export default function PlanScreen() {
     ],
     [t, theme.primary],
   );
+
+  // Founding members have no plan to show (e.g. an old "open_plan" notification).
+  if (getPlanStatus(merchant).hidePlan || planInfo?.foundingMember) return <Redirect href="/account" />;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -339,11 +335,8 @@ export default function PlanScreen() {
               {IS_IOS ? t('account.planGuideTextIOS') : t('account.planGuideText')}
             </Text>
           </View>
-          <LinearGradient
-            colors={isPremium ? ['#4C1D95', '#7C3AED', '#1F2937'] : [theme.bgCard, theme.bgCard]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.heroCard, { borderColor: isPremium ? 'transparent' : theme.border }]}
+          <View
+            style={[styles.heroCard, { backgroundColor: isPremium ? palette.violetDark : theme.bgCard, borderColor: isPremium ? 'transparent' : theme.border }]}
             accessible
             accessibilityRole="summary"
             accessibilityLabel={planBadgeLabel}
@@ -408,7 +401,7 @@ export default function PlanScreen() {
                 <Text style={styles.expiryChipText} maxFontSizeMultiplier={1.3}>{t('account.planExpiryDaysChip', { count: planInfo.daysRemaining })}</Text>
               </View>
             )}
-          </LinearGradient>
+          </View>
 
           {!isPremium && referralMonths > 0 && (
             <TouchableOpacity
@@ -590,7 +583,7 @@ const styles = StyleSheet.create({
   flex1: { flex: 1 },
   flex2: { flex: 2 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12 },
-  errorTitle: { fontSize: 18, fontFamily: font.bold, marginTop: 4, textAlign: 'center' },
+  errorTitle: { fontSize: 18, fontFamily: font.semibold, marginTop: 4, textAlign: 'center' },
   errorText: { fontSize: 14, lineHeight: 20, textAlign: 'center', fontFamily: font.regular },
   retryBtn: { marginTop: 8, paddingHorizontal: 24 },
 
@@ -605,7 +598,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     fontSize: 28,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.5,
   },
 
@@ -632,7 +625,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   heroBadgeText: { fontSize: 12, fontFamily: font.semibold },
-  heroTitle: { fontSize: 24, marginBottom: 5, fontFamily: font.bold },
+  heroTitle: { fontSize: 24, marginBottom: 5, fontFamily: font.semibold },
   heroSub: { fontSize: 13, lineHeight: 19, fontFamily: font.regular },
   progressWrap: { marginTop: 18 },
   progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
@@ -686,7 +679,7 @@ const styles = StyleSheet.create({
   rowLabelText: { fontSize: 13, flex: 1, fontFamily: font.regular },
   rowCell: { flex: 1, alignItems: 'center', paddingVertical: 3 },
   cellVal: { fontSize: 11, textAlign: 'center', fontFamily: font.semibold },
-  cellValPro: { fontFamily: font.bold },
+  cellValPro: { fontFamily: font.semibold },
 
   btnOutline: {
     alignItems: 'center',

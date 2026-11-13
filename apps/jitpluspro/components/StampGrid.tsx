@@ -5,6 +5,7 @@ import { JitGift } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { font } from '@/constants/design';
+import { useDir } from '@/hooks/useDir';
 
 interface StampGridProps {
   /** Current number of collected stamps */
@@ -22,8 +23,11 @@ export default React.memo(function StampGrid({
 }: StampGridProps) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const clamped = Math.min(current, total);
-  const displayTotal = Math.min(total, 30); // cap for very large grids
+  // Past this many circles the grid stops being readable: show a bar instead.
+  const asBar = total > MAX_CIRCLES;
+  const displayTotal = asBar ? 0 : total;
 
   // Memoize stamp array to avoid re-allocation on every render
   const stamps = useMemo(
@@ -33,7 +37,12 @@ export default React.memo(function StampGrid({
 
   return (
     <View style={styles.container}>
-      <View style={styles.grid}>
+      {asBar ? (
+        <View style={[styles.track, { backgroundColor: theme.border, alignItems: dir.alignStart }]}>
+          <View style={[styles.fill, { backgroundColor: theme.primary, width: `${total > 0 ? (clamped / total) * 100 : 0}%` }]} />
+        </View>
+      ) : (
+      <View style={[styles.grid, { flexDirection: dir.row }]}>
         {stamps.map((i) => {
           const filled = i < clamped;
           const isLast = i === displayTotal - 1;
@@ -61,25 +70,29 @@ export default React.memo(function StampGrid({
           );
         })}
       </View>
+      )}
 
       <Text style={[styles.label, { color: theme.textSecondary }]}>
-        {t('stampGrid.count', { current: clamped, total })}
+        {t('stampGrid.count', { current, total })}
         {clamped >= total && `  ${t('stampGrid.rewardReady')}`}
       </Text>
     </View>
   );
 });
 
+const MAX_CIRCLES = 30;
+
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
   },
   grid: {
-    flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 10,
   },
+  track: { alignSelf: 'stretch', height: 12, borderRadius: 999, overflow: 'hidden' },
+  fill: { height: 12, borderRadius: 999 },
   circle: {
     borderWidth: 2.5,
     alignItems: 'center',

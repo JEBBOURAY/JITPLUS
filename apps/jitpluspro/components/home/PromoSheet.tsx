@@ -9,7 +9,6 @@ import {
   Pressable,
   I18nManager,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -40,7 +39,7 @@ export function SheetSectionLabel({ text, tone, Icon }: { text: string; tone: Pr
   const color = useSheetColors().ink(tone);
   const label = (
     <Text style={[styles.sectionLabel, { color }]} maxFontSizeMultiplier={1.2}>
-      {text.toUpperCase()}
+      {text}
     </Text>
   );
   if (!Icon) return <View style={styles.sectionLabelWrap}>{label}</View>;
@@ -74,13 +73,15 @@ interface PromoSheetProps {
   heroFooter?: React.ReactNode;
   /** Fixed primary button at the bottom of the sheet. */
   cta?: PromoSheetCta;
+  /** White header instead of the tone hero (the "Guide de départ" sheet). */
+  plain?: boolean;
   /** "Compris" link under the CTA. Always shown when there is no CTA. */
   showClose?: boolean;
   children: React.ReactNode;
 }
 
 /**
- * Shared shell of the Accueil promo sheets: bottom modal, gradient hero,
+ * Shared shell of the Accueil promo sheets: bottom modal, solid tone hero,
  * scrollable body and a fixed footer with the primary action.
  */
 export default function PromoSheet({
@@ -94,13 +95,14 @@ export default function PromoSheet({
   heroBackground,
   heroFooter,
   cta,
+  plain = false,
   showClose = true,
   children,
 }: PromoSheetProps) {
   const theme = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const { surface, hairline } = useSheetColors();
+  const { surface, hairline, ink } = useSheetColors();
   const isRTL = I18nManager.isRTL;
   const { fill: accent, deep: accentDeep } = PROMO_TONES[tone];
 
@@ -123,25 +125,39 @@ export default function PromoSheet({
             bounces={false}
             keyboardShouldPersistTaps="handled"
           >
-            <LinearGradient colors={[accent, accentDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-              {heroBackground}
-              <View style={styles.grabber} />
-              <View style={[styles.heroTopRow, isRTL && styles.rowRtl]}>
-                <View style={styles.heroChip}>
-                  <Text style={styles.heroChipText} maxFontSizeMultiplier={1.2}>
-                    {heroLabel.toUpperCase()}
-                  </Text>
-                </View>
-                {heroBadge ? <View style={styles.heroBadge}>{heroBadge}</View> : null}
+            {plain ? (
+              <View style={[styles.hero, styles.heroPlain]}>
+                <View style={[styles.grabber, { backgroundColor: hairline }]} />
+                <Text style={[styles.plainLabel, { color: ink(tone) }]} maxFontSizeMultiplier={1.2}>{heroLabel}</Text>
+                <Text style={[styles.heroTitle, { color: theme.text }]} maxFontSizeMultiplier={1.15} accessibilityRole="header">
+                  {title}
+                </Text>
+                <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {subtitle}
+                </Text>
+                {heroFooter}
               </View>
-              <Text style={styles.heroTitle} maxFontSizeMultiplier={1.15} accessibilityRole="header">
-                {title}
-              </Text>
-              <Text style={styles.heroSubtitle} maxFontSizeMultiplier={1.3}>
-                {subtitle}
-              </Text>
-              {heroFooter}
-            </LinearGradient>
+            ) : (
+              <View style={[styles.hero, { backgroundColor: accentDeep }]}>
+                {heroBackground}
+                <View style={styles.grabber} />
+                <View style={[styles.heroTopRow, isRTL && styles.rowRtl]}>
+                  <View style={styles.heroChip}>
+                    <Text style={styles.heroChipText} maxFontSizeMultiplier={1.2}>
+                      {heroLabel}
+                    </Text>
+                  </View>
+                  {heroBadge ? <View style={styles.heroBadge}>{heroBadge}</View> : null}
+                </View>
+                <Text style={styles.heroTitle} maxFontSizeMultiplier={1.15} accessibilityRole="header">
+                  {title}
+                </Text>
+                <Text style={styles.heroSubtitle} maxFontSizeMultiplier={1.3}>
+                  {subtitle}
+                </Text>
+                {heroFooter}
+              </View>
+            )}
 
             <View style={styles.content}>{children}</View>
           </ScrollView>
@@ -159,7 +175,7 @@ export default function PromoSheet({
                 style={[
                   styles.ctaBtn,
                   isRTL && styles.rowRtl,
-                  { backgroundColor: accent, borderBottomColor: accentDeep, shadowColor: accent },
+                  { backgroundColor: accent },
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={cta.label}
@@ -211,6 +227,8 @@ const styles = StyleSheet.create({
   flipX: { transform: [{ scaleX: -1 }] },
 
   hero: { paddingHorizontal: 22, paddingTop: 10, paddingBottom: 22 },
+  heroPlain: { paddingHorizontal: 20, paddingBottom: 6 },
+  plainLabel: { fontSize: 13, fontFamily: 'Lexend_600SemiBold', marginBottom: 6 },
   grabber: {
     width: 40,
     height: 4,
@@ -227,13 +245,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   heroChip: {
-    // Dark veil, not a white one: gold text on a lightened gradient drops under 3:1.
+    // Dark veil, not a white one: keeps the gold text above 3:1 on every tone.
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  heroChipText: { color: palette.gold, fontSize: 10.5, letterSpacing: 1.2, fontFamily: 'Lexend_600SemiBold' },
+  heroChipText: { color: palette.gold, fontSize: 12, fontFamily: 'Lexend_500Medium' },
   heroBadge: {
     width: 44,
     height: 44,
@@ -242,17 +260,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   heroTitle: {
     color: '#FFFFFF',
     fontSize: 21,
     lineHeight: 27,
     letterSpacing: -0.3,
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: 'Lexend_600SemiBold',
   },
   heroSubtitle: {
     color: 'rgba(255,255,255,0.92)',
@@ -264,7 +282,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 6 },
   sectionLabelWrap: { marginTop: 18, marginBottom: 8 },
   sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sectionLabel: { fontSize: 11, letterSpacing: 1, fontFamily: 'Lexend_700Bold' },
+  sectionLabel: { fontSize: 13, fontFamily: 'Lexend_500Medium' },
 
   footer: { paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
   ctaBtn: {
@@ -275,13 +293,8 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     paddingVertical: 14,
     paddingHorizontal: 14,
-    borderBottomWidth: 3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 4,
   },
-  ctaText: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Lexend_700Bold', flexShrink: 1, textAlign: 'center' },
+  ctaText: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Lexend_600SemiBold', flexShrink: 1, textAlign: 'center' },
   closeLink: { minHeight: 40, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   closeText: { fontSize: 13.5, fontFamily: 'Lexend_600SemiBold' },
 });

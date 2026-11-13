@@ -1,27 +1,14 @@
 /**
- * Apple Sign-In hook for the JitPlus Pro merchant app.
- * Uses expo-apple-authentication to trigger the native Apple Sign-In flow on iOS.
- * On Android/web, Apple Sign-In is not available — the hook degrades gracefully.
+ * Apple login for JitPlus Pro (merchant app): native prompt (iOS only), then the backend.
+ * On Android/web Apple Sign-In is not available and the hook degrades gracefully.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
-import { randomUUID, sha256Hex } from '@/utils/crypto';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { isAppleSignInAvailable, requestAppleCredential } from '@/utils/socialSignIn';
 import { isNoAccountError } from '@/utils/authErrors';
 import { hapticSuccess } from '@/utils/haptics';
-
-// Lazy-load so Android/web doesn't crash
-let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
-if (Platform.OS === 'ios') {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    AppleAuthentication = require('expo-apple-authentication');
-  } catch {
-    // Not available
-  }
-}
 
 export function useAppleAuth() {
   const { appleLogin } = useAuth();
@@ -40,66 +27,39 @@ export function useAppleAuth() {
     setNoAccount(false);
     setIsLoading(true);
 
-    // Tracks whether navigation will occur — keeps spinner visible during transition
-    let navigatingOnSuccess = false;
+    const outcome = await requestAppleCredential(t);
+    if (!mountedRef.current) return;
+    if (!outcome.ok) {
+      setIsLoading(false);
+      if (outcome.error) setError(outcome.error);
+      return;
+    }
 
+    const { identityToken, givenName, familyName, rawNonce } = outcome.value;
+    let result: Awaited<ReturnType<typeof appleLogin>>;
     try {
-      if (!AppleAuthentication || Platform.OS !== 'ios') {
-        setError(t('appleAuth.notAvailable'));
-        return;
-      }
-
-      // Generate a cryptographically secure raw nonce, send sha256(rawNonce) to Apple,
-      // and forward the raw nonce to the backend so it can verify the JWT `nonce` claim.
-      // Prevents replay attacks (Apple security recommendation).
-      const rawNonce = randomUUID() + randomUUID().replace(/-/g, '');
-      const hashedNonce = await sha256Hex(rawNonce);
-
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce: hashedNonce,
-      });
-
-      if (!credential.identityToken) {
-        setError(t('appleAuth.noToken'));
-        return;
-      }
-
-      const result = await appleLogin(
-        credential.identityToken,
-        credential.fullName?.givenName ?? undefined,
-        credential.fullName?.familyName ?? undefined,
-        rawNonce,
-      );
-
-      if (!mountedRef.current) return;
-
-      if (result.success) {
-        navigatingOnSuccess = true;
-        hapticSuccess();
-        router.replace('/(tabs)');
-      } else {
-        if (result.rawError && isNoAccountError(result.rawError)) {
-          setNoAccount(true);
-          setError(t('appleAuth.noAccountFound'));
-        } else {
-          setError(result.error || t('appleAuth.error'));
-        }
-      }
-    } catch (e: unknown) {
-      if (!mountedRef.current) return;
-
-      const code = (e as { code?: string } | null)?.code;
-      if (code === 'ERR_REQUEST_CANCELED') return;
-      setError(t('appleAuth.error'));
-    } finally {
-      // Keep the spinner during navigation to avoid a brief re-enable flicker
-      if (mountedRef.current && !navigatingOnSuccess) {
+      result = await appleLogin(identityToken, givenName, familyName, rawNonce);
+    } catch {
+      if (mountedRef.current) {
         setIsLoading(false);
+        setError(t('appleAuth.error'));
       }
+      return;
+    }
+    if (!mountedRef.current) return;
+
+    if (result.success) {
+      // Keep the spinner during navigation to avoid a brief re-enable flicker
+      hapticSuccess();
+      router.replace('/(tabs)');
+      return;
+    }
+    setIsLoading(false);
+    if (result.rawError && isNoAccountError(result.rawError)) {
+      setNoAccount(true);
+      setError(t('appleAuth.noAccountFound'));
+    } else {
+      setError(result.error || t('appleAuth.error'));
     }
   }, [appleLogin, t]);
 
@@ -108,8 +68,5 @@ export function useAppleAuth() {
     setError('');
   }, []);
 
-  /** True when Apple Sign-In is available on this device */
-  const isAvailable = Platform.OS === 'ios' && !!AppleAuthentication;
-
-  return { promptApple, isLoading, error, isAvailable, noAccount, dismissNoAccount };
+  return { promptApple, isLoading, error, isAvailable: isAppleSignInAvailable, noAccount, dismissNoAccount };
 }

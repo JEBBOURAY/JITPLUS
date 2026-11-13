@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { intlLocaleTag } from '@jitplus/shared/src/currency';
 import {
   View, FlatList, RefreshControl, TouchableOpacity, Pressable, Alert, Platform, Linking,
   AppState, LayoutAnimation, type NativeSyntheticEvent, type NativeScrollEvent,
@@ -8,8 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Bell, BellRing, CheckCheck, Trash2, X, Compass, WifiOff, RotateCcw, ArrowLeftRight,
 } from 'lucide-react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { loadNotifications } from '@/utils/expoNotifications';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { loadNotifications } from '@jitplus/shared/src/expoNotifications';
 import { registerForPushNotifications } from '@/utils/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { haptic, hapticSuccess, HapticStyle } from '@/utils/haptics';
@@ -46,7 +47,6 @@ export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBo
 type Filter = 'all' | 'unread';
 type ListItem = NotifListItem<ClientNotification>;
 
-const LOCALE_TAGS: Record<string, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
 const SECTION_LABEL_KEYS: Record<NotifSection, string> = {
   today: 'notifications.sectionToday',
   yesterday: 'notifications.sectionYesterday',
@@ -60,7 +60,7 @@ const PUSH_BANNER_DISMISSED_KEY = 'push_banner_dismissed_at';
 const PUSH_BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function getDateFormatters(locale: string) {
-  const tag = LOCALE_TAGS[locale] || 'fr-FR';
+  const tag = intlLocaleTag(locale);
   return {
     time: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit' }),
     weekday: new Intl.DateTimeFormat(tag, { weekday: 'long' }),
@@ -217,6 +217,8 @@ export default function NotificationsScreen() {
 
   const handleSwipeDismiss = useCallback((id: string) => { dismissOne.mutate(id); }, [dismissOne]);
 
+  const handleOpenLink = useCallback((route: Href) => { router.push(route); }, [router]);
+
   const handleModalDelete = useCallback((id: string) => {
     haptic(HapticStyle.Medium);
     smoothLayout();
@@ -243,7 +245,6 @@ export default function NotificationsScreen() {
   const handleFilterChange = useCallback((next: Filter) => {
     if (next === filter) return;
     haptic();
-    smoothLayout();
     setFilter(next);
   }, [filter]);
 
@@ -274,7 +275,9 @@ export default function NotificationsScreen() {
   const formatFullDate = useCallback((date: Date) => fmts.full.format(date), [fmts]);
 
   // ── Rendering ──
-  const staggerCacheRef = useRef<Map<string, number>>(new Map());
+  // Rows fade in once, the first time the first batch shows. A row virtualized
+  // out and back in, or a later page, appears in place instead of replaying it.
+  const seenRowsRef = useRef<Set<string>>(new Set());
 
   const renderItem = useCallback(({ item, index }: { item: ListItem; index: number }) => {
     if (item.kind === 'header') {
@@ -288,14 +291,15 @@ export default function NotificationsScreen() {
       );
     }
     const { notif } = item;
-    if (!staggerCacheRef.current.has(notif.id)) {
-      staggerCacheRef.current.set(
-        notif.id,
-        index < STAGGERED_ITEMS ? Math.min(index * STAGGER_DELAY_MS, MAX_STAGGER_DELAY_MS) : 0,
-      );
-    }
+    const animate = index < STAGGERED_ITEMS && !seenRowsRef.current.has(notif.id);
+    seenRowsRef.current.add(notif.id);
     return (
-      <FadeInView delay={staggerCacheRef.current.get(notif.id)!} duration={350} distance={hp(10)}>
+      <FadeInView
+        animate={animate}
+        delay={animate ? Math.min(index * STAGGER_DELAY_MS, MAX_STAGGER_DELAY_MS) : 0}
+        duration={250}
+        distance={hp(8)}
+      >
         <NotificationCard
           notif={notif}
           timeLabel={formatTimeLabel(notif.createdAt)}
@@ -574,6 +578,7 @@ export default function NotificationsScreen() {
         notif={selectedNotif}
         onClose={handleCloseModal}
         onDelete={handleModalDelete}
+        onOpenLink={handleOpenLink}
         theme={theme}
         fonts={fonts}
         formatDate={formatFullDate}

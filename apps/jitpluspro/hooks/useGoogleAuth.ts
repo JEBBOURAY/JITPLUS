@@ -1,13 +1,12 @@
 /**
- * Shared Google authentication hook for JitPlus Pro (merchant app).
- * Uses @react-native-google-signin/google-signin (native SDK) for production builds.
- * In Expo Go the native module is unavailable — the hook degrades gracefully.
+ * Google login for JitPlus Pro (merchant app): native prompt, then the backend.
+ * In Expo Go the native module is unavailable and the hook degrades gracefully.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { GoogleSignin, isErrorWithCode, statusCodes } from '@/utils/googleSignin';
+import { requestGoogleIdToken } from '@/utils/socialSignIn';
 import { isNoAccountError } from '@/utils/authErrors';
 import { hapticSuccess } from '@/utils/haptics';
 
@@ -23,79 +22,30 @@ export function useGoogleAuth() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  /** Launch the Google prompt */
   const promptGoogle = useCallback(async () => {
     setError('');
     setNoAccount(false);
     setIsLoading(true);
 
-    if (!GoogleSignin || !isErrorWithCode || !statusCodes) {
+    const outcome = await requestGoogleIdToken(t);
+    if (!outcome.ok) {
+      if (!mountedRef.current) return;
       setIsLoading(false);
-      setError(t('googleAuth.notConfigured'));
+      if (outcome.error) setError(outcome.error);
       return;
     }
 
-    try {
-      await GoogleSignin.hasPlayServices();
-
-      const response = await GoogleSignin.signIn();
-
-      // V16 API: cancellation returns { type: 'cancelled' }
-      if ('type' in response && response.type === 'cancelled') {
-        setIsLoading(false);
-        return;
-      }
-
-      const idToken = response.data?.idToken;
-
-      if (!idToken) {
-        setIsLoading(false);
-        setError(t('googleAuth.noIdToken'));
-        return;
-      }
-
-      const result = await googleLogin(idToken);
-
-      if (!mountedRef.current) return;
-
-      setIsLoading(false);
-      if (result.success) {
-        hapticSuccess();
-        router.replace('/(tabs)');
-      } else {
-        if (result.rawError && isNoAccountError(result.rawError)) {
-          setNoAccount(true);
-          setError(t('googleAuth.noAccountFound'));
-        } else {
-          setError(result.error || t('googleAuth.error'));
-        }
-      }
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setIsLoading(false);
-
-      if (isErrorWithCode && statusCodes && isErrorWithCode(err)) {
-        if (
-          err.code === statusCodes.SIGN_IN_CANCELLED ||
-          err.code === statusCodes.IN_PROGRESS
-        ) {
-          return;
-        }
-        if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-          setError(t('googleAuth.playServicesUnavailable'));
-          return;
-        }
-      }
-
-      const nativeMsg = err instanceof Error ? err.message : String(err);
-      const code = isErrorWithCode && isErrorWithCode(err) ? (err as { code: string }).code : '';
-      const userMessage = t('googleAuth.launchError');
-      if (__DEV__) {
-        const detail = code ? `[${code}] ${nativeMsg}` : nativeMsg;
-        setError(`${userMessage}\n${detail}`);
-      } else {
-        setError(userMessage);
-      }
+    const result = await googleLogin(outcome.value);
+    if (!mountedRef.current) return;
+    setIsLoading(false);
+    if (result.success) {
+      hapticSuccess();
+      router.replace('/(tabs)');
+    } else if (result.rawError && isNoAccountError(result.rawError)) {
+      setNoAccount(true);
+      setError(t('googleAuth.noAccountFound'));
+    } else {
+      setError(result.error || t('googleAuth.error'));
     }
   }, [googleLogin, t]);
 

@@ -32,7 +32,7 @@ export function GameEmptyState({ visual, title, text, steps, action }: {
   const theme = useTheme();
   const { row, textAlign } = useDir();
   return (
-    <View style={[styles.empty, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+    <View style={[styles.empty, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
       {visual}
       <Text style={[styles.emptyTitle, { color: theme.text }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>{title}</Text>
       <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>{text}</Text>
@@ -77,7 +77,7 @@ export function CampaignRow({ leading, title, status, lines, onPress, accessibil
       activeOpacity={0.75}
       accessibilityRole="button"
       accessibilityLabel={[accessibilityLabel, ...lines.map((line) => line.text)].join(', ')}
-      style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, flexDirection: row }]}
+      style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border, flexDirection: row }]}
     >
       {leading}
       <View style={styles.cardBody}>
@@ -119,18 +119,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
   },
-  empty: { alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 22 },
+  // Same card as "Mes outils" on Accueil: 18 radius, full border.
+  empty: { alignItems: 'center', gap: 12, borderRadius: 18, borderWidth: 1, padding: 22 },
   emptyTitle: { fontSize: ms(17), fontFamily: font.semibold, textAlign: 'center' },
   emptyText: { fontSize: ms(13), lineHeight: ms(20), fontFamily: font.regular, textAlign: 'center' },
   steps: { alignSelf: 'stretch', gap: 8 },
   stepRow: { alignItems: 'center', gap: 10 },
   stepNum: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  stepNumText: { fontSize: ms(13), fontFamily: font.bold },
+  stepNumText: { fontSize: ms(13), fontFamily: font.semibold },
   stepText: { flex: 1, fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
-  card: { alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 14 },
+  card: { alignItems: 'center', gap: 12, borderRadius: 18, borderWidth: 1, padding: 14 },
   cardBody: { flex: 1, gap: 4 },
   cardTop: { alignItems: 'center', gap: 8 },
-  cardTitle: { flex: 1, fontSize: ms(15), fontFamily: font.semibold },
+  cardTitle: { flex: 1, fontSize: 16, fontFamily: font.semibold, letterSpacing: -0.2 },
   cardMeta: { fontSize: ms(12), fontFamily: font.regular, lineHeight: ms(18) },
   separator: { height: 10 },
 });

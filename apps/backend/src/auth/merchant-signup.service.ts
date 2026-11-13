@@ -248,6 +248,22 @@ export class MerchantSignupService {
       }
       throw error;
     }
+    // First FOUNDING_MEMBERS_LIMIT sign-ups: permanent free PREMIUM instead of the trial.
+    // A failure leaves the 30-day trial in place rather than blocking the sign-up.
+    try {
+      const founding = await this.planService.claimFoundingSlot(merchant.id);
+      if (founding) {
+        merchant = {
+          ...merchant,
+          foundingMember: true,
+          plan: founding.plan,
+          planActivatedByAdmin: founding.planActivatedByAdmin,
+          planExpiresAt: founding.planExpiresAt,
+        };
+      }
+    } catch (err) {
+      this.logger.error(`Founding slot claim failed for merchant ${merchant.id}`, errMsg(err));
+    }
     // The new merchant and its first store go on the client map at once.
     await invalidateMerchantListCache(this.cache);
 

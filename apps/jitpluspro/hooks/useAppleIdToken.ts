@@ -1,34 +1,11 @@
 /**
- * Lightweight Apple identity token capture hook for registration flow.
- * Unlike useAppleAuth (login), this does NOT call any backend endpoint.
- * It only obtains the Apple identity token so the register form can submit it later.
- *
- * Uses expo-apple-authentication (native SDK) — iOS only.
- * On Android/web the hook degrades gracefully (isAvailable = false).
+ * Apple identity token capture for the registration flow: unlike useAppleAuth
+ * (login) it calls no backend endpoint, the register form submits the token later.
+ * iOS only; elsewhere isAvailable is false.
  */
 import { useCallback, useState } from 'react';
-import { Platform } from 'react-native';
-import { randomUUID, sha256Hex } from '@/utils/crypto';
 import { useLanguage } from '@/contexts/LanguageContext';
-
-// Lazy-load so Android/web doesn't crash
-let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
-if (Platform.OS === 'ios') {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    AppleAuthentication = require('expo-apple-authentication');
-  } catch {
-    // Not available
-  }
-}
-
-interface AppleTokenData {
-  identityToken: string;
-  givenName?: string;
-  familyName?: string;
-  /** Raw nonce used to derive the SHA-256 hash sent to Apple. Backend verifies replay. */
-  rawNonce: string;
-}
+import { isAppleSignInAvailable, requestAppleCredential, type AppleTokenData } from '@/utils/socialSignIn';
 
 interface UseAppleIdTokenResult {
   isLoading: boolean;
@@ -42,53 +19,14 @@ export function useAppleIdToken(onToken: (data: AppleTokenData) => void): UseApp
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const isAvailable = Platform.OS === 'ios' && !!AppleAuthentication;
-
   const promptApple = useCallback(async () => {
     setError('');
     setIsLoading(true);
-
-    try {
-      if (!AppleAuthentication || Platform.OS !== 'ios') {
-        setError(t('appleAuth.notAvailable'));
-        return;
-      }
-
-      // Generate a cryptographically secure raw nonce, send sha256(rawNonce) to Apple,
-      // and forward the raw nonce to the backend so it can verify the JWT `nonce` claim.
-      // Prevents replay attacks during the 10-minute Apple identity token validity window.
-      const rawNonce = randomUUID() + randomUUID().replace(/-/g, '');
-      const hashedNonce = await sha256Hex(rawNonce);
-
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce: hashedNonce,
-      });
-
-      if (!credential.identityToken) {
-        setError(t('appleAuth.noToken'));
-        return;
-      }
-
-      onToken({
-        identityToken: credential.identityToken,
-        givenName: credential.fullName?.givenName ?? undefined,
-        familyName: credential.fullName?.familyName ?? undefined,
-        rawNonce,
-      });
-    } catch (e: unknown) {
-      const code = (e as { code?: string } | null)?.code;
-      if (code === 'ERR_REQUEST_CANCELED') {
-        return; // User cancelled — no error
-      }
-      setError(t('appleAuth.error'));
-    } finally {
-      setIsLoading(false);
-    }
+    const outcome = await requestAppleCredential(t);
+    setIsLoading(false);
+    if (outcome.ok) onToken(outcome.value);
+    else if (outcome.error) setError(outcome.error);
   }, [onToken, t]);
 
-  return { promptApple, isLoading, error, isAvailable };
+  return { promptApple, isLoading, error, isAvailable: isAppleSignInAvailable };
 }

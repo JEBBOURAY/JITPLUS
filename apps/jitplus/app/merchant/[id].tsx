@@ -14,7 +14,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import Skeleton from '@/components/Skeleton';
 import ActionSheet, { type ActionSheetOption } from '@/components/ActionSheet';
-import { useMerchantById } from '@/hooks/useQueryHooks';
+import { queryKeys, useMerchantById } from '@/hooks/useQueryHooks';
 import { useMerchantDeals } from '@/hooks/useDealHooks';
 import { useKnownLocation } from '@/hooks/useKnownLocation';
 import { api, getServerBaseUrl } from '@/services/api';
@@ -130,7 +130,7 @@ export default function MerchantDetailScreen() {
   const openInfoTab = useCallback(() => selectTab('info'), [selectTab]);
 
   const patchMerchant = useCallback((patch: Partial<Merchant>) => {
-    queryClient.setQueryData<Merchant>(['merchant', id], (m) => (m ? { ...m, ...patch } : m));
+    queryClient.setQueryData<Merchant>(queryKeys.merchant(id), (m) => (m ? { ...m, ...patch } : m));
   }, [queryClient, id]);
 
   const refreshCards = useCallback(() => {
@@ -211,6 +211,12 @@ export default function MerchantDetailScreen() {
     }
   }, [id, t]);
 
+  // Opened from a link on a cold start there is nothing to go back to.
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  }, [router]);
+
   // Apple 1.2: blocking hides the merchant everywhere, then leaves the page.
   const handleBlock = useCallback(() => {
     if (!id) return;
@@ -229,7 +235,7 @@ export default function MerchantDetailScreen() {
               predicate: (q) => q.queryKey[0] === 'merchants' || (q.queryKey[0] === 'merchant' && q.queryKey[1] === id),
             });
             Alert.alert(t('merchant.blockedTitle'), t('merchant.blockedBody'), [
-              { text: t('common.ok'), onPress: () => router.back() },
+              { text: t('common.ok'), onPress: handleBack },
             ]);
           } catch (e) {
             if (__DEV__) console.warn('Block merchant error:', e);
@@ -240,7 +246,7 @@ export default function MerchantDetailScreen() {
         },
       },
     ], { cancelable: true });
-  }, [id, queryClient, router, t]);
+  }, [id, queryClient, handleBack, t]);
 
   const handleShare = useCallback(async () => {
     if (!merchant) return;
@@ -253,7 +259,6 @@ export default function MerchantDetailScreen() {
     } catch { /* user cancelled */ }
   }, [merchant, t]);
 
-  const handleBack = useCallback(() => router.back(), [router]);
   const openMore = useCallback(() => {
     if (!isAuthenticated) { promptLogin(); return; }
     setSheet('more');

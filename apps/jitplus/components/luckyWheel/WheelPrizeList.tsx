@@ -7,7 +7,7 @@ import type { LuckyWheelPrize } from '@/types';
 import { computeOddsBreakdown, LOST_COLOR, prizeColor } from '@/utils/luckyWheel';
 import { hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
   prizes: LuckyWheelPrize[];
@@ -40,7 +40,7 @@ export default React.memo(function WheelPrizeList({ prizes, globalWinRate, fonts
         <View key={p.id ?? i} style={styles.row}>
           <View style={[styles.dot, { backgroundColor: prizeColor(i) }]} />
           <View style={styles.rowBody}>
-            <Text style={[styles.label, { fontFamily: fonts.medium }]} numberOfLines={1}>{p.label}</Text>
+            <Text style={[styles.label, { fontFamily: fonts.medium }]} numberOfLines={2}>{p.label}</Text>
             {!!p.description && (
               <Text style={[styles.desc, { fontFamily: fonts.regular }]} numberOfLines={1}>{p.description}</Text>
             )}
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1 },
   label: { color: '#fff', fontSize: FS.sm },
   desc: { color: 'rgba(255,255,255,0.5)', fontSize: FS.xs, marginTop: hp(1) },
-  pct: { color: '#fff', fontSize: FS.sm },
+  pct: { color: '#fff', fontSize: FS.sm, flexShrink: 0 },
   muted: { color: 'rgba(255,255,255,0.55)' },
   hint: { color: 'rgba(255,255,255,0.45)', fontSize: FS.xs, marginTop: hp(4) },
 });

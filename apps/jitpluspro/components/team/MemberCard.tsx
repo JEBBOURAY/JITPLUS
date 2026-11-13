@@ -1,8 +1,10 @@
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Shield, Activity, Trash2, Edit3, Power } from 'lucide-react-native';
+import { Trash2, Edit3, Power } from 'lucide-react-native';
+import { JitLock, JitScan } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getIntlLocale } from '@/config/currency';
 import { useDir } from '@/hooks/useDir';
 import { initials as initialsOf } from '@/utils/stampTransaction';
 import { font, icon } from '@/constants/design';
@@ -26,7 +28,7 @@ const MemberCard = React.memo(function MemberCard({
 }) {
   const theme = useTheme();
   const dir = useDir();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
 
   const handleToggle = useCallback(() => onToggle(member), [onToggle, member]);
   const handleEdit = useCallback(() => onEdit(member), [onEdit, member]);
@@ -40,7 +42,7 @@ const MemberCard = React.memo(function MemberCard({
         styles.memberCard,
         {
           backgroundColor: theme.bgCard,
-          borderColor: theme.borderLight,
+          borderColor: theme.border,
           opacity: member.isActive ? 1 : 0.7,
         },
       ]}
@@ -85,7 +87,7 @@ const MemberCard = React.memo(function MemberCard({
 
       <View style={[styles.metaRow, { flexDirection: dir.row, borderTopColor: theme.borderLight }]}>
         <View style={[styles.metaItem, { flexDirection: dir.row }]}>
-          <Shield size={13} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+          <JitLock size={14} color={theme.textMuted} strokeWidth={icon.stroke} />
           <Text
             style={[styles.metaText, { color: theme.textMuted }]}
             maxFontSizeMultiplier={1.3}
@@ -94,12 +96,12 @@ const MemberCard = React.memo(function MemberCard({
           </Text>
         </View>
         <View style={[styles.metaItem, { flexDirection: dir.row }]}>
-          <Activity size={13} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+          <JitScan size={14} color={theme.textMuted} strokeWidth={icon.stroke} />
           <Text
             style={[styles.metaText, { color: theme.textMuted }]}
             maxFontSizeMultiplier={1.3}
           >
-            {t(member.transactionsCount === 1 ? 'team.transactionsCount_one' : 'team.transactionsCount_other', { count: member.transactionsCount || 0 })}
+            {t(member.transactionsCount === 1 ? 'team.transactionsCount_one' : 'team.transactionsCount_other', { count: (member.transactionsCount || 0).toLocaleString(getIntlLocale(locale)) })}
           </Text>
         </View>
       </View>
@@ -110,7 +112,7 @@ const MemberCard = React.memo(function MemberCard({
             styles.actionChip,
             {
               flexDirection: dir.row,
-              backgroundColor: member.isActive ? theme.success + '12' : theme.textMuted + '12',
+              borderColor: theme.border,
             },
           ]}
           onPress={handleToggle}
@@ -128,6 +130,7 @@ const MemberCard = React.memo(function MemberCard({
               styles.actionChipText,
               { color: member.isActive ? theme.success : theme.textMuted },
             ]}
+            numberOfLines={1}
             maxFontSizeMultiplier={1.3}
           >
             {member.isActive ? t('stores.active') : t('stores.inactive')}
@@ -135,15 +138,16 @@ const MemberCard = React.memo(function MemberCard({
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionChip, { flexDirection: dir.row, backgroundColor: theme.primary + '12' }]}
+          style={[styles.actionChip, { flexDirection: dir.row, borderColor: theme.border }]}
           onPress={handleEdit}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={t('team.editMemberA11y', { name: member.nom })}
         >
-          <Edit3 size={15} color={theme.primary} strokeWidth={icon.stroke} />
+          <Edit3 size={15} color={theme.text} strokeWidth={icon.stroke} />
           <Text
-            style={[styles.actionChipText, { color: theme.primary }]}
+            style={[styles.actionChipText, { color: theme.text }]}
+            numberOfLines={1}
             maxFontSizeMultiplier={1.3}
           >
             {t('stores.editBtn')}
@@ -151,7 +155,7 @@ const MemberCard = React.memo(function MemberCard({
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionChip, { flexDirection: dir.row, backgroundColor: theme.danger + '12' }]}
+          style={[styles.actionChip, { flexDirection: dir.row, borderColor: theme.border }]}
           onPress={handleDelete}
           activeOpacity={0.7}
           accessibilityRole="button"
@@ -160,6 +164,7 @@ const MemberCard = React.memo(function MemberCard({
           <Trash2 size={15} color={theme.danger} strokeWidth={icon.stroke} />
           <Text
             style={[styles.actionChipText, { color: theme.danger }]}
+            numberOfLines={1}
             maxFontSizeMultiplier={1.3}
           >
             {t('common.delete')}
@@ -177,7 +182,7 @@ const styles = StyleSheet.create({
   startGapRtl: { marginRight: 12 },
 
   memberCard: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     marginBottom: 12,
     overflow: 'hidden',
@@ -196,13 +201,14 @@ const styles = StyleSheet.create({
   },
   memberAvatarText: {
     fontSize: 15,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   memberInfo: { flex: 1 },
   memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   memberName: {
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: font.semibold,
+    letterSpacing: -0.2,
     flexShrink: 1,
   },
   memberEmail: { fontSize: 13, marginTop: 2, fontFamily: font.regular },
@@ -214,8 +220,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderTopWidth: 1,
-    gap: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    // Large text on a narrow phone: the second item goes to a new line instead of being clipped.
+    flexWrap: 'wrap',
+    columnGap: 16,
+    rowGap: 6,
   },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   metaText: { fontSize: 12, fontFamily: font.regular },
@@ -234,7 +243,8 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     borderRadius: 12,
+    borderWidth: 1,
     minHeight: 40,
   },
-  actionChipText: { fontSize: 12, fontFamily: font.semibold },
+  actionChipText: { flexShrink: 1, fontSize: 12, fontFamily: font.semibold },
 });

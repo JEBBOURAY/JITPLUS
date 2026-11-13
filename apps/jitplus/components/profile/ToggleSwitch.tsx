@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, I18nManager, StyleSheet, View } from 'react-native';
+import { Animated, I18nManager, StyleSheet, View } from 'react-native';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
+import { rnSpring } from '@/utils/motion';
 
 interface ToggleSwitchProps {
   value: boolean;
@@ -24,12 +25,15 @@ function ToggleSwitch({ value, activeColor = palette.violet }: ToggleSwitchProps
   const [progress] = useState(() => new Animated.Value(value ? 1 : 0));
 
   useEffect(() => {
-    Animated.timing(progress, {
+    // A spring starts from where the knob is, so quick double taps reverse it smoothly.
+    const anim = Animated.spring(progress, {
       toValue: value ? 1 : 0,
-      duration: 180,
-      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
-    }).start();
+      overshootClamping: true,
+      ...rnSpring({ response: 0.3, dampingRatio: 1 }),
+    });
+    anim.start();
+    return () => anim.stop();
   }, [value, progress]);
 
   const translateX = useMemo(

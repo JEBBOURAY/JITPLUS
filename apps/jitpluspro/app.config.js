@@ -45,7 +45,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.7.6',
+    version: '1.7.7',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
     scheme: 'jitpluspro',
@@ -67,7 +67,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '37',
+      buildNumber: '38',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -85,8 +85,8 @@ module.exports = ({ config }) => {
         // Only declare foreground location — app never requests background location
         NSLocationWhenInUseUsageDescription:
           'JitPlus Pro utilise votre position pour localiser votre commerce sur la carte.',
-        // App only reads from the library (logo/cover upload) — never writes to it, so
-        // NSPhotoLibraryAddUsageDescription is intentionally omitted.
+        // Reads the library for the logo / cover upload; the add-only permission
+        // (NSPhotoLibraryAddUsageDescription) comes from the expo-media-library plugin.
         NSPhotoLibraryUsageDescription:
           "JitPlus Pro a besoin d'accéder à vos photos pour choisir le logo et la couverture de votre commerce.",
         FacebookAppID: META_APP_ID,
@@ -94,6 +94,9 @@ module.exports = ({ config }) => {
         FacebookDisplayName: META_DISPLAY_NAME,
         NSUserTrackingUsageDescription:
           'Cette autorisation permet a JitPlus Pro de mesurer les performances des campagnes publicitaires et d ameliorer l acquisition de clients.',
+        // "Affiche réseaux sociaux": lets the app see whether Instagram / Facebook
+        // can receive a story. The Facebook plugin appends its own schemes.
+        LSApplicationQueriesSchemes: ['instagram-stories', 'facebook-stories'],
         SKAdNetworkItems: [
           { SKAdNetworkIdentifier: 'v9wttpbfk9.skadnetwork' },
           { SKAdNetworkIdentifier: 'n38lu8286q.skadnetwork' },
@@ -118,7 +121,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 39,
+      versionCode: 40,
       // Keeps the cached plan / clients / dashboard data out of Google Drive
       // and adb backups, like the client app (security audit 2026-11-05).
       allowBackup: false,
@@ -168,7 +171,8 @@ module.exports = ({ config }) => {
       blockedPermissions: [
         'android.permission.WRITE_SETTINGS',
         'android.permission.READ_EXTERNAL_STORAGE',
-        'android.permission.WRITE_EXTERNAL_STORAGE',
+        // WRITE_EXTERNAL_STORAGE is NOT blocked: saving a social visual to the
+        // gallery needs it on Android 12 and below (no permission at all on 13+).
         'android.permission.SYSTEM_ALERT_WINDOW',
         // Force the system Photo Picker path — Play Policy compliance.
         // READ_MEDIA_VISUAL_USER_SELECTED is intentionally NOT blocked: it's
@@ -232,6 +236,19 @@ module.exports = ({ config }) => {
             targetSdkVersion: 36,
             minSdkVersion: 24,
             buildToolsVersion: '37.0.0',
+            // "Affiche réseaux sociaux": apps the visuals can be sent to directly.
+            // Android 11+ hides installed apps that are not declared here.
+            // Keep in sync with SHARE_TARGETS in utils/socialShare.ts.
+            manifestQueries: {
+              package: [
+                'com.instagram.android',
+                'com.facebook.katana',
+                'com.whatsapp',
+                'com.whatsapp.w4b',
+                'org.telegram.messenger',
+                'com.twitter.android',
+              ],
+            },
             enableMinifyInReleaseBuilds: ANDROID_ENABLE_R8,
             enableShrinkResourcesInReleaseBuilds: ANDROID_ENABLE_R8,
           },
@@ -261,6 +278,18 @@ module.exports = ({ config }) => {
           microphonePermission: false,
         },
       ],
+      // "Affiche réseaux sociaux": saves the visuals to the gallery, write-only.
+      // No granular read permission: READ_MEDIA_* stay out of the manifest (Play policy).
+      [
+        'expo-media-library',
+        {
+          photosPermission:
+            "JitPlus Pro a besoin d'accéder à vos photos pour choisir le logo et la couverture de votre commerce.",
+          savePhotosPermission:
+            'JitPlus Pro enregistre vos affiches réseaux sociaux dans votre galerie photo.',
+          granularPermissions: [],
+        },
+      ],
       [
         'expo-image-picker',
         {
@@ -274,7 +303,7 @@ module.exports = ({ config }) => {
       // iOS PrivacyInfo.xcprivacy — required since Apple review policy May 2024
       './plugins/withPrivacyManifest',
       // Network security — enforces HTTPS, blocks cleartext traffic in production
-      './plugins/withNetworkSecurity',
+      '../../packages/shared/expo-plugins/withNetworkSecurity',
       // SSL Certificate Pinning — prevents MITM attacks (must be AFTER withNetworkSecurity)
       // DISABLED: Pins are still placeholders. Enable once api.jitplus.com has a stable
       // managed SSL certificate. Cloud Run *.a.run.app certs rotate too frequently.
@@ -282,23 +311,23 @@ module.exports = ({ config }) => {
       // Keep require()'d images/fonts when R8 resource shrinking is enabled
       './plugins/withKeepJsAssets',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
-      './plugins/withMoroccoRegion',
+      '../../packages/shared/expo-plugins/withMoroccoRegion',
       // Enable RTL support on Android — required for Arabic/Darija layout
-      './plugins/withSupportsRTL',
+      '../../packages/shared/expo-plugins/withSupportsRTL',
       // Raise the Android Java heap limit (256 MB → ~512 MB) — mitigation for
       // OutOfMemoryError (Sentry JITPLUSPRO-MOBILE-S).
       './plugins/withLargeHeap',
       // Force modular headers for GoogleUtilities/RecaptchaInterop so Swift pod
       // AppCheckCore (pulled in by GoogleSignIn 9) can import them.
-      './plugins/withGoogleModularHeaders',
+      '../../packages/shared/expo-plugins/withGoogleModularHeaders',
       // Disable Swift 6 strict concurrency for all pods (Xcode 26 + expo-image@55.0.9 incompat)
-      './plugins/withDisableStrictConcurrency',
+      '../../packages/shared/expo-plugins/withDisableStrictConcurrency',
       // iOS Notification Service Extension — temporarily disabled for v1.4.3.
       // Xcode 16/26 reports "Unexpected duplicate tasks" during archive (likely
       // duplicated Info.plist processing). Android already shows notification
       // images natively; iOS will fall back to text-only push until the plugin
       // is reworked (e.g. via @bacons/apple-targets or OneSignal NSE pattern).
-      // './plugins/withNotificationServiceExtension',
+      // '../../packages/shared/expo-plugins/withNotificationServiceExtension',
       [
         'expo-notifications',
         {

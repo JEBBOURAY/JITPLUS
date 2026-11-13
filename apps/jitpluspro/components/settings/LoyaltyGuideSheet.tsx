@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, ScrollView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import BottomSheet from '@/components/ui/BottomSheet';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
@@ -22,72 +22,62 @@ function LoyaltyGuideSheet({ visible, onClose }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
   const { row, textAlign } = useDir();
-  const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        {/* Sibling backdrop: a Pressable around the sheet would block the ScrollView. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.close')}
-        />
-        <View
-          style={[styles.sheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + 16, 30) }]}
-          accessibilityViewIsModal
-        >
-          <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      scrollable
+      style={styles.sheet}
+      header={(
+        <>
           <Text style={[styles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
             {t('settingsPage.guideSheetTitle')}
           </Text>
           <Text style={[styles.subtitle, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.4}>
             {t('settingsPage.guideSheetSubtitle')}
           </Text>
+        </>
+      )}
+    >
+      <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+        {GUIDE_STEPS.map((n) => (
+          <View key={n} style={[styles.item, { flexDirection: row }]}>
+            <View style={[styles.num, { borderColor: theme.border }]}>
+              <Text style={[styles.numText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>{n}</Text>
+            </View>
+            <View style={styles.itemBody}>
+              <Text style={[styles.itemTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
+                {t(`settingsPage.guideStep${n}Title`)}
+              </Text>
+              <Text style={[styles.itemText, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.5}>
+                {t(`settingsPage.guideStep${n}Text`)}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </ScrollView>
 
-          <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-            {GUIDE_STEPS.map((n) => (
-              <View key={n} style={[styles.item, { flexDirection: row }]}>
-                <View style={[styles.num, { backgroundColor: theme.primary + '17' }]}>
-                  <Text style={[styles.numText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{n}</Text>
-                </View>
-                <View style={styles.itemBody}>
-                  <Text style={[styles.itemTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
-                    {t(`settingsPage.guideStep${n}Title`)}
-                  </Text>
-                  <Text style={[styles.itemText, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.5}>
-                    {t(`settingsPage.guideStep${n}Text`)}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-
-          <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeBtn} accessibilityRole="button">
-            <Text style={[styles.closeText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>
-              {t('settingsPage.guideClose')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
+      <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeBtn} accessibilityRole="button">
+        <Text style={[styles.closeText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>
+          {t('settingsPage.guideClose')}
+        </Text>
+      </TouchableOpacity>
+    </BottomSheet>
   );
 }
 
 export default React.memo(LoyaltyGuideSheet);
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(11,15,20,0.55)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 22, paddingTop: 12, maxHeight: '78%' },
-  grabber: { width: 40, height: 4, borderRadius: 999, alignSelf: 'center', marginBottom: 16 },
-  title: { fontSize: 18, fontFamily: font.bold, letterSpacing: -0.3 },
+  sheet: { paddingHorizontal: 22, maxHeight: '78%' },
+  title: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.3 },
   subtitle: { fontSize: 13, fontFamily: font.regular, marginTop: 4, marginBottom: 18 },
   list: { flexGrow: 0, flexShrink: 1 },
   item: { gap: 12, marginBottom: 18 },
-  num: { width: 28, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  numText: { fontSize: 13, fontFamily: font.bold },
+  // Same plain numbered marker as the "Guide de départ" steps.
+  num: { width: 26, height: 26, borderRadius: 999, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  numText: { fontSize: 13, fontFamily: font.semibold },
   itemBody: { flex: 1 },
   itemTitle: { fontSize: 14, fontFamily: font.semibold },
   itemText: { fontSize: 13, lineHeight: 19, fontFamily: font.regular, marginTop: 3 },

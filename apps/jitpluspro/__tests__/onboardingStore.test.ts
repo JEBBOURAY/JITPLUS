@@ -7,17 +7,17 @@ describe('onboarding coordinator', () => {
 
   it('lets only one full-screen surface show at a time', () => {
     const { request } = useOnboardingStore.getState();
-    expect(request('tour')).toBe(true);
+    expect(request('introVideo')).toBe(true);
     expect(request('notif')).toBe(false);
-    expect(useOnboardingStore.getState().active).toBe('tour');
+    expect(useOnboardingStore.getState().active).toBe('introVideo');
   });
 
   it('frees the screen when the surface holding it is released', () => {
     const { request, release } = useOnboardingStore.getState();
-    request('tour');
+    request('introVideo');
     release('notif');
-    expect(useOnboardingStore.getState().active).toBe('tour');
-    release('tour');
+    expect(useOnboardingStore.getState().active).toBe('introVideo');
+    release('introVideo');
     expect(request('notif')).toBe(true);
   });
 });

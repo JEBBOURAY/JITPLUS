@@ -7,7 +7,7 @@ import type { TicketGroup } from '@/utils/luckyWheel';
 import { hp, ms, wp, fontSize as FS } from '@/utils/responsive';
 import MerchantLogo from '../MerchantLogo';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
   groups: TicketGroup<LuckyWheelTicket>[];
@@ -61,8 +61,6 @@ const styles = StyleSheet.create({
   label: {
     color: 'rgba(255,255,255,0.55)',
     fontSize: FS.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
     paddingHorizontal: wp(20),
     marginBottom: hp(8),
   },

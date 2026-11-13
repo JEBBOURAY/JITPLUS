@@ -8,7 +8,7 @@ function setup() {
   const cache = { get: jest.fn().mockResolvedValue(undefined), set: jest.fn(), del: jest.fn() };
   const service = new MerchantPlanService(
     merchantRepo as never, loyaltyCardRepo as never, cache as never,
-    {} as never, {} as never, {} as never, {} as never,
+    {} as never, {} as never, {} as never, {} as never, {} as never,
   );
   return { service, merchantRepo, loyaltyCardRepo };
 }

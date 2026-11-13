@@ -2,7 +2,6 @@ import React, { useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Clock, ChevronRight } from 'lucide-react-native';
 import { JitPremium } from '@/components/icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Card } from '@/components/ui/Card';
 import { palette } from '@/contexts/ThemeContext';
 import { ProBadge } from '@/components/ui/ProBadge';
@@ -24,7 +23,7 @@ interface Props {
 
 /** Current Pro plan and trial progress. Billing actions remain owner-only. */
 export default React.memo(function TrialCard({ t, locale, merchant, router, isTeamMember = false }: Props) {
-  const { isPremium, isAdminPremium, planExpiresAt, daysRemaining, isTrial, trialProgress, trialTotalDays } = usePlanStatus(merchant);
+  const { isPremium, hidePlan, isAdminPremium, planExpiresAt, daysRemaining, isTrial, trialProgress, trialTotalDays } = usePlanStatus(merchant);
 
   const goToPlan = useCallback(() => router.push('/plan'), [router]);
   const dir = useDir();
@@ -41,16 +40,10 @@ export default React.memo(function TrialCard({ t, locale, merchant, router, isTe
     };
   }, [locale]);
 
-  if (!isPremium) return null;
+  if (!isPremium || hidePlan) return null;
 
   return (
     <Card style={styles.card}>
-      <LinearGradient
-        colors={['#0f031e', '#1a0533']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
       <View style={[styles.topRow, { flexDirection: dir.row }]}>
         <View style={[styles.titleRow, { flexDirection: dir.row }]}>
           {isTrial ? (
@@ -78,12 +71,7 @@ export default React.memo(function TrialCard({ t, locale, merchant, router, isTe
       {/* Fills with elapsed time: 0 = fresh trial, 1 = expired. */}
       {isTrial && trialProgress !== null && (
         <View style={[styles.progressTrack, dir.isRTL && styles.progressTrackRtl]} accessible accessibilityRole="progressbar" accessibilityLabel={t('account.planTrial')} accessibilityValue={{ min: 0, max: 100, now: Math.round(trialProgress * 100) }}>
-          <LinearGradient
-            colors={[palette.gold, palette.violet]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.progressFill, { width: `${Math.round(trialProgress * 100)}%` }]}
-          />
+          <View style={[styles.progressFill, { backgroundColor: palette.gold, width: `${Math.round(trialProgress * 100)}%` }]} />
         </View>
       )}
 
@@ -119,6 +107,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: ms(18),
     marginBottom: hp(14),
+    backgroundColor: palette.premiumBg,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -137,7 +126,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: ms(14),
     color: '#fff',
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     flexShrink: 1,
   },
   badge: {

@@ -3,7 +3,6 @@
 // directly by sibling components, not re-exported here.
 export { default as ProfileHeader } from './ProfileHeader';
 export { default as ProfileCompletionCard } from './ProfileCompletionCard';
-export { default as ReferralBanner } from './ReferralBanner';
 export { default as PreferencesSection } from './PreferencesSection';
 export { default as SecuritySection } from './SecuritySection';
 export { default as SupportSection } from './SupportSection';

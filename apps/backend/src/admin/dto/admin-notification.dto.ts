@@ -1,10 +1,10 @@
 import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export const ADMIN_NOTIFICATION_CHANNELS = ['PUSH', 'EMAIL', 'WHATSAPP'] as const;
+const ADMIN_NOTIFICATION_CHANNELS = ['PUSH', 'EMAIL', 'WHATSAPP'] as const;
 export type AdminNotificationChannel = (typeof ADMIN_NOTIFICATION_CHANNELS)[number];
 
-export const ADMIN_NOTIFICATION_AUDIENCES = ['MERCHANT_CLIENTS', 'ALL_CLIENTS', 'ALL_MERCHANTS'] as const;
+const ADMIN_NOTIFICATION_AUDIENCES = ['MERCHANT_CLIENTS', 'ALL_CLIENTS', 'ALL_MERCHANTS'] as const;
 export type AdminNotificationAudience = (typeof ADMIN_NOTIFICATION_AUDIENCES)[number];
 
 export class SendAdminNotificationDto {

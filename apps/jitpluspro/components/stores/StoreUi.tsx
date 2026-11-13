@@ -211,15 +211,24 @@ function BackButton({ onPress }: { onPress?: () => void }) {
   );
 }
 
-/** Settings-style screen header: back button, large title, optional caption. */
-export function ScreenHeader({ title, caption, onBack, right }: { title: string; caption?: string; onBack?: () => void; right?: React.ReactNode }) {
+/**
+ * Settings-style screen header: back button, large title, optional caption.
+ * `back={false}` drops the arrow: the system back gesture is then the way out.
+ */
+export function ScreenHeader({ title, caption, onBack, back = true, right }: {
+  title: string;
+  caption?: string;
+  onBack?: () => void;
+  back?: boolean;
+  right?: React.ReactNode;
+}) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const dir = useDir();
   return (
     <View style={[ui.header, { paddingTop: insets.top + 12 }]}>
       <View style={[ui.headerRow, { flexDirection: dir.row }]}>
-        <BackButton onPress={onBack} />
+        {back ? <BackButton onPress={onBack} /> : null}
         <Text style={[ui.headerTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3} accessibilityRole="header">
           {title}
         </Text>
@@ -263,8 +272,8 @@ export function SaveBar({ dirty, saving, onSave, label }: { dirty: boolean; savi
           ui.saveBtn,
           { flexDirection: dir.row },
           dirty
-            ? [ui.saveBtnRaised, { backgroundColor: palette.violet, borderBottomColor: palette.violetDark }]
-            : { backgroundColor: fieldFill(theme), borderBottomColor: 'transparent' },
+            ? { backgroundColor: palette.violet }
+            : { backgroundColor: fieldFill(theme) },
         ]}
         accessibilityRole="button"
         accessibilityLabel={text}
@@ -431,8 +440,8 @@ export const ui = StyleSheet.create({
   flex: { flex: 1 },
   iconBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   header: { paddingHorizontal: 20, paddingBottom: 10 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerTitle: { flex: 1, fontSize: 24, fontFamily: font.bold, letterSpacing: -0.5 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 40 },
+  headerTitle: { flex: 1, fontSize: 24, fontFamily: font.semibold, letterSpacing: -0.5 },
   headerCaption: { marginTop: 8 },
 
   field: { gap: 8 },
@@ -445,18 +454,17 @@ export const ui = StyleSheet.create({
   fieldHint: { flex: 1 },
 
   saveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 12 },
-  saveBarShadow: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 8 },
+  saveBarShadow: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
   unsavedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 },
   unsavedDot: { width: 7, height: 7, borderRadius: 4 },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, paddingVertical: 14, borderRadius: 12, borderBottomWidth: 3 },
-  saveBtnRaised: { shadowColor: palette.violet, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, paddingVertical: 14, borderRadius: 12 },
   saveBtnText: { fontSize: 15, fontFamily: font.semibold },
 
   ownerOnly: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, paddingBottom: 60 },
   ownerOnlyIcon: { width: 72, height: 72, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   ownerOnlyTitle: { fontSize: 17, marginTop: 18, fontFamily: font.semibold, textAlign: 'center' },
   ownerOnlyMsg: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 8, fontFamily: font.regular },
-  ownerOnlyBtn: { marginTop: 22, paddingHorizontal: 28, backgroundColor: palette.violet, borderColor: palette.violet, borderBottomWidth: 3, borderBottomColor: palette.violetDark },
+  ownerOnlyBtn: { marginTop: 22, paddingHorizontal: 28, backgroundColor: palette.violet, borderColor: palette.violet },
 
   // Typography scale: panel title 15/SemiBold · field label 14/Medium · caption 12/Regular
   fieldLabel: { fontSize: 14, fontFamily: font.medium },

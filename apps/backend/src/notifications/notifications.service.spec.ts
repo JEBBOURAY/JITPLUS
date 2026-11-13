@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +11,7 @@ import {
   LOYALTY_CARD_REPOSITORY,
   NOTIFICATION_REPOSITORY,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY,
+  TRANSACTION_RUNNER,
 } from '../common/repositories';
 import { EMAIL_BLAST_PROVIDER, PUSH_PROVIDER, SMS_PROVIDER } from '../common/interfaces';
 
@@ -29,14 +31,22 @@ const member = (id: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 const card = (c: ReturnType<typeof member>) => ({ clientId: c.id, client: c });
+/** Newest first, one hour apart, as the quota query returns them. */
+const recentBroadcasts = (n: number) =>
+  Array.from({ length: n }, (_, i) => ({ createdAt: new Date(Date.now() - (i + 1) * 3_600_000) }));
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
   const merchantRepo = { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() };
   const clientRepo = { findMany: jest.fn(), updateMany: jest.fn() };
-  const loyaltyCardRepo = { findMany: jest.fn() };
+  const loyaltyCardRepo = { findMany: jest.fn(), count: jest.fn() };
   const notificationRepo = { create: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() };
   const statusRepo = { createMany: jest.fn(), groupBy: jest.fn() };
+  const lock = jest.fn();
+  // Runs the callback at once on the same notification mock, with the advisory lock recorded.
+  const txRunner = {
+    run: jest.fn((fn: (tx: unknown) => unknown) => Promise.resolve(fn({ $executeRaw: lock, notification: notificationRepo }))),
+  };
   const push = { sendMulticast: jest.fn() };
   const blast = { sendBlast: jest.fn() };
   const sms = { sendWhatsAppMessage: jest.fn() };
@@ -48,7 +58,9 @@ describe('NotificationsService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     cache.get.mockResolvedValue(null);
+    notificationRepo.findMany.mockResolvedValue([]);
     notificationRepo.create.mockResolvedValue({ id: 'n1', title: 't', body: 'b', createdAt: new Date() });
+    notificationRepo.update.mockResolvedValue({ id: 'n1', title: 't', body: 'b', createdAt: new Date() });
     statusRepo.createMany.mockResolvedValue({ count: 0 });
     clientRepo.updateMany.mockResolvedValue({ count: 0 });
 
@@ -60,6 +72,7 @@ describe('NotificationsService', () => {
         { provide: LOYALTY_CARD_REPOSITORY, useValue: loyaltyCardRepo },
         { provide: NOTIFICATION_REPOSITORY, useValue: notificationRepo },
         { provide: CLIENT_NOTIFICATION_STATUS_REPOSITORY, useValue: statusRepo },
+        { provide: TRANSACTION_RUNNER, useValue: txRunner },
         { provide: PUSH_PROVIDER, useValue: push },
         { provide: EMAIL_BLAST_PROVIDER, useValue: blast },
         { provide: SMS_PROVIDER, useValue: sms },
@@ -93,15 +106,63 @@ describe('NotificationsService', () => {
       expect(statusRepo.createMany).toHaveBeenCalledTimes(3); // 1001 rows in chunks of 500
     });
 
+    it('sendToAll takes its quota slot under a per-merchant lock, before anything is pushed', async () => {
+      loyaltyCardRepo.findMany.mockResolvedValueOnce([card(member('a', { pushToken: 'tok' }))]);
+      push.sendMulticast.mockResolvedValue({ successCount: 1, failureCount: 0, invalidTokens: [] });
+
+      await service.sendToAll(MERCHANT_ID, { title: 'Promo', body: 'Hello' });
+
+      const order = (mock: jest.Mock) => mock.mock.invocationCallOrder[0];
+      expect(order(lock)).toBeLessThan(order(notificationRepo.findMany));
+      expect(order(notificationRepo.findMany)).toBeLessThan(order(notificationRepo.create));
+      expect(order(notificationRepo.create)).toBeLessThan(order(push.sendMulticast));
+      expect(notificationRepo.create.mock.calls[0][0].data).toMatchObject({ merchantId: MERCHANT_ID, isBroadcast: true, channel: 'PUSH' });
+      // The counts are known only once the push has left.
+      expect(notificationRepo.update).toHaveBeenCalledWith({
+        where: { id: 'n1' },
+        data: { recipientCount: 1, successCount: 1, failureCount: 0 },
+      });
+    });
+
     // Security audit 2026-11-05: persistent per-merchant quota
     it('sendToAll refuses once the merchant reached its daily broadcast quota', async () => {
-      notificationRepo.count.mockResolvedValueOnce(MERCHANT_PUSH_BROADCASTS_PER_DAY);
+      notificationRepo.findMany.mockResolvedValueOnce(recentBroadcasts(MERCHANT_PUSH_BROADCASTS_PER_DAY));
 
       await expect(service.sendToAll(MERCHANT_ID, { title: 'Promo', body: 'Hello' })).rejects.toMatchObject({ status: 429 });
 
-      expect(notificationRepo.count.mock.calls[0][0].where).toMatchObject({ merchantId: MERCHANT_ID, isBroadcast: true, channel: 'PUSH' });
+      expect(notificationRepo.findMany.mock.calls[0][0].where).toMatchObject({ merchantId: MERCHANT_ID, isBroadcast: true, channel: 'PUSH' });
+      expect(notificationRepo.create).not.toHaveBeenCalled();
       expect(loyaltyCardRepo.findMany).not.toHaveBeenCalled();
       expect(push.sendMulticast).not.toHaveBeenCalled();
+    });
+
+    it('getBroadcastStatus: member count and what is left of the daily quota', async () => {
+      loyaltyCardRepo.count.mockResolvedValue(42);
+      notificationRepo.findMany.mockResolvedValueOnce(recentBroadcasts(1));
+
+      await expect(service.getBroadcastStatus(MERCHANT_ID)).resolves.toEqual({
+        recipientCount: 42,
+        dailyLimit: MERCHANT_PUSH_BROADCASTS_PER_DAY,
+        remaining: MERCHANT_PUSH_BROADCASTS_PER_DAY - 1,
+        nextSendAt: null,
+      });
+      expect(loyaltyCardRepo.count).toHaveBeenCalledWith({ where: { merchantId: MERCHANT_ID, deactivatedAt: null } });
+    });
+
+    it('getBroadcastStatus: a spent quota frees up 24 h after its oldest broadcast', async () => {
+      loyaltyCardRepo.count.mockResolvedValue(0);
+      const recent = recentBroadcasts(MERCHANT_PUSH_BROADCASTS_PER_DAY);
+      notificationRepo.findMany.mockResolvedValueOnce(recent);
+
+      const status = await service.getBroadcastStatus(MERCHANT_ID);
+
+      expect(status.remaining).toBe(0);
+      expect(status.nextSendAt).toEqual(new Date(recent[recent.length - 1].createdAt.getTime() + 24 * 3_600_000));
+    });
+
+    it('assertBroadcastContentAllowed rejects prohibited content with a 400', () => {
+      expect(() => service.assertBroadcastContentAllowed({ title: 'Promo', body: 'Envoyez votre mot de passe' })).toThrow(BadRequestException);
+      expect(() => service.assertBroadcastContentAllowed({ title: 'Promo', body: 'Hello' })).not.toThrow();
     });
 
     it('sendEmailToAll keeps only members with an email who did not opt out', async () => {

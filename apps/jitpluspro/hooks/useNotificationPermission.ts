@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, Linking } from 'react-native';
 import * as Device from 'expo-device';
-import { loadNotifications } from '@/utils/expoNotifications';
+import { loadNotifications } from '@jitplus/shared/src/expoNotifications';
 import { registerPushToken } from '@/contexts/AuthContext';
 import { logWarn } from '@/utils/devLogger';
 import type { PermissionStatus } from '@/utils/notifPrompt';

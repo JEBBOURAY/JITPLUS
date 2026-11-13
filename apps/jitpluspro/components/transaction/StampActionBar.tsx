@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react-native';
 import { JitGift } from '@/components/icons';
-import { brandGradient, palette, useTheme } from '@/contexts/ThemeContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { font, icon } from '@/constants/design';
@@ -98,7 +98,6 @@ function StampActionBarBase({ plan, currentStamps, rewardTitle, loading, bottomI
         variant={enabled || loading ? 'primary' : 'secondary'}
         size="lg"
         icon={enabled ? CheckCircle : undefined}
-        gradient={enabled || loading ? brandGradient : undefined}
         style={[styles.button, enabled && styles.buttonShadowOn, !enabled && !loading && { backgroundColor: theme.bgInput, borderColor: theme.bgInput }]}
         labelStyle={enabled || loading ? undefined : { color: theme.textMuted }}
       />
@@ -123,15 +122,15 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: ms(13), fontFamily: font.medium },
   balance: { alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
   balanceFrom: { fontSize: ms(14), fontFamily: font.semibold },
-  balanceTo: { fontSize: ms(16), fontFamily: font.bold },
+  balanceTo: { fontSize: ms(16), fontFamily: font.semibold },
   reward: { flexShrink: 1, alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   rewardText: { flexShrink: 1, fontSize: ms(13), fontFamily: font.semibold },
   buttonShadowOn: {
-    shadowColor: palette.violet,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   button: { minHeight: 56, borderWidth: 0 },
 });

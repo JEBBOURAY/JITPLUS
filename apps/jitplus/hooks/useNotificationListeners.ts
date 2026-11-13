@@ -5,7 +5,10 @@ import Constants from 'expo-constants';
 import { api } from '@/services/api';
 import { handleFcmDataPayload, pushStampsEventFromNotification } from '@/hooks/useRealtimeEvents';
 import { resolveNotificationRoute, type NotificationData } from '@/utils/notificationRouting';
-import { loadNotifications } from '@/utils/expoNotifications';
+import { loadNotifications } from '@jitplus/shared/src/expoNotifications';
+
+/** Identifier of the last notification whose tap was routed (survives effect re-runs). */
+let lastOpenedId: string | undefined;
 
 /** Push token rotation, foreground notifications, and notification taps (warm and cold start). */
 export function useNotificationListeners(): void {
@@ -16,6 +19,17 @@ export function useNotificationListeners(): void {
     const N = loadNotifications();
     if (!N) return;
 
+    type Tapped = { request: { identifier: string; content: { data?: unknown } } };
+    // A cold-start tap is reported by both the response listener and
+    // getLastNotificationResponseAsync: open its screen once.
+    const openOnce = (notification: Tapped) => {
+      const id = notification.request.identifier;
+      if (id && id === lastOpenedId) return;
+      lastOpenedId = id;
+      const data = dataOf(notification);
+      handleFcmDataPayload(data, queryClient);
+      open(data);
+    };
     const open = (data: NotificationData) => {
       try {
         router.push(resolveNotificationRoute(data));
@@ -52,17 +66,12 @@ export function useNotificationListeners(): void {
     const responseSub = N.addNotificationResponseReceivedListener((response) => {
       if (__DEV__) console.log('Notification tapped:', response.notification.request.content);
       N.setBadgeCountAsync(0).catch(() => {});
-      const data = dataOf(response.notification);
-      handleFcmDataPayload(data, queryClient);
-      open(data);
+      openOnce(response.notification);
     });
 
     // Cold start: the app was launched by tapping a notification.
     N.getLastNotificationResponseAsync().then((response) => {
-      if (!response) return;
-      const data = dataOf(response.notification);
-      handleFcmDataPayload(data, queryClient);
-      open(data);
+      if (response) openOnce(response.notification);
     }).catch(() => {});
 
     return () => {

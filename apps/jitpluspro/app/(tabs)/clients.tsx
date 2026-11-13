@@ -9,27 +9,28 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Animated,
   Platform,
 } from 'react-native';
-import { Search, X, AlertCircle, Heart, Clock, type LucideIcon } from 'lucide-react-native';
-import { JitClients, JitGift, JitPersonAdd, JitStamp } from '@/components/icons';
+import { Search, User, X, type LucideIcon } from 'lucide-react-native';
+import { JitClients, JitClock, JitGift, JitPersonAdd, JitStamp } from '@/components/icons';
 import * as Haptics from 'expo-haptics';
 import { safeImpact, safeSelection } from '@/utils/haptics';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
-import { useFocusFade } from '@/hooks/useFocusFade';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getIntlLocale } from '@/config/currency';
+import { useDir } from '@/hooks/useDir';
 import { ListSkeleton } from '@/components/Skeleton';
 import { useClientList } from '@/hooks/useQueryHooks';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEARCH_DEBOUNCE_MS, INACTIVE_CLIENT_DAYS } from '@/constants/app';
-import { ms, radius } from '@/utils/responsive';
-import { font, icon as iconTokens } from '@/constants/design';
+import { radius } from '@/utils/responsive';
+import { font, icon as iconTokens, TAB_BAR_CLEARANCE } from '@/constants/design';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { timeAgo } from '@/utils/date';
+import { initialsOf } from '@/utils/initials';
 import type { ClientListItem, ClientListView } from '@/types';
 
 type Theme = ReturnType<typeof useTheme>;
@@ -39,17 +40,16 @@ const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
 const ROW_HEIGHT = 72;
 const CARD_FONT_SCALE = 1.25;
 
+// JitPlus icons only, drawn plain (no tinted tile), here and in the empty states.
 const VIEWS: { key: ClientListView; labelKey: string; hintKey: string; Icon: LucideIcon }[] = [
   { key: 'all', labelKey: 'clients.filterAll', hintKey: 'clients.hintAll', Icon: JitClients },
   { key: 'reward', labelKey: 'clients.filterReward', hintKey: 'clients.hintReward', Icon: JitGift },
-  { key: 'loyal', labelKey: 'clients.filterLoyal', hintKey: 'clients.hintLoyal', Icon: Heart },
-  { key: 'inactive', labelKey: 'clients.filterInactive', hintKey: 'clients.hintInactive', Icon: Clock },
+  { key: 'loyal', labelKey: 'clients.filterLoyal', hintKey: 'clients.hintLoyal', Icon: JitStamp },
+  { key: 'inactive', labelKey: 'clients.filterInactive', hintKey: 'clients.hintInactive', Icon: JitClock },
 ];
 
 function getInitials(item: ClientListItem) {
-  const first = item.prenom?.charAt(0) || item.nom?.charAt(0) || '?';
-  const last = item.prenom && item.nom ? item.nom.charAt(0) : '';
-  return (first + last).toUpperCase();
+  return initialsOf([item.prenom, item.nom]);
 }
 
 const ClientRow = React.memo(function ClientRow({
@@ -67,8 +67,11 @@ const ClientRow = React.memo(function ClientRow({
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
+  const dir = useDir();
 
-  const displayName = [item.prenom, item.nom].filter(Boolean).join(' ') || '?';
+  // Quick-add clients can have no name: show their phone, or a label, never a bare "?".
+  const displayName = [item.prenom, item.nom].filter(Boolean).join(' ') || item.telephone || t('clients.unnamed');
+  const initials = getInitials(item);
   const hasThreshold = !!rewardThreshold && rewardThreshold > 0;
   const rewardReady = hasThreshold && item.stamps >= rewardThreshold;
   const progress = hasThreshold ? Math.min(item.stamps / rewardThreshold, 1) : 0;
@@ -84,8 +87,8 @@ const ClientRow = React.memo(function ClientRow({
     lastVisitLabel,
   ].filter(Boolean).join(', ');
 
+  // Plain navigation: no haptic (selection ticks are for value changes).
   const handlePress = useCallback(() => {
-    safeSelection();
     onOpenDetail(item.id);
   }, [onOpenDetail, item.id]);
 
@@ -93,7 +96,7 @@ const ClientRow = React.memo(function ClientRow({
     <TouchableOpacity
       style={[
         styles.clientRow,
-        { backgroundColor: theme.bgCard, borderColor: theme.borderLight },
+        { backgroundColor: theme.bgCard, borderColor: theme.border, flexDirection: dir.row },
         isFirst ? styles.clientRowFirst : styles.clientRowDivider,
         isLast && styles.clientRowLast,
       ]}
@@ -104,34 +107,38 @@ const ClientRow = React.memo(function ClientRow({
       accessibilityHint={t('clients.openDetailHint')}
     >
       <View style={[styles.avatar, { backgroundColor: `${theme.primary}1A` }]} importantForAccessibility="no">
-        <Text style={[styles.avatarText, { color: theme.primary }]} maxFontSizeMultiplier={CARD_FONT_SCALE}>
-          {getInitials(item)}
-        </Text>
+        {initials === '?' ? (
+          <User size={20} color={theme.primary} strokeWidth={iconTokens.stroke} />
+        ) : (
+          <Text style={[styles.avatarText, { color: theme.primary }]} maxFontSizeMultiplier={CARD_FONT_SCALE}>
+            {initials}
+          </Text>
+        )}
       </View>
 
       <View style={styles.clientInfo} importantForAccessibility="no-hide-descendants">
-        <Text style={[styles.clientName, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={CARD_FONT_SCALE}>
+        <Text style={[styles.clientName, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={CARD_FONT_SCALE}>
           {displayName}
         </Text>
-        <Text style={[styles.clientMeta, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={CARD_FONT_SCALE}>
+        <Text style={[styles.clientMeta, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={CARD_FONT_SCALE}>
           {lastVisitLabel}
         </Text>
         {hasThreshold && (
           <View style={[styles.progressTrack, { backgroundColor: theme.borderLight }]}>
-            <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: theme.primary }]} />
+            <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: theme.primary, alignSelf: dir.alignStart }]} />
           </View>
         )}
       </View>
 
       {rewardReady ? (
-        <View style={[styles.rewardBadge, { backgroundColor: `${theme.primary}1A` }]} importantForAccessibility="no-hide-descendants">
+        <View style={[styles.rewardBadge, { backgroundColor: `${theme.primary}1A`, flexDirection: dir.row }]} importantForAccessibility="no-hide-descendants">
           <JitGift size={13} color={theme.primary} strokeWidth={iconTokens.strokeSmall} />
           <Text style={[styles.rewardBadgeText, { color: theme.primary }]} numberOfLines={1} maxFontSizeMultiplier={CARD_FONT_SCALE}>
             {t('clients.rewardReady')}
           </Text>
         </View>
       ) : (
-        <View style={styles.stampsRow} importantForAccessibility="no-hide-descendants">
+        <View style={[styles.stampsRow, { flexDirection: dir.row }]} importantForAccessibility="no-hide-descendants">
           <Text style={[styles.stamps, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={CARD_FONT_SCALE}>
             {item.stamps}
             {hasThreshold && <Text style={{ color: theme.textMuted }}>/{rewardThreshold}</Text>}
@@ -157,11 +164,13 @@ const ViewChip = React.memo(function ViewChip({
   onSelect: (view: ClientListView) => void;
 }) {
   const theme = useTheme();
+  const dir = useDir();
   const fg = selected ? theme.textInverse : theme.textSecondary;
   return (
     <TouchableOpacity
       style={[
         styles.chip,
+        { flexDirection: dir.row },
         selected
           ? { backgroundColor: theme.primary, borderColor: theme.primary }
           : { backgroundColor: theme.bgCard, borderColor: theme.border },
@@ -172,7 +181,7 @@ const ViewChip = React.memo(function ViewChip({
       accessibilityState={{ selected }}
       accessibilityLabel={label}
     >
-      <Icon size={14} color={fg} strokeWidth={iconTokens.strokeSmall} />
+      <Icon size={15} color={fg} strokeWidth={iconTokens.stroke} />
       <Text style={[styles.chipText, { color: fg }]} maxFontSizeMultiplier={1.4}>{label}</Text>
     </TouchableOpacity>
   );
@@ -180,8 +189,7 @@ const ViewChip = React.memo(function ViewChip({
 
 function StateMessage({
   theme,
-  icon,
-  danger = false,
+  Icon,
   title,
   hint,
   actionLabel,
@@ -189,9 +197,8 @@ function StateMessage({
   onAction,
 }: {
   theme: Theme;
-  icon: React.ReactNode;
-  /** Tints the icon circle with the danger color instead of the neutral one. */
-  danger?: boolean;
+  /** Drawn plain above the title. */
+  Icon?: LucideIcon;
   title: string;
   hint: string;
   actionLabel?: string;
@@ -200,7 +207,7 @@ function StateMessage({
 }) {
   return (
     <View style={styles.stateContainer}>
-      <View style={[styles.stateIcon, danger ? { backgroundColor: `${theme.danger}14` } : styles.stateIconNeutral]}>{icon}</View>
+      {Icon ? <Icon size={36} color={theme.textMuted} strokeWidth={1.5} style={styles.stateIcon} /> : null}
       <Text style={[styles.stateTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{title}</Text>
       <Text style={[styles.stateText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>{hint}</Text>
       {actionLabel && onAction && (
@@ -230,13 +237,12 @@ const EmptyState = React.memo(function EmptyState({
   onScan: () => void;
 }) {
   const { t } = useLanguage();
-  const iconProps = { size: 32, color: palette.charbon, strokeWidth: iconTokens.stroke };
 
   if (search) {
     return (
       <StateMessage
         theme={theme}
-        icon={<Search {...iconProps} />}
+        Icon={Search}
         title={t('clients.noResults')}
         hint={t('clients.noResultsFor', { query: search })}
       />
@@ -246,7 +252,7 @@ const EmptyState = React.memo(function EmptyState({
     return (
       <StateMessage
         theme={theme}
-        icon={<JitGift {...iconProps} />}
+        Icon={JitGift}
         title={t('clients.emptyRewardTitle')}
         hint={t('clients.emptyRewardHint')}
       />
@@ -256,7 +262,7 @@ const EmptyState = React.memo(function EmptyState({
     return (
       <StateMessage
         theme={theme}
-        icon={<Clock {...iconProps} />}
+        Icon={JitClock}
         title={t('clients.emptyInactiveTitle')}
         hint={t('clients.emptyInactiveHint', { days: INACTIVE_CLIENT_DAYS })}
       />
@@ -265,7 +271,7 @@ const EmptyState = React.memo(function EmptyState({
   return (
     <StateMessage
       theme={theme}
-      icon={<JitClients {...iconProps} />}
+      Icon={JitClients}
       title={t('clients.noClients')}
       hint={t('clients.noClientsHint')}
       actionLabel={t('clients.addClient')}
@@ -288,6 +294,7 @@ const ClientSearchBar = React.memo(function ClientSearchBar({
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const inputRef = useRef<TextInput>(null);
   const [text, setText] = useState('');
 
@@ -308,7 +315,7 @@ const ClientSearchBar = React.memo(function ClientSearchBar({
 
   return (
     <View style={styles.searchContainer}>
-      <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+      <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.border, flexDirection: dir.row }]}>
         {searching ? (
           <ActivityIndicator size="small" color={theme.primary} style={styles.searchIcon} />
         ) : (
@@ -316,7 +323,7 @@ const ClientSearchBar = React.memo(function ClientSearchBar({
         )}
         <TextInput
           ref={inputRef}
-          style={[styles.searchInput, { color: theme.text }]}
+          style={[styles.searchInput, { color: theme.text, textAlign: dir.textAlign }]}
           placeholder={t('clients.searchPlaceholder')}
           placeholderTextColor={theme.textMuted}
           value={text}
@@ -349,10 +356,11 @@ const getItemLayout = (_: unknown, index: number) => ({ length: ROW_HEIGHT, offs
 export default function ClientsScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { t } = useLanguage();
-  const { focusStyle } = useFocusFade();
+  const { t, locale } = useLanguage();
   const insets = useSafeAreaInsets();
+  const dir = useDir();
   const listRef = useRef<FlatList<ClientListItem>>(null);
+  const chipsRef = useRef<ScrollView>(null);
 
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [view, setView] = useState<ClientListView>('all');
@@ -435,15 +443,15 @@ export default function ClientsScreen() {
   ), [openDetail, rewardThreshold, lastIndex]);
 
   const activeView = VIEWS.find((v) => v.key === view) ?? VIEWS[0];
-  const countLabel = debouncedSearch
-    ? t(total === 1 ? 'clients.resultsOne' : 'clients.resultsOther', { count: total })
-    : t(total === 1 ? 'clients.countOne' : 'clients.countOther', { count: total });
+  // Darija counts 2 to 10 with the plural noun ("3 زبناء") and the singular from 11 ("15 زبون").
+  const countForm = total === 1 ? 'One' : total >= 2 && total <= 10 ? 'Few' : 'Other';
+  const countLabel = t(`clients.${debouncedSearch ? 'results' : 'count'}${countForm}`, { count: total.toLocaleString(getIntlLocale(locale)) });
   const summary = debouncedSearch
     ? countLabel
     : `${countLabel} · ${t(activeView.hintKey, { days: INACTIVE_CLIENT_DAYS })}`;
   const searching = isFetching && isPlaceholderData;
   const listContentStyle = useMemo(
-    () => [styles.list, { paddingBottom: insets.bottom + 116 }],
+    () => [styles.list, { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE }],
     [insets.bottom],
   );
 
@@ -482,8 +490,6 @@ export default function ClientsScreen() {
     content = (
       <StateMessage
         theme={theme}
-        icon={<AlertCircle size={32} color={theme.danger} strokeWidth={iconTokens.stroke} />}
-        danger
         title={t('clients.loadErrorTitle')}
         hint={t('clients.loadErrorHint')}
         actionLabel={t('common.retry')}
@@ -529,8 +535,8 @@ export default function ClientsScreen() {
   }
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12, flexDirection: dir.row }]}>
         <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">
           {t('clients.title')}
         </Text>
@@ -541,10 +547,13 @@ export default function ClientsScreen() {
 
       <View>
         <ScrollView
+          ref={chipsRef}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsRow}
+          contentContainerStyle={[styles.chipsRow, { flexDirection: dir.row }]}
           keyboardShouldPersistTaps="handled"
+          // Arabic reads from the right: start on the first filter when the row overflows.
+          onContentSizeChange={dir.isRTL ? () => chipsRef.current?.scrollToEnd({ animated: false }) : undefined}
         >
           {VIEWS.map((v) => (
             <ViewChip
@@ -562,7 +571,7 @@ export default function ClientsScreen() {
       <View style={styles.summaryRow}>
         {data ? (
           <Text
-            style={[styles.summaryText, { color: theme.textMuted }]}
+            style={[styles.summaryText, { color: theme.textMuted, textAlign: dir.textAlign }]}
             numberOfLines={1}
             maxFontSizeMultiplier={1.4}
             accessibilityLiveRegion="polite"
@@ -573,7 +582,7 @@ export default function ClientsScreen() {
       </View>
 
       <View style={styles.flex1}>{content}</View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -591,7 +600,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 28,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.5,
   },
 
@@ -599,7 +608,8 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radius.md,
+    borderRadius: 14,
+    gap: 10,
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 12 : 4,
     borderWidth: 1,
@@ -608,7 +618,6 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    marginLeft: 10,
     paddingVertical: Platform.OS === 'ios' ? 0 : 8,
     fontFamily: font.medium,
   },
@@ -620,9 +629,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  chipsRow: { paddingHorizontal: 16, paddingTop: 12, gap: 8 },
+  chipsRow: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 12, gap: 8 },
   chip: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 14,
@@ -636,7 +644,8 @@ const styles = StyleSheet.create({
 
   list: { paddingHorizontal: 16, paddingTop: 2 },
 
-  // Rows of one grouped card: side borders on every row, top/bottom borders and corners on the ends.
+  // Rows of one grouped card (same 18 radius and border as the Accueil cards):
+  // side borders on every row, top/bottom borders and corners on the ends.
   clientRow: {
     height: ROW_HEIGHT,
     flexDirection: 'row',
@@ -647,14 +656,14 @@ const styles = StyleSheet.create({
   },
   clientRowFirst: {
     borderTopWidth: 1,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
   },
   clientRowDivider: { borderTopWidth: StyleSheet.hairlineWidth },
   clientRowLast: {
     borderBottomWidth: 1,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
   },
   avatar: {
     width: 40,
@@ -663,7 +672,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontSize: 14, fontFamily: font.bold },
+  avatarText: { fontSize: 14, fontFamily: font.semibold },
   clientInfo: { flex: 1, marginHorizontal: 12 },
   clientName: {
     fontSize: 15,
@@ -681,7 +690,7 @@ const styles = StyleSheet.create({
   progressFill: { height: 4, borderRadius: 2 },
 
   stampsRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  stamps: { fontSize: 14, fontFamily: font.bold, letterSpacing: -0.2 },
+  stamps: { fontSize: 14, fontFamily: font.semibold, letterSpacing: -0.2 },
   rewardBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -693,11 +702,10 @@ const styles = StyleSheet.create({
   rewardBadgeText: { fontSize: 12, fontFamily: font.semibold },
 
   stateContainer: { alignItems: 'center', paddingTop: 56, paddingHorizontal: 32 },
-  stateIcon: { width: ms(88), height: ms(88), borderRadius: ms(24), alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  stateIconNeutral: { backgroundColor: `${palette.charbon}12` },
+  stateIcon: { marginBottom: 14 },
   stateTitle: {
     fontSize: 20,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.3,
     textAlign: 'center',
   },

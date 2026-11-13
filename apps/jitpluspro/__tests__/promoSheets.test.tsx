@@ -62,8 +62,8 @@ describe('Accueil promo sheets', () => {
     const { getByLabelText, getByText } = render(
       <GamesGuideSheet visible onClose={jest.fn()} onStart={onStart} />,
     );
-    expect(getByText('home.gamesGuideWheelStepsLabel'.toUpperCase())).toBeTruthy();
-    expect(getByText('home.gamesGuideScratchStepsLabel'.toUpperCase())).toBeTruthy();
+    expect(getByText('home.gamesGuideWheelStepsLabel')).toBeTruthy();
+    expect(getByText('home.gamesGuideScratchStepsLabel')).toBeTruthy();
     expect(getByLabelText('home.gamesGuideChoice3 : home.gamesGuidePickScratch')).toBeTruthy();
     fireEvent.press(getByLabelText('home.gamesGuideCta'));
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -85,10 +85,19 @@ describe('Accueil promo sheets', () => {
 
   it('share: poster card closes the sheet and opens the PLV screen', () => {
     const onClose = jest.fn();
-    const { getByLabelText, getByText } = render(<ClientShareSheet visible onClose={onClose} />);
-    expect(getByText(/home\.clientShareSocialMessage\(Café Atlas/)).toBeTruthy();
+    const { getByLabelText } = render(<ClientShareSheet visible onClose={onClose} />);
     fireEvent.press(getByLabelText('home.clientSharePlvCta'));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith('/client-app-qr');
+  });
+
+  it('share: social media comes before the message link and opens the post', () => {
+    const onClose = jest.fn();
+    const { getByLabelText, getAllByRole } = render(<ClientShareSheet visible onClose={onClose} />);
+    const labels = getAllByRole('button').map((b) => b.props.accessibilityLabel);
+    expect(labels.indexOf('home.clientShareSocialCta')).toBeLessThan(labels.indexOf('home.clientShareLinkCta'));
+    fireEvent.press(getByLabelText('home.clientShareSocialCta'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith('/social-post');
   });
 });

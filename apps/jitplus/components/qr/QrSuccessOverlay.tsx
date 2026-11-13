@@ -11,7 +11,7 @@ import { playSound } from '@/utils/sounds';
 import { khatamPath } from '@/utils/khatam';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface QrSuccessOverlayProps {
   event: StampsEvent | null;

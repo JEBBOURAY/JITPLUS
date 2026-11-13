@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 28,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   headerSubtitle: {
     fontSize: FS.sm,
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
     marginBottom: hp(3),
   },
   cardTitleUnread: {
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   cardText: {
     fontSize: FS.sm,

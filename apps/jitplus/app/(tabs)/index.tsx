@@ -8,7 +8,6 @@ import {
 import { Text, TextInput } from '@/components/AppText';
 import { StatusBar } from 'expo-status-bar';
 import { getInitials, getProfileCompletion } from '@/utils/profileCompletion';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
   CreditCard, AlertCircle, Gift, Search, X, Bell,
   QrCode, Compass, RotateCcw, GalleryHorizontal, LayoutList, Sparkles,
@@ -20,9 +19,9 @@ import { useExitOnBack } from '@/hooks/useExitOnBack';
 import GuestGuard from '@/components/GuestGuard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { LoyaltyCard } from '@/types';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { isEntityId } from '@/utils/ids';
 import FadeInView from '@/components/FadeInView';
-import ReferralPopup from '@/components/home/ReferralPopup';
 import LuckyWheelModal from '@/components/LuckyWheelModal';
 import Skeleton from '@/components/Skeleton';
 import WalletPasses from '@/components/home/WalletPasses';
@@ -44,10 +43,6 @@ const NO_SCRATCH_CARDS: ScratchCardDto[] = [];
 const NO_COUPONS: CouponDto[] = [];
 const NO_DRAWS: LuckyWheelDraw[] = [];
 const NO_CARDS: LoyaltyCard[] = [];
-const GRADIENT_VIOLET = [palette.violetDark, palette.violet] as const;
-const GRADIENT_EMERALD = ['#10B981', '#059669'] as const;
-const GRADIENT_H_START = { x: 0, y: 0 } as const;
-const GRADIENT_H_END = { x: 1, y: 0 } as const;
 const SCROLLED_THRESHOLD = 4;
 const VIEW_MODE_KEY = '@jitplus_cards_view';
 type ViewMode = 'wallet' | 'list';
@@ -141,8 +136,22 @@ export default function HomeScreen() {
   const { setShowLuckyWheel } = banners;
   const handleLuckyWheelOpen = useCallback(() => {
     haptic(HapticStyle.Medium);
+    setWheelMerchantId(undefined);
     setShowLuckyWheel(true);
   }, [setShowLuckyWheel]);
+
+  // A lucky-wheel notification opens the home tab with `?wheel=<merchantId>`:
+  // show the wheel on that merchant's tickets, then drop the param so the next
+  // tap triggers again.
+  const { wheel: wheelParam } = useLocalSearchParams<{ wheel?: string }>();
+  const [wheelMerchantId, setWheelMerchantId] = useState<string>();
+  useEffect(() => {
+    if (!wheelParam) return;
+    router.setParams({ wheel: undefined });
+    if (!client || isGuest) return;
+    setWheelMerchantId(isEntityId(wheelParam) ? wheelParam : undefined);
+    setShowLuckyWheel(true);
+  }, [wheelParam, client, isGuest, router, setShowLuckyWheel]);
 
   const handleLuckyWheelClose = useCallback(() => {
     setShowLuckyWheel(false);
@@ -313,10 +322,10 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.emptyActions}>
             <TouchableOpacity onPress={handleDiscover} activeOpacity={0.85} accessibilityRole="button" style={styles.emptyPrimaryShadow}>
-              <LinearGradient colors={GRADIENT_VIOLET} start={GRADIENT_H_START} end={GRADIENT_H_END} style={styles.emptyPrimaryBtn}>
+              <View style={styles.emptyPrimaryBtn}>
                 <Compass size={ms(17)} color="#fff" strokeWidth={2} />
                 <Text style={[styles.emptyPrimaryText, { fontFamily: fonts.bold }]}>{t('home.discoverCta')}</Text>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.emptySecondaryBtn, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
@@ -425,7 +434,7 @@ export default function HomeScreen() {
           pointerEvents="box-none"
         >
           <TouchableOpacity activeOpacity={0.9} onPress={() => { haptic(); router.push('/(tabs)/notifications'); banners.setRewardBannerNotif(null); }}>
-            <LinearGradient colors={GRADIENT_EMERALD} start={GRADIENT_H_START} end={GRADIENT_H_END} style={styles.rewardNotifGradient}>
+            <View style={[styles.rewardNotifGradient, styles.rewardNotifEarned]}>
               <View style={styles.rewardNotifIcon}>
                 <Bell size={ms(15)} color="#fff" strokeWidth={2} />
               </View>
@@ -435,7 +444,7 @@ export default function HomeScreen() {
                   : t('home.rewardBannerGeneric')}
               </Text>
               <Gift size={ms(15)} color="#fff" strokeWidth={2} />
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -451,14 +460,14 @@ export default function HomeScreen() {
           pointerEvents="none"
           accessibilityLiveRegion="polite"
         >
-          <LinearGradient colors={GRADIENT_VIOLET} start={GRADIENT_H_START} end={GRADIENT_H_END} style={[styles.rewardNotifGradient, styles.welcomeGradient]}>
+          <View style={[styles.rewardNotifGradient, styles.welcomeGradient]}>
             <View style={styles.rewardNotifIcon}>
               <Sparkles size={ms(15)} color="#fff" strokeWidth={2} />
             </View>
             <Text style={[styles.rewardNotifText, { fontFamily: fonts.bold }]} numberOfLines={1}>
               {t(banners.welcomeKind === 'new' ? 'home.welcomeNew' : 'home.welcomeBack', { name: firstName })}
             </Text>
-          </LinearGradient>
+          </View>
         </Animated.View>
       )}
 
@@ -487,9 +496,8 @@ export default function HomeScreen() {
       />
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      <ReferralPopup visible={banners.showReferral} onClose={banners.dismissReferral} />
 
-      <LuckyWheelModal visible={banners.showLuckyWheel} onClose={handleLuckyWheelClose} />
+      <LuckyWheelModal visible={banners.showLuckyWheel} onClose={handleLuckyWheelClose} merchantId={wheelMerchantId} />
     </View>
   );
 }
@@ -505,7 +513,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 10,
   },
   headerShadow: {
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', minHeight: ms(46) },
   titleBlock: { flex: 1 },
@@ -572,11 +580,11 @@ const styles = StyleSheet.create({
   emptyActions: { alignSelf: 'stretch', gap: hp(10), marginTop: hp(24), paddingHorizontal: wp(16) },
   emptyPrimaryShadow: {
     borderRadius: radius.lg,
-    shadowColor: palette.violet, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 14, elevation: 4,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
   },
   emptyPrimaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(8),
-    height: ms(50), borderRadius: radius.lg,
+    height: ms(50), borderRadius: radius.lg, backgroundColor: palette.violet,
   },
   emptyPrimaryText: { color: '#fff', fontSize: fontSize.md },
   emptySecondaryBtn: {
@@ -590,12 +598,13 @@ const styles = StyleSheet.create({
   rewardNotifGradient: {
     flexDirection: 'row', alignItems: 'center', gap: wp(10),
     paddingVertical: hp(10), paddingHorizontal: wp(12), borderRadius: radius.lg,
-    shadowColor: '#059669', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 6,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
   },
   rewardNotifIcon: {
     width: ms(30), height: ms(30), borderRadius: ms(15),
     backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center',
   },
   rewardNotifText: { color: '#fff', fontSize: fontSize.sm, flex: 1 },
-  welcomeGradient: { shadowColor: palette.violetDark },
+  rewardNotifEarned: { backgroundColor: palette.goldDark },
+  welcomeGradient: { backgroundColor: palette.violetDark },
 });

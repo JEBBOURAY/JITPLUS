@@ -4,7 +4,7 @@ import { Text } from '@/components/AppText';
 import { hp, ms, wp, fontSize as FS } from '@/utils/responsive';
 import MerchantLogo from '../MerchantLogo';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
   logoUrl: string | null | undefined;

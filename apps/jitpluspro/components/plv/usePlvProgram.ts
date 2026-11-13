@@ -35,8 +35,10 @@ export interface PlvProgram {
  * rewards, lucky wheel, stamp validity) so every PLV matches what the
  * customer will actually get at this store.
  */
-export function usePlvProgram(): PlvProgram {
-  const { t, locale } = useLanguage();
+export function usePlvProgram(lang?: Pick<ReturnType<typeof useLanguage>, 't' | 'locale'>): PlvProgram {
+  const app = useLanguage();
+  // A support can be written in another language than the app (social posts).
+  const { t, locale } = lang ?? app;
   const merchant = useAuthStore((s) => s.merchant);
   const { data: rewards } = useRewards(!!merchant);
   const { data: wheelInfo } = useLuckyWheelActiveInfo();

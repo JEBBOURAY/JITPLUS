@@ -1,5 +1,5 @@
 // Horseshoe arch ("bab") framing the logo on the login screen: a brass outline that
-// draws itself, a khatam keystone, and a soft violet halo that breathes behind the logo.
+// draws itself and a khatam keystone above the logo.
 import React, { useId, useMemo } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import Svg, { Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
@@ -19,7 +19,6 @@ const ARC_CY = KEY_R + 2 + R_OUT;
 const HORSESHOE_DEG = 28;
 const LOGO_CY = 76;
 const LOGO = 60;
-const HALO = 96;
 const BRASS_LIGHT = '#E9C877';
 
 function horseshoe(r: number) {
@@ -48,8 +47,6 @@ interface ArchCrestProps {
   reveal: Animated.Value;
   /** 0 → 1, native: keystone pops in. */
   keystone: Animated.Value;
-  /** 0 ↔ 1 loop, native: halo breathing. */
-  halo: Animated.Value;
   /** 0 → 1, native: shrink while the email form is open. */
   compact: Animated.Value;
   /** Layout flag matching `compact`, so the reserved height follows the visual size. */
@@ -57,7 +54,7 @@ interface ArchCrestProps {
   children: React.ReactNode;
 }
 
-export default React.memo(function ArchCrest({ dark, draw, reveal, keystone, halo, compact, isCompact, children }: ArchCrestProps) {
+export default React.memo(function ArchCrest({ dark, draw, reveal, keystone, compact, isCompact, children }: ArchCrestProps) {
   const gradId = `archBrass_${useId()}`;
   const s = ms(VB_W) / VB_W;
   const w = VB_W * s;
@@ -78,10 +75,6 @@ export default React.memo(function ArchCrest({ dark, draw, reveal, keystone, hal
           { scale: compact.interpolate({ inputRange: [0, 1], outputRange: [1, COMPACT_SCALE] }) },
         ],
       },
-      halo: {
-        opacity: Animated.multiply(reveal, halo.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] })),
-        transform: [{ scale: halo.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.08] }) }],
-      },
       // Hidden until drawing starts, so the round cap leaves no dot at the start point.
       strokeOpacity: draw.interpolate({ inputRange: [0, 0.01, 1], outputRange: [0, 1, 1] }),
       dashOffset: draw.interpolate({ inputRange: [0, 1], outputRange: [OUTER.length, 0] }),
@@ -99,7 +92,7 @@ export default React.memo(function ArchCrest({ dark, draw, reveal, keystone, hal
         transform: [{ scale: reveal.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
       },
     };
-  }, [draw, reveal, keystone, halo, compact, s, w, h]);
+  }, [draw, reveal, keystone, compact, s, w, h]);
 
   return (
     <View style={{ width: w, height: isCompact ? h * COMPACT_SCALE : h }}>
@@ -111,21 +104,6 @@ export default React.memo(function ArchCrest({ dark, draw, reveal, keystone, hal
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <Animated.View
-            style={[
-              styles.abs,
-              {
-                width: HALO * s,
-                height: HALO * s,
-                borderRadius: (HALO * s) / 2,
-                left: (CX - HALO / 2) * s,
-                top: (LOGO_CY - HALO / 2) * s,
-                backgroundColor: dark ? 'rgba(167,139,250,0.20)' : 'rgba(124,58,237,0.12)',
-              },
-              a.halo,
-            ]}
-          />
-
           <Svg width={w} height={h} viewBox={viewBox} style={StyleSheet.absoluteFill}>
             <BrassDefs id={gradId} />
             <AnimatedPath

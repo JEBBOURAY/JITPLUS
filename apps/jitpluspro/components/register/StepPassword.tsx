@@ -213,8 +213,9 @@ function StepPasswordInner({
 
 const styles = StyleSheet.create({
   hintTight: { marginTop: 4 },
-  rules: { marginTop: hp(8), gap: hp(4) },
-  ruleRow: { alignItems: 'center', gap: wp(6) },
+  // Two columns: four rules take two lines instead of four.
+  rules: { marginTop: hp(6), flexDirection: 'row', flexWrap: 'wrap', rowGap: hp(3) },
+  ruleRow: { width: '50%', alignItems: 'center', gap: wp(6) },
   ruleText: { fontSize: fontSize.xs, lineHeight: ms(16), fontFamily: font.medium },
   strengthWrap: { marginTop: hp(6) },
   strengthTrack: { height: ms(4), borderRadius: ms(2), overflow: 'hidden' },

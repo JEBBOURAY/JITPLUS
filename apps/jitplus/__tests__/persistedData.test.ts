@@ -17,16 +17,13 @@ describe('shouldPersistQuery', () => {
     expect(shouldPersistQuery(ok(['merchant', 'm1']))).toBe(true);
   });
 
-  it('never persists coupon tokens, payouts or referral stats', () => {
+  it('never persists coupon tokens', () => {
     expect(shouldPersistQuery(ok(['scratch', 'coupons']))).toBe(false);
-    expect(shouldPersistQuery(ok(['payoutHistory']))).toBe(false);
-    expect(shouldPersistQuery(ok(['referralStats']))).toBe(false);
     expect(shouldPersistQuery(ok(['profile']))).toBe(false);
   });
 
-  it('skips failed and geo queries', () => {
+  it('skips failed and deal queries', () => {
     expect(shouldPersistQuery({ queryKey: ['stamps'], state: { status: 'error' } })).toBe(false);
-    expect(shouldPersistQuery(ok(['merchants-nearby', 1, 2]))).toBe(false);
     expect(shouldPersistQuery(ok(['deals', 'feed', 'nearby', null, null, 33.5, -7.6]))).toBe(false);
     expect(shouldPersistQuery(ok(['deals', 'detail', 'd1']))).toBe(false);
   });

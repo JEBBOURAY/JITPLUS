@@ -38,10 +38,6 @@ export const palette = {
   gray900: '#0F172A',
 };
 
-/** Violet → Charbon gradient — "Violet Maître × Charbon Pro" brand identity */
-export const brandGradient = ['#7C3AED', '#1F2937'] as const;
-/** Extended 3-stop version for headers */
-export const brandGradientFull = ['#5B21B6', '#7C3AED', '#1F2937'] as const;
 
 export interface ThemeColors {
   mode: 'light' | 'dark';
@@ -68,54 +64,55 @@ export interface ThemeColors {
   danger: string;
 }
 
+// Graphite ramp: surfaces stay grey so the stamp card and the figures carry the colour.
 const lightTheme: ThemeColors = {
   mode: 'light',
-  bg: '#FFFFFF',
+  bg: '#FAFAFA',
   bgCard: '#FFFFFF',
-  bgElevated: '#F8FAFC',
-  bgInput: '#F1F5F9',
-  bgSkeleton: 'rgba(124,58,237,0.09)',
+  bgElevated: '#F4F4F5',
+  bgInput: '#F4F4F5',
+  bgSkeleton: 'rgba(23,23,23,0.06)',
   bgSkeletonHighlight: 'rgba(255,255,255,0.90)',
-  text: '#0F172A',
-  textSecondary: '#334155',
-  textMuted: '#64748B',
+  text: '#171717',
+  textSecondary: '#525252',
+  textMuted: '#737373',
   textInverse: '#FFFFFF',
   primary: '#7C3AED',
   primaryBg: 'rgba(124,58,237,0.08)',
   accent: '#1F2937',
-  border: '#E2E8F0',
-  borderLight: '#F1F5F9',
-  inputBorder: '#CBD5E1',
-  inputBg: '#F8FAFC',
-  inputPlaceholder: '#94A3B8',
-  success: '#10B981',
-  warning: '#F59E0B',
-  danger: '#EF4444',
+  border: 'rgba(23,23,23,0.10)',
+  borderLight: 'rgba(23,23,23,0.06)',
+  inputBorder: 'rgba(23,23,23,0.14)',
+  inputBg: '#FFFFFF',
+  inputPlaceholder: '#A3A3A3',
+  success: '#16A34A',
+  warning: '#D97706',
+  danger: '#DC2626',
 };
 
 const darkTheme: ThemeColors = {
   mode: 'dark',
-  bg: '#0B0F14',
-  bgCard: '#1A1F2B',
-  bgElevated: '#1A1F2B',
-  bgInput: '#1A1F2B',
-  bgSkeleton: 'rgba(167,139,250,0.10)',
-  bgSkeletonHighlight: 'rgba(196,181,253,0.35)',
-  text: '#F1F5F9',
-  textSecondary: '#CBD5E1',
-  textMuted: '#64748B',
-  textInverse: '#0F172A',
+  bg: '#141415',
+  bgCard: '#19191B',
+  bgElevated: '#232325',
+  bgInput: '#232325',
+  bgSkeleton: 'rgba(237,237,237,0.06)',
+  bgSkeletonHighlight: 'rgba(237,237,237,0.14)',
+  text: '#EDEDED',
+  textSecondary: '#A1A1A6',
+  textMuted: '#85858B',
+  textInverse: '#141415',
   primary: '#A78BFA',
-  primaryBg: 'rgba(167,139,250,0.15)',
-  accent: '#9CA3AF',
-  border: 'rgba(255,255,255,0.16)',
-  borderLight: 'rgba(255,255,255,0.12)',
-  inputBorder: '#2D3443',
-  inputBg: '#1A1F2B',
-  inputPlaceholder: '#64748B',
-  success: '#34D399',
-  warning: '#FBBF24',
-  danger: '#F87171',
+  primaryBg: 'rgba(167,139,250,0.14)',
+  accent: '#A1A1A6',
+  border: 'rgba(237,237,237,0.10)',
+  borderLight: 'rgba(237,237,237,0.06)',
+  inputBorder: 'rgba(237,237,237,0.14)',
+  inputBg: '#19191B',
+  inputPlaceholder: '#6E6E73',
+  success: '#4CC38A',
+  warning: '#F5A524',
+  danger: '#E5484D',
 };
 
 export const { ThemeProvider, useTheme } = createThemeProvider<ThemeColors>({

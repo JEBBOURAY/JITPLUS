@@ -112,7 +112,7 @@ export default function NotificationSettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   headerBar: { alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingBottom: 12 },
-  headerTitle: { flex: 1, fontSize: 20, fontFamily: font.bold, letterSpacing: -0.3 },
+  headerTitle: { flex: 1, fontSize: 20, fontFamily: font.semibold, letterSpacing: -0.3 },
   content: { paddingHorizontal: 16, paddingTop: 8 },
   banner: { marginBottom: 16 },
   intro: { fontSize: 13.5, lineHeight: 19, fontFamily: font.regular, marginBottom: 14, paddingHorizontal: 4 },

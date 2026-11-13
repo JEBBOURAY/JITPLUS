@@ -35,7 +35,7 @@ export default function NotFoundScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
-  code: { fontSize: ms(72), fontFamily: 'Lexend_700Bold', marginBottom: hp(8) },
+  code: { fontSize: ms(72), fontFamily: 'Lexend_600SemiBold', marginBottom: hp(8) },
   title: { fontSize: ms(20), fontFamily: 'Lexend_600SemiBold', marginBottom: hp(8), textAlign: 'center' },
   body: { fontSize: ms(14), fontFamily: 'Lexend_400Regular', textAlign: 'center', marginBottom: hp(32), lineHeight: ms(20) },
   button: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14 },

@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: fontSize.lg,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 
   // Search

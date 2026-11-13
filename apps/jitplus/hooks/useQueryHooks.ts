@@ -21,6 +21,7 @@ export const queryKeys = {
   unreadCount: ['notifications-unread-count'] as const,
   luckyWheelDraws: ['lucky-wheel-available-draws'] as const,
   luckyWheelHistory: ['lucky-wheel-history'] as const,
+  merchant: (id: string | undefined) => ['merchant', id] as const,
 } as const;
 
 // Single-pass invalidation predicate for both notification-related caches —
@@ -99,8 +100,6 @@ export function useUnreadNotificationCount(enabled = true) {
     refetchInterval: wsConnected ? false : 2 * 60 * 1000,
     // Stop polling when the app is backgrounded to save battery & network
     refetchIntervalInBackground: false,
-    // Exponential backoff on retries to avoid retry storms on poor connectivity
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
     enabled,
   });
 }
@@ -226,7 +225,7 @@ export function useDismissAllNotifications() {
 
 export function useMerchantById(id: string | undefined, enabled = true) {
   return useQuery<Merchant>({
-    queryKey: ['merchant', id] as const,
+    queryKey: queryKeys.merchant(id),
     queryFn: () => api.getMerchantById(id!),
     staleTime: 30_000,
     enabled: enabled && !!id,

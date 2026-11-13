@@ -3,7 +3,7 @@ import api from '@/services/api';
 import type { TransactionsPage } from '@/types';
 import { queryKeys, STALE } from './keys';
 
-interface HomeStats {
+export interface HomeStats {
   today: { stamps: number; clients: number };
   yesterday: { stamps: number };
   month: { total: number; daily: number[] };

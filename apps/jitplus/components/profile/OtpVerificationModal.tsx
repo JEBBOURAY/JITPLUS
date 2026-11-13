@@ -34,8 +34,8 @@ export default function OtpVerificationModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose} accessibilityLabel={t('common.close')}>
         <Pressable style={[styles.otpModalCard, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()} accessibilityRole="summary" accessibilityViewIsModal={true} accessibilityLabel={t('profile.otpVerifyTitle')}>
-          <View style={[styles.modalIconCircle, { backgroundColor: `${palette.gold}15` }]}>
-            <ShieldCheck size={ms(22)} color={palette.gold} strokeWidth={1.8} />
+          <View style={[styles.modalIconCircle, { backgroundColor: `${palette.violet}15` }]}>
+            <ShieldCheck size={ms(22)} color={palette.violet} strokeWidth={1.8} />
           </View>
           <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.otpVerifyTitle')}</Text>
           <Text style={[styles.otpModalDesc, { color: theme.textMuted }]}>

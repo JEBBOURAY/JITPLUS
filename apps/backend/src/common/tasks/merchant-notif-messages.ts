@@ -164,9 +164,9 @@ export const TIP_MESSAGES = {
     ar: { title: 'عندك كثر من حانوت؟', body: 'زيد كاع المحلات ديالك: كارطة وفاء وحدة، صالحة فكل بلاصة.' },
   },
   emailBlast: {
-    fr: { title: 'Lancez une campagne email', body: 'Avec Premium, annoncez une offre ou une nouveauté par email à tous vos clients.' },
-    en: { title: 'Launch an email campaign', body: 'With Premium, announce an offer or something new by email to all your customers.' },
-    ar: { title: 'طلق حملة إيميل', body: 'مع Premium، أعلن على عرض ولا جديد بالإيميل لكاع الكليان ديالك.' },
+    fr: { title: 'Lancez une campagne email', body: 'Annoncez une offre ou une nouveauté par email à tous vos clients.' },
+    en: { title: 'Launch an email campaign', body: 'Announce an offer or something new by email to all your customers.' },
+    ar: { title: 'طلق حملة إيميل', body: 'أعلن على عرض ولا جديد بالإيميل لكاع الكليان ديالك.' },
   },
   whatsappBlast: {
     fr: { title: 'Écrivez à vos clients sur WhatsApp', body: 'Le canal le plus lu au Maroc : envoyez votre offre à vos clients en quelques secondes.' },

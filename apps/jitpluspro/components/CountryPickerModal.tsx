@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.1)',
     gap: 12,
   },
-  title: { flex: 1, fontSize: 18, color: '#fff', fontFamily: font.bold },
+  title: { flex: 1, fontSize: 18, color: '#fff', fontFamily: font.semibold },
   iconPad: { padding: 4 },
   spacer: { width: 32 },
   searchRow: {

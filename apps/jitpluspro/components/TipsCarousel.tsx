@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,19 +10,14 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTour } from '@/components/GuidedTour';
 import { useRouter } from 'expo-router';
 import PromoBanner, { PROMO_BANNER_OVERFLOW } from '@/components/home/PromoBanner';
 import WhyLoyaltySheet from '@/components/home/WhyLoyaltySheet';
 import ClientAppPitchSheet from '@/components/home/ClientAppPitchSheet';
 import ClientShareSheet from '@/components/home/ClientShareSheet';
-import JitPlusGuideSheet from '@/components/home/JitPlusGuideSheet';
 import GamesGuideSheet from '@/components/home/GamesGuideSheet';
 import DealsGuideSheet from '@/components/home/DealsGuideSheet';
-import SetupChecklistCard from '@/components/home/SetupChecklistCard';
-import { useGuideProgress, type GuideStepId } from '@/components/home/useGuideProgress';
 import {
-  GateIcon,
   LanternIcon,
   StarBadgeIcon,
   TajineIcon,
@@ -31,6 +26,7 @@ import {
   type PromoIcon,
 } from '@/components/home/PromoIcons';
 import { PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
+import { useAfterSheetClosed } from '@/components/home/useAfterSheetClosed';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -43,46 +39,30 @@ interface PromoCardDef {
   labelKey: string;
   titleKey: string;
   ctaKey: string;
-  colors: readonly [string, string];
-  tint: string;
+  /** Accent, shared with the sheet the banner opens. */
+  tone: PromoTone;
   Icon: PromoIcon;
-  pattern?: 'zellige';
 }
 
-/** Banner gradient + tint from the tone shared with the sheet it opens. */
-const toneColors = (tone: PromoTone) => ({
-  colors: [PROMO_TONES[tone].fill, PROMO_TONES[tone].deep] as const,
-  tint: PROMO_TONES[tone].fill,
-});
-
 // Data-driven: add an entry here to add a banner to the carousel.
-// The order is the merchant's learning path: understand why loyalty pays, set
-// the program up, get customers on the client app, then animate with games
-// (which need customers who already have the app).
+// The order is the merchant's learning path: understand why loyalty pays, get
+// customers on the client app, then animate with games (which need customers
+// who already have the app) and deals.
 const PROMO_CARDS: readonly PromoCardDef[] = [
   {
     key: 'why',
     labelKey: 'home.promoWhyLabel',
     titleKey: 'home.promoWhyTitle',
     ctaKey: 'home.promoWhyCta',
-    ...toneColors('orange'),
+    tone: 'orange',
     Icon: LanternIcon,
-    pattern: 'zellige',
-  },
-  {
-    key: 'guide',
-    labelKey: 'home.promoGuideLabel',
-    titleKey: 'home.promoGuideTitle',
-    ctaKey: 'home.promoGuideCta',
-    ...toneColors('violet'),
-    Icon: GateIcon,
   },
   {
     key: 'client',
     labelKey: 'home.promoClientLabel',
     titleKey: 'home.promoClientTitle',
     ctaKey: 'home.promoClientCta',
-    ...toneColors('emerald'),
+    tone: 'emerald',
     Icon: TeapotIcon,
   },
   {
@@ -90,7 +70,7 @@ const PROMO_CARDS: readonly PromoCardDef[] = [
     labelKey: 'home.promoShareLabel',
     titleKey: 'home.promoShareTitle',
     ctaKey: 'home.promoShareCta',
-    ...toneColors('sky'),
+    tone: 'sky',
     Icon: TajineIcon,
   },
   {
@@ -98,7 +78,7 @@ const PROMO_CARDS: readonly PromoCardDef[] = [
     labelKey: 'home.promoGamesLabel',
     titleKey: 'home.promoGamesTitle',
     ctaKey: 'home.promoGamesCta',
-    ...toneColors('pink'),
+    tone: 'pink',
     Icon: WheelIcon,
   },
   {
@@ -106,7 +86,7 @@ const PROMO_CARDS: readonly PromoCardDef[] = [
     labelKey: 'home.promoDealsLabel',
     titleKey: 'home.promoDealsTitle',
     ctaKey: 'home.promoDealsCta',
-    ...toneColors('red'),
+    tone: 'violet',
     Icon: StarBadgeIcon,
   },
 ];
@@ -115,25 +95,15 @@ const PROMO_CARDS: readonly PromoCardDef[] = [
  * Help carousel with snap scrolling.
  * Opened cards are remembered (AsyncStorage) and move to the end of the
  * carousel.
- *
- * Until an owner finishes the setup guide, a single "Démarrage x/7" card takes
- * the carousel's place so new merchants get one clear next step.
  */
 function TipsCarousel() {
   const theme = useTheme();
   const { t } = useLanguage();
   const router = useRouter();
   const { width: winW } = useWindowDimensions();
-  const tour = useTour();
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
-  const setup = useGuideProgress(!isTeamMember);
-  const showSetup = !isTeamMember && setup.ready && !setup.allDone;
-  // Avoids flashing the carousel before swapping it for the checklist.
-  const setupPending = !isTeamMember && !setup.ready;
-
   const [activeIndex, setActiveIndex] = useState(0);
   const [readKeys, setReadKeys] = useState<ReadonlySet<string>>(() => new Set());
-  const [guideVisible, setGuideVisible] = useState(false);
   const [whyVisible, setWhyVisible] = useState(false);
   const [clientBenefitsVisible, setClientBenefitsVisible] = useState(false);
   const [clientShareVisible, setClientShareVisible] = useState(false);
@@ -161,8 +131,6 @@ function TipsCarousel() {
     return () => { active = false; };
   }, []);
 
-  const openGuide = useCallback(() => setGuideVisible(true), []);
-  const closeGuide = useCallback(() => setGuideVisible(false), []);
   const openWhy = useCallback(() => setWhyVisible(true), []);
   const closeWhy = useCallback(() => setWhyVisible(false), []);
   const handleConfigureWhy = useCallback(() => {
@@ -188,13 +156,12 @@ function TipsCarousel() {
   }, [router]);
 
   const openers = useMemo<Record<string, () => void>>(() => ({
-    guide: openGuide,
     why: openWhy,
     games: openGames,
     client: openClientBenefits,
     share: openClientShare,
     deals: openDeals,
-  }), [openGuide, openWhy, openGames, openClientBenefits, openClientShare, openDeals]);
+  }), [openWhy, openGames, openClientBenefits, openClientShare, openDeals]);
 
   const markRead = useCallback((key: string) => {
     setReadKeys((prev) => {
@@ -216,54 +183,13 @@ function TipsCarousel() {
     [markRead, openers],
   );
 
-  const sheetSwapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (sheetSwapTimer.current) clearTimeout(sheetSwapTimer.current);
-  }, []);
-
-  // iOS cannot present a Modal while another is still animating out, so the
-  // next sheet (or the tour overlay) appears once the slide-down has finished.
-  const afterSheetClosed = useCallback((fn: () => void) => {
-    if (sheetSwapTimer.current) clearTimeout(sheetSwapTimer.current);
-    sheetSwapTimer.current = setTimeout(fn, 350);
-  }, []);
+  const afterSheetClosed = useAfterSheetClosed();
 
   const handlePitchShare = useCallback(() => {
     setClientBenefitsVisible(false);
     markRead('share');
     afterSheetClosed(() => setClientShareVisible(true));
   }, [markRead, afterSheetClosed]);
-
-  const handleGuideTour = useCallback(() => {
-    setGuideVisible(false);
-    afterSheetClosed(() => tour?.start());
-  }, [tour, afterSheetClosed]);
-
-  const handleGuideStep = useCallback((id: GuideStepId) => {
-    setGuideVisible(false);
-    switch (id) {
-      case 'program':
-        router.push('/settings' as never);
-        break;
-      case 'logo':
-        router.push('/account' as never);
-        break;
-      case 'shop':
-        router.push({ pathname: '/store-section', params: { section: 'appearance' } } as never);
-        break;
-      case 'invite':
-        markRead('share');
-        afterSheetClosed(() => setClientShareVisible(true));
-        break;
-      case 'scan':
-      case 'reward':
-        router.push('/scan-qr' as never);
-        break;
-      case 'message':
-        router.push('/(tabs)/messages' as never);
-        break;
-    }
-  }, [router, markRead, afterSheetClosed]);
 
   // Unread banners first; opened ones slide to the end of the carousel.
   const orderedCards = useMemo(
@@ -275,7 +201,8 @@ function TipsCarousel() {
   );
 
   const clampedIndex = Math.min(activeIndex, orderedCards.length - 1);
-  const activeTint = orderedCards[clampedIndex]?.tint ?? theme.primary;
+  const activeCard = orderedCards[clampedIndex];
+  const activeTint = activeCard ? PROMO_TONES[activeCard.tone].fill : theme.primary;
 
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -288,13 +215,6 @@ function TipsCarousel() {
 
   const sheets = (
     <>
-      <JitPlusGuideSheet
-        visible={guideVisible}
-        onClose={closeGuide}
-        onStepAction={handleGuideStep}
-        onStartTour={handleGuideTour}
-      />
-
       <WhyLoyaltySheet
         visible={whyVisible}
         onClose={closeWhy}
@@ -319,17 +239,6 @@ function TipsCarousel() {
     </>
   );
 
-  if (setupPending) return null;
-
-  if (showSetup) {
-    return (
-      <View>
-        <SetupChecklistCard progress={setup} onOpen={openGuide} onStepAction={handleGuideStep} />
-        {sheets}
-      </View>
-    );
-  }
-
   return (
     <View style={styles.wrap}>
       <ScrollView
@@ -350,10 +259,8 @@ function TipsCarousel() {
               label={t(c.labelKey)}
               title={t(c.titleKey)}
               cta={t(c.ctaKey)}
-              colors={c.colors}
-              tint={c.tint}
+              tone={c.tone}
               Icon={c.Icon}
-              pattern={c.pattern}
               read={readKeys.has(c.key)}
               readA11yLabel={t('home.promoReadA11y')}
               width={cardW}

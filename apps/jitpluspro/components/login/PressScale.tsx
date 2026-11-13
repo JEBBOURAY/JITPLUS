@@ -1,7 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import { Animated, type StyleProp, type ViewStyle } from 'react-native';
+import { spring } from '@/utils/sheetPhysics';
 
-const SPRING = { speed: 40, bounciness: 6, useNativeDriver: true } as const;
+// Press feedback carries no momentum: quick and without overshoot, so it can be reversed mid-way.
+const SPRING = { ...spring(1, 0.2), useNativeDriver: true } as const;
 const PRESSED_SCALE = 0.97;
 
 /**

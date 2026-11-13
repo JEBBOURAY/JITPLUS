@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
   merchantRow: { alignSelf: 'stretch', alignItems: 'center', gap: 10 },
   logo: { width: ms(36), height: ms(36), borderRadius: ms(18), backgroundColor: '#FFFFFF' },
   merchantText: { flex: 1 },
-  merchantName: { color: STAGE_TEXT.strong, fontSize: ms(15), fontFamily: font.bold },
+  merchantName: { color: STAGE_TEXT.strong, fontSize: ms(15), fontFamily: font.semibold },
   campaignName: { color: STAGE_TEXT.muted, fontSize: ms(12), fontFamily: font.regular, marginTop: 1 },
   description: { alignSelf: 'stretch', color: STAGE_TEXT.soft, fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular, textAlign: 'center' },
   resultSlot: { minHeight: ms(22), justifyContent: 'center' },

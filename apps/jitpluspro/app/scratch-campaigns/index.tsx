@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,17 +11,18 @@ import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useAuthStore } from '@/stores/authStore';
 import { useScratchCampaigns } from '@/hooks/useScratchHooks';
 import { ms } from '@/utils/responsive';
-import { resolveImageUrl } from '@/utils/imageUrl';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { Button, CampaignStatusPill, Notice, ScreenHeader } from '@/components/scratch/ScratchUI';
 import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
-import { ScratchPreview, ScratchTile } from '@/components/scratch/ScratchPreview';
+import { ScratchTile } from '@/components/scratch/ScratchPreview';
 import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { formatYmd } from '@/components/scratch/DateField';
 import { moroccoYmdOf } from '@/components/scratch/campaignForm';
 import type { ScratchCampaignListItem } from '@jitplus/shared/src/scratch';
 
 const NO_CAMPAIGNS: ScratchCampaignListItem[] = [];
+// Same artwork as the "Carte à gratter" card of the Jeux page.
+const SCRATCH_IMAGE = require('@/assets/images/tools/carte_a_gratter.png');
 
 /** Campaigns list row; memoised so the rows are not rebuilt on every list render. */
 const ScratchCampaignRow = memo(function ScratchCampaignRow({ campaign, onOpen }: {
@@ -57,7 +59,6 @@ export default function ScratchCampaignsScreen() {
   const { t } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const merchant = useAuthStore((s) => s.merchant);
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const { isPremium } = usePlanStatus(merchant);
@@ -92,14 +93,7 @@ export default function ScratchCampaignsScreen() {
 
       {campaigns.length === 0 && isPremium && !isLoading && (
         <GameEmptyState
-          visual={
-            <ScratchPreview
-              width={Math.min(width - 116, 300)}
-              merchantName={merchant?.nom ?? ''}
-              logoUrl={merchant?.logoUrl ? resolveImageUrl(merchant.logoUrl) : null}
-              side="before"
-            />
-          }
+          visual={<Image source={SCRATCH_IMAGE} style={styles.emptyImage} contentFit="contain" accessible={false} />}
           title={t('scratch.list.emptyTitle')}
           text={t('scratch.list.intro')}
           steps={[t('scratch.list.how1'), t('scratch.list.how2'), t('scratch.list.how3')]}
@@ -116,7 +110,6 @@ export default function ScratchCampaignsScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <ScreenHeader
         title={t('scratch.list.title')}
-        onBack={() => (router.canGoBack() ? router.back() : router.replace('/games'))}
         right={(
           <DemoHeaderActions id="gratter">
             {canManage && campaigns.length > 0 ? (
@@ -135,7 +128,7 @@ export default function ScratchCampaignsScreen() {
           ListHeaderComponent={header}
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
           ItemSeparatorComponent={ListSeparator}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.primary} />}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.primary} colors={[theme.primary]} />}
         />
       )}
     </View>
@@ -148,4 +141,5 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 16, paddingTop: 4 },
   headerContent: { gap: 14, marginBottom: 14 },
   stretch: { alignSelf: 'stretch' },
+  emptyImage: { width: 104, height: 104 },
 });

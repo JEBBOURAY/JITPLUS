@@ -1,88 +1,60 @@
 import React, { useCallback, useMemo } from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
-import type { LucideIcon } from 'lucide-react-native';
-import { JitClients, JitHome, JitMessages, JitScan, JitTeam } from '@/components/icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LayoutGrid, ReceiptText, type LucideIcon } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { JitClients, JitHome, JitScan } from '@/components/icons';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
-import { font, icon } from '@/constants/design';
-import { radius } from '@/utils/responsive';
+import { font, icon, TAB_BAR_HEIGHT } from '@/constants/design';
 import WhatsAppSupportFab from '@/components/WhatsAppSupportFab';
-import { useTourTarget, type TourTargetKey } from '@/components/GuidedTour';
+import { useStatsGate } from '@/hooks/useStatsGate';
+import { useAuthStore } from '@/stores/authStore';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 
-const ICONS: Record<string, LucideIcon> = {
-  index:     JitHome,
-  clients:   JitClients,
-  scan:      JitScan,
-  messages:  JitMessages,
-  team:      JitTeam,
-};
+/**
+ * What the bar draws, in order. A `tab` entry switches to a route of the tab
+ * navigator (cross-fade); `scan` opens the scanner as a full-screen task;
+ * `stats` opens the statistics through their Pro gate. Every route of the tab
+ * navigator has an entry here: screens opened from "Mes outils" live in the
+ * root stack so they all slide in the same way.
+ */
+type BarItem =
+  | { kind: 'tab'; name: string; labelKey: string; Icon: LucideIcon }
+  | { kind: 'scan'; name: 'scan' }
+  | { kind: 'stats'; name: string; labelKey: string; Icon: LucideIcon };
 
-const TAB_KEYS: Record<string, string> = {
-  index:    'tabs.home',
-  clients:  'tabs.clients',
-  scan:     'tabs.scan',
-  messages: 'tabs.messages',
-  team:     'tabs.team',
-};
-
-// Guided-tour target keys for the non-scan tabs.
-const TAB_TOUR_KEYS: Record<string, TourTargetKey | undefined> = {
-  clients:  'clients',
-  messages: 'messages',
-  team:     'team',
-};
+const BAR_ITEMS: BarItem[] = [
+  { kind: 'tab', name: 'index', labelKey: 'tabs.home', Icon: JitHome },
+  { kind: 'tab', name: 'clients', labelKey: 'tabs.clients', Icon: JitClients },
+  { kind: 'scan', name: 'scan' },
+  { kind: 'tab', name: 'transactions', labelKey: 'tabs.transactions', Icon: ReceiptText },
+  { kind: 'stats', name: 'dashboard', labelKey: 'tabs.dashboard', Icon: LayoutGrid },
+];
 
 const TAB_HIT_SLOP = { top: 8, bottom: 8, left: 4, right: 4 };
 const SCAN_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
-const SCAN_GRADIENT_START = { x: 0, y: 0 };
-const SCAN_GRADIENT_END = { x: 1, y: 1 };
 
-// Bar geometry, shared with the WhatsApp button so it lines up over the last tab.
-const BAR_SIDE = 16;
-const BAR_BOTTOM = 18;
-const BAR_BORDER = 1;
-const ROW_HEIGHT = 66;
-const ROW_PADDING = 6;
+const FAB_GAP = 16;
 
-type TabNavigation = Pick<BottomTabBarProps, 'emitter' | 'navigateToTab'>;
-
-const TabButton = React.memo(function TabButton({
-  route,
+const BarButton = React.memo(function BarButton({
+  label,
+  Icon,
   isFocused,
-  navigation,
-  tourKey,
+  onPress,
 }: {
-  route: { key: string; name: string };
+  label: string;
+  Icon: LucideIcon;
   isFocused: boolean;
-  navigation: TabNavigation;
-  tourKey?: TourTargetKey;
+  onPress: () => void;
 }) {
   const theme = useTheme();
-  const { t } = useLanguage();
-  const tourRef = useTourTarget(tourKey);
-
-  const onPress = useCallback(() => {
-    const event = navigation.emitter.emit({
-      type: 'tabPress',
-      target: route.key,
-      canPreventDefault: true,
-    });
-    if (!isFocused && !event.defaultPrevented) {
-      navigation.navigateToTab(route.key);
-    }
-  }, [navigation, route.key, isFocused]);
-
-  const IconComponent = ICONS[route.name];
-  if (!IconComponent) return null;
-  const label = t(TAB_KEYS[route.name] ?? route.name);
+  const color = isFocused ? palette.violet : theme.textMuted;
 
   return (
     <TouchableOpacity
-      ref={tourRef}
       accessibilityRole="button"
       accessibilityState={isFocused ? { selected: true } : {}}
       accessibilityLabel={label}
@@ -91,27 +63,11 @@ const TabButton = React.memo(function TabButton({
       style={styles.tab}
       hitSlop={TAB_HIT_SLOP}
     >
-      {isFocused && (
-        <View style={[styles.indicator, { backgroundColor: palette.violet }]} />
-      )}
-      <View
-        style={[
-          styles.iconContainer,
-          isFocused && { backgroundColor: `${palette.violet}15` },
-        ]}
-      >
-        <IconComponent
-          size={22}
-          color={isFocused ? palette.violet : theme.textMuted}
-          strokeWidth={icon.stroke}
-        />
-      </View>
+      <Icon size={24} color={color} strokeWidth={isFocused ? icon.strokeSmall : icon.stroke} />
       <Text
-        style={[
-          styles.label,
-          { color: isFocused ? palette.violet : theme.textMuted,
-            fontFamily: isFocused ? font.semibold : font.medium },
-        ]}
+        style={[styles.label, { color, fontFamily: isFocused ? font.semibold : font.medium }]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.2}
       >
         {label}
       </Text>
@@ -119,26 +75,8 @@ const TabButton = React.memo(function TabButton({
   );
 });
 
-const ScanButton = React.memo(function ScanButton({
-  route,
-  navigation,
-}: {
-  route: { key: string; name: string };
-  navigation: TabNavigation;
-}) {
+const ScanButton = React.memo(function ScanButton({ onPress, ringColor }: { onPress: () => void; ringColor: string }) {
   const { t } = useLanguage();
-  const scanTourRef = useTourTarget('scan');
-
-  const onPress = useCallback(() => {
-    const event = navigation.emitter.emit({
-      type: 'tabPress',
-      target: route.key,
-      canPreventDefault: true,
-    });
-    if (!event.defaultPrevented) {
-      navigation.navigateToTab(route.key);
-    }
-  }, [navigation, route.key]);
 
   return (
     <TouchableOpacity
@@ -149,202 +87,148 @@ const ScanButton = React.memo(function ScanButton({
       activeOpacity={0.85}
       hitSlop={SCAN_HIT_SLOP}
     >
-      <View ref={scanTourRef} collapsable={false} style={styles.scanShadow}>
-        <LinearGradient
-          colors={[palette.violet, palette.violetDark]}
-          start={SCAN_GRADIENT_START}
-          end={SCAN_GRADIENT_END}
-          style={styles.scanFab}
-        >
+      <View style={styles.scanShadow}>
+        <View style={[styles.scanFab, { backgroundColor: palette.violet, borderColor: ringColor }]}>
           <JitScan size={26} color="#fff" strokeWidth={icon.stroke} />
-        </LinearGradient>
+        </View>
       </View>
     </TouchableOpacity>
   );
 });
 
 export default React.memo(function CustomTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
-  const navigation = useMemo(() => ({ emitter, navigateToTab }), [emitter, navigateToTab]);
   const theme = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const dir = useDir();
-  const isDark = theme.mode === 'dark';
+  const router = useRouter();
 
-  const scanIndex = state.routes.findIndex((r) => r.name === 'scan');
-  const scanRoute = scanIndex >= 0 ? state.routes[scanIndex] : undefined;
-  const scanFocused = state.index === scanIndex;
-  const scanLabel = t('tabs.scan');
+  const focusedName = state.routes[state.index]?.name;
 
-  // The WhatsApp support button floats above the Équipe tab on Accueil only.
-  const showSupportFab = state.routes[state.index]?.name === 'index';
-  // Only routes that draw a column in the bar, so the button lines up with Équipe.
-  const barRoutes = state.routes.filter((r) => ICONS[r.name]);
-  const teamColumn = barRoutes.findIndex((r) => r.name === 'team');
+  const merchant = useAuthStore((s) => s.merchant);
+  const { isPremium } = usePlanStatus(merchant);
+  const { openStats, lockModal: statsLockModal } = useStatsGate(isPremium);
 
-  const barBg = isDark ? 'rgba(20,24,33,0.72)' : 'rgba(255,255,255,0.72)';
-  const barBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.65)';
-
-  const barContent = (
-    <View style={[styles.row, { flexDirection: dir.row }]}>
-      {state.routes.map((route, index) => {
-        if (route.name === 'scan') {
-          // Reserve the centre column so the label lines up under the popped button.
-          return (
-            <View key={route.key} style={styles.tab} pointerEvents="none">
-              <View style={styles.scanSlot} />
-              <Text
-                style={[
-                  styles.label,
-                  {
-                    color: scanFocused ? palette.violet : theme.textMuted,
-                    fontFamily: scanFocused ? font.semibold : font.medium,
-                  },
-                ]}
-              >
-                {scanLabel}
-              </Text>
-            </View>
-          );
-        }
-        return (
-          <TabButton
-            key={route.key}
-            route={route}
-            isFocused={state.index === index}
-            navigation={navigation}
-            tourKey={TAB_TOUR_KEYS[route.name]}
-          />
-        );
-      })}
-    </View>
+  const pressTab = useCallback(
+    (name: string) => {
+      const route = state.routes.find((r) => r.name === name);
+      if (!route) return;
+      const event = emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+      if (focusedName !== name && !event.defaultPrevented) navigateToTab(route.key);
+    },
+    [state.routes, emitter, navigateToTab, focusedName],
   );
+
+  const handlers = useMemo(() => {
+    const map: Record<string, () => void> = {};
+    for (const item of BAR_ITEMS) {
+      if (item.kind === 'stats') map[item.name] = openStats;
+      else if (item.kind === 'scan') map[item.name] = () => router.push('/scan-qr');
+      else map[item.name] = () => pressTab(item.name);
+    }
+    return map;
+  }, [router, pressTab, openStats]);
+
+  // The WhatsApp support button floats above the bar on Accueil only.
+  const showSupportFab = focusedName === 'index';
 
   return (
     <>
-    <View
-      pointerEvents="box-none"
-      style={[
-        styles.floating,
-        {
-          bottom: insets.bottom + BAR_BOTTOM,
-          backgroundColor: barBg,
-          shadowOpacity: isDark ? 0.5 : 0.14,
-        },
-      ]}
-    >
-      <View style={[styles.bar, { borderColor: barBorder, backgroundColor: barBg }]}>{barContent}</View>
+      <View
+        style={[
+          styles.bar,
+          { paddingBottom: insets.bottom, backgroundColor: theme.bgCard, borderTopColor: theme.border },
+        ]}
+      >
+        <View style={[styles.row, { flexDirection: dir.row }]}>
+          {BAR_ITEMS.map((item) =>
+            item.kind === 'scan' ? (
+              // Reserve the centre column for the raised button drawn below.
+              <View key={item.name} style={styles.tab} pointerEvents="none" />
+            ) : (
+              <BarButton
+                key={item.name}
+                label={t(item.labelKey)}
+                Icon={item.Icon}
+                isFocused={item.kind === 'tab' && focusedName === item.name}
+                onPress={handlers[item.name]}
+              />
+            ),
+          )}
+        </View>
 
-      {/* Rendered outside the clipped bar so the raised button can overflow it. */}
-      <View style={styles.scanWrap} pointerEvents="box-none">
-        {scanRoute && <ScanButton route={scanRoute} navigation={navigation} />}
+        {/* Outside the row so the raised button can overflow the bar's top edge. */}
+        <View style={styles.scanWrap} pointerEvents="box-none">
+          <ScanButton onPress={handlers.scan} ringColor={theme.bgCard} />
+        </View>
       </View>
-    </View>
 
-      {showSupportFab && teamColumn >= 0 && (
+      {showSupportFab && (
         <View
           pointerEvents="box-none"
           style={[
-            styles.fabRow,
-            {
-              flexDirection: dir.row,
-              bottom: insets.bottom + BAR_BOTTOM + ROW_HEIGHT + BAR_BORDER * 2 + 12,
-            },
+            styles.fab,
+            { bottom: insets.bottom + TAB_BAR_HEIGHT + FAB_GAP },
+            dir.isRTL ? { left: FAB_GAP } : { right: FAB_GAP },
           ]}
         >
-          {barRoutes.map((route, index) => (
-            <View key={route.key} style={styles.fabColumn} pointerEvents="box-none">
-              {index === teamColumn && <WhatsAppSupportFab />}
-            </View>
-          ))}
+          <WhatsAppSupportFab />
         </View>
       )}
+
+      {statsLockModal}
     </>
   );
 });
 
 const styles = StyleSheet.create({
-  floating: {
-    position: 'absolute',
-    left: BAR_SIDE,
-    right: BAR_SIDE,
-    borderRadius: radius['2xl'],
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 24,
-    elevation: 18,
-  },
   bar: {
-    borderRadius: radius['2xl'],
-    borderWidth: BAR_BORDER,
-    overflow: 'hidden',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   row: {
-    height: ROW_HEIGHT,
+    height: TAB_BAR_HEIGHT,
     alignItems: 'center',
-    paddingHorizontal: ROW_PADDING,
+    paddingHorizontal: 4,
   },
-  fabRow: {
+  fab: {
     position: 'absolute',
-    left: BAR_SIDE + BAR_BORDER + ROW_PADDING,
-    right: BAR_SIDE + BAR_BORDER + ROW_PADDING,
-  },
-  fabColumn: {
-    flex: 1,
-    alignItems: 'center',
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-  },
-  iconContainer: {
-    width: 46,
-    height: 34,
-    borderRadius: radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
   },
   label: {
     fontSize: 11,
     letterSpacing: 0,
     fontFamily: font.medium,
   },
-  indicator: {
-    position: 'absolute',
-    top: -7,
-    width: 22,
-    height: 3,
-    borderRadius: 2,
-  },
-  // Centre column reserves the same footprint as an icon so the label aligns.
-  scanSlot: {
-    width: 46,
-    height: 34,
-  },
   scanWrap: {
     position: 'absolute',
-    top: -22,
+    top: -20,
     left: 0,
     right: 0,
     alignItems: 'center',
   },
   scanShadow: {
-    borderRadius: 30,
-    shadowColor: palette.violet,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
+    borderRadius: 31,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   scanFab: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 4,
-    borderColor: '#fff',
   },
 });

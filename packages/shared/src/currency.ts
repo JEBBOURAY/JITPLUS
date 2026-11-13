@@ -68,7 +68,13 @@ export function currencySymbol(code: string | null | undefined, locale = 'fr'): 
   return cur.code === 'MAD' ? MAD_SYMBOL[locale] ?? cur.symbol : cur.symbol;
 }
 
-const INTL_LOCALE: Record<string, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
+// Day-first English ("13 Jun 2025"), like the French and Arabic the apps ship with.
+const INTL_LOCALE: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', ar: 'ar-MA' };
+
+/** BCP 47 tag for Intl / toLocaleDateString from an app locale ("fr" → "fr-FR"). */
+export function intlLocaleTag(locale: string): string {
+  return INTL_LOCALE[locale] ?? 'fr-FR';
+}
 
 // Building an Intl.NumberFormat is costly (notably on Hermes) and amounts are
 // formatted inside lists: one instance per (locale, decimals), reused.

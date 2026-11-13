@@ -11,7 +11,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
-import { getCategoryEmoji } from '@/utils/categories';
+import { Store } from 'lucide-react-native';
+import { CATEGORIES } from '@/utils/categories';
 import { formatDistance } from '@/utils/distance';
 import { wp, hp, ms } from '@/utils/responsive';
 import type { Merchant } from '@/types';
@@ -35,7 +36,9 @@ function MerchantHero({ merchant, scrollY, openStatus, distanceKm }: Props) {
   const fonts = useAppFonts();
   const [coverError, setCoverError] = useState(false);
   const [logoError, setLogoError] = useState(false);
-  const ThemeIcon = merchant.themeIcon ? MERCHANT_ICON_MAP[merchant.themeIcon] : undefined;
+  const ThemeIcon = (merchant.themeIcon ? MERCHANT_ICON_MAP[merchant.themeIcon] : undefined)
+    ?? CATEGORIES.find((c) => c.id !== 'all' && c.id === merchant.categorie?.toUpperCase())?.icon
+    ?? Store;
   const coverUrl = coverError ? null : merchant.coverUrl;
 
   // Stretches the cover on pull-down (iOS bounce) so no gap opens above it; native driver only.
@@ -97,9 +100,7 @@ function MerchantHero({ merchant, scrollY, openStatus, distanceKm }: Props) {
             />
           ) : (
             <View style={[styles.logo, styles.logoFallback, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-              {ThemeIcon
-                ? <ThemeIcon size={ms(36)} color={theme.textSecondary} strokeWidth={1.75} />
-                : <Text style={styles.emoji}>{getCategoryEmoji(merchant.categorie ?? undefined)}</Text>}
+              <ThemeIcon size={ms(36)} color={theme.textSecondary} strokeWidth={1.75} />
             </View>
           )}
         </View>
@@ -147,7 +148,6 @@ const styles = StyleSheet.create({
   },
   logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: ms(18) },
   logoFallback: { alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
-  emoji: { fontSize: ms(34) },
 
   name: { fontSize: ms(22), lineHeight: ms(28), letterSpacing: -0.4, marginTop: hp(10) },
   line: { fontSize: ms(14), lineHeight: ms(20), marginTop: hp(3) },

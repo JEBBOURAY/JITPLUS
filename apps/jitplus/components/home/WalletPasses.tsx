@@ -1,10 +1,10 @@
 import { moneyFormatter } from '@jitplus/shared/src/currency';
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, ScrollView, Animated, Easing } from 'react-native';
+import React, { memo, useMemo, useState } from 'react';
+import { View, StyleSheet, ScrollView, Animated } from 'react-native';
 import { Text } from '@/components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useIsFocused, useRouter } from 'expo-router';
-import { Clock, Ticket, Trophy } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { Clock, Gift, Ticket, Trophy } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import GlassCard from '@/components/GlassCard';
@@ -27,8 +27,6 @@ const TILE_H = ms(156);
 const STUB_W = ms(80);
 const NOTCH = ms(9);
 const SOON_DAYS = 2;
-const WHEEL_GRADIENT = ['#EC4899', '#8B5CF6', '#6D28D9'] as const;
-const SCRATCH_GRADIENT = ['#FBBF24', '#F97316', '#C2410C'] as const;
 const SCRATCH_COVER = ['#F3F4F6', '#9CA3AF'] as const;
 const DIAG_START = { x: 0, y: 0 } as const;
 const DIAG_END = { x: 1, y: 1 } as const;
@@ -40,12 +38,12 @@ function daysUntil(iso: string): number {
   return diffDaysYmd(toYmd(new Date()), toYmd(new Date(iso)));
 }
 
-// ── Game tile (lucky wheel / scratch cards): same layout, own colours ──────
+// ── Game tile (lucky wheel / scratch cards): same layout, own colour ───────
 
 const GameTile = memo(function GameTile({
-  colors, title, count, availableLabel, emptyLabel, cta, art, onPress, a11yLabel, fonts,
+  color, title, count, availableLabel, emptyLabel, cta, art, onPress, a11yLabel, fonts,
 }: {
-  colors: readonly [string, string, ...string[]];
+  color: string;
   title: string;
   count: number;
   availableLabel: string;
@@ -57,12 +55,11 @@ const GameTile = memo(function GameTile({
   fonts: Fonts;
 }) {
   const hasAny = count > 0;
-  const accentText = colors[colors.length - 1];
+  const accentText = color;
 
   return (
     <GlassCard onPress={onPress} radius={radius.xl} style={styles.tileOuter} accessibilityLabel={a11yLabel}>
-      <LinearGradient colors={colors} start={DIAG_START} end={DIAG_END} style={styles.tile}>
-        <View pointerEvents="none" style={styles.tileOrb} />
+      <View style={[styles.tile, { backgroundColor: color }]}>
         {!hasAny && <View pointerEvents="none" style={styles.tileMuted} />}
 
         <View style={styles.tileTop}>
@@ -89,38 +86,20 @@ const GameTile = memo(function GameTile({
             {cta}
           </Text>
         </View>
-      </LinearGradient>
+      </View>
     </GlassCard>
   );
 });
 
-/** Small scratch card drawing that wiggles when cards are waiting. */
-const ScratchArt = memo(function ScratchArt({ active }: { active: boolean }) {
-  // Paused while another tab is shown: tabs stay mounted.
-  const isFocused = useIsFocused();
-  const wiggle = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!active || !isFocused) { wiggle.setValue(0); return; }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(wiggle, { toValue: 1, duration: 140, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(wiggle, { toValue: -1, duration: 220, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(wiggle, { toValue: 0, duration: 140, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.delay(3200),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [active, isFocused, wiggle]);
-  const rotate = wiggle.interpolate({ inputRange: [-1, 0, 1], outputRange: ['-16deg', '-8deg', '0deg'] });
-
+/** Small scratch card drawing: a gift under a grey scratch coating. */
+const ScratchArt = memo(function ScratchArt() {
   return (
-    <Animated.View style={[styles.scratchArt, { transform: [{ rotate }] }]}>
-      <Text style={styles.scratchGift}>🎁</Text>
-      <LinearGradient colors={SCRATCH_COVER} start={DIAG_START} end={DIAG_END} style={styles.scratchCover}>
-        <Text style={styles.scratchMotif}>✦ ✦</Text>
-      </LinearGradient>
-    </Animated.View>
+    <View style={styles.scratchArt}>
+      <View style={styles.scratchGift}>
+        <Gift size={ms(12)} color={palette.goldDark} strokeWidth={2.2} />
+      </View>
+      <LinearGradient colors={SCRATCH_COVER} start={DIAG_START} end={DIAG_END} style={styles.scratchCover} />
+    </View>
   );
 });
 
@@ -252,7 +231,7 @@ export default memo(function WalletPasses({
   };
 
   const openCoupon = (coupon: CouponDto) => {
-    const merchantName = coupon.merchant?.nom ?? '';
+    const merchantName = coupon.merchant?.nom || t('common.shop');
     const money = moneyFormatter(coupon.merchant?.currency, locale);
     const reward = rewardDisplay({ type: coupon.type, value: coupon.value, label: coupon.label }, t, money);
     // Without expiresAt the helper returns [rules…, validFrom?, singleUse]: the
@@ -289,7 +268,7 @@ export default memo(function WalletPasses({
       {/* ── Games: lucky wheel | scratch cards ── */}
       <View style={styles.tilesRow}>
         <GameTile
-          colors={WHEEL_GRADIENT}
+          color={palette.violetDark}
           title={t('luckyWheel.title')}
           count={ticketCount}
           availableLabel={t('home.availableCount', { count: ticketCount })}
@@ -305,7 +284,7 @@ export default memo(function WalletPasses({
           }
         />
         <GameTile
-          colors={SCRATCH_GRADIENT}
+          color={palette.goldDark}
           title={t('home.scratchTileTitle')}
           count={scratchCount}
           availableLabel={t('home.availableCount', { count: scratchCount })}
@@ -314,7 +293,7 @@ export default memo(function WalletPasses({
           fonts={fonts}
           a11yLabel={`${t('home.scratchTileTitle')}, ${t('home.availableCount', { count: scratchCount })}`}
           onPress={openScratch}
-          art={<ScratchArt active={scratchCount > 0} />}
+          art={<ScratchArt />}
         />
       </View>
 
@@ -355,7 +334,7 @@ export default memo(function WalletPasses({
           {sortedCoupons.map((coupon) => {
             const reward = formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t, moneyFormatter(coupon.merchant?.currency, locale));
             const days = daysUntil(coupon.expiresAt);
-            const merchantName = coupon.merchant?.nom ?? '';
+            const merchantName = coupon.merchant?.nom || t('common.shop');
             return (
               <TicketPass
                 key={`coupon-${coupon.id}`}
@@ -391,12 +370,8 @@ const styles = StyleSheet.create({
 
   // Game tiles
   tilesRow: { flexDirection: 'row', gap: wp(12), marginBottom: hp(14) },
-  tileOuter: { flex: 1, height: TILE_H },
-  tile: { flex: 1, borderRadius: radius.xl, padding: wp(14), overflow: 'hidden', justifyContent: 'space-between' },
-  tileOrb: {
-    position: 'absolute', width: ms(130), height: ms(130), borderRadius: 999,
-    top: -ms(50), right: -ms(40), backgroundColor: 'rgba(255,255,255,0.14)',
-  },
+  tileOuter: { flex: 1, minHeight: TILE_H },
+  tile: { flexGrow: 1, borderRadius: radius.xl, padding: wp(14), overflow: 'hidden', justifyContent: 'space-between' },
   tileMuted: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.28)' },
   tileTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   tileArt: {
@@ -409,7 +384,7 @@ const styles = StyleSheet.create({
   },
   countBadgeOn: {
     backgroundColor: '#FFFFFF',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 6, elevation: 3,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
   countBadgeOff: { backgroundColor: 'rgba(255,255,255,0.22)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
   countText: { fontSize: fontSize.lg, letterSpacing: -0.4 },
@@ -426,17 +401,17 @@ const styles = StyleSheet.create({
     width: ms(38), height: ms(26), borderRadius: ms(5), backgroundColor: '#FEF3C7',
     overflow: 'hidden', flexDirection: 'row', alignItems: 'center',
     borderWidth: 1, borderColor: '#F59E0B',
+    transform: [{ rotate: '-8deg' }],
   },
-  scratchGift: { fontSize: ms(12), width: '45%', textAlign: 'center' },
-  scratchCover: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'center' },
-  scratchMotif: { fontSize: ms(7), color: '#6B7280' },
+  scratchGift: { width: '45%', alignItems: 'center', justifyContent: 'center' },
+  scratchCover: { flex: 1, height: '100%' },
 
   // Ticket passes
   scroll: { marginHorizontal: -wp(16) },
   scrollContent: { paddingHorizontal: wp(16), paddingBottom: hp(14), gap: PASS_GAP },
-  passOuter: { width: PASS_W, height: PASS_H },
-  ticket: { flex: 1, flexDirection: 'row', borderRadius: radius.xl, borderWidth: 1, overflow: 'hidden' },
-  ticketShadow: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 2 },
+  passOuter: { width: PASS_W, minHeight: PASS_H },
+  ticket: { flexGrow: 1, flexDirection: 'row', borderRadius: radius.xl, borderWidth: 1, overflow: 'hidden' },
+  ticketShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
   stub: { width: STUB_W, alignItems: 'center', justifyContent: 'center' },
   stubLogo: {
     width: ms(48), height: ms(48), borderRadius: ms(24), borderWidth: 1.5,
@@ -460,7 +435,7 @@ const styles = StyleSheet.create({
   notchTop: { top: -NOTCH - 1 },
   notchBottom: { bottom: -NOTCH - 1 },
   ticketBody: { flex: 1, paddingHorizontal: wp(14), paddingVertical: hp(12), justifyContent: 'center' },
-  ticketTag: { fontSize: ms(10), letterSpacing: 0.4, textTransform: 'uppercase' },
+  ticketTag: { fontSize: ms(10) },
   ticketHeadline: { fontSize: fontSize.lg, letterSpacing: -0.3, marginTop: hp(3) },
   ticketMerchant: { fontSize: fontSize.xs, marginTop: hp(2) },
   ticketStatus: {

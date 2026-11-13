@@ -9,10 +9,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Text } from '@/components/AppText';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Download, AlertTriangle, Wrench, RotateCcw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme, brandGradient, brandGradientFull, palette } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { ForceUpdateStatus } from '@/hooks/useForceUpdate';
@@ -67,26 +66,16 @@ export default React.memo(function ForceUpdateModal({ status, storeUrl, onRetry 
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]} accessibilityRole="alert" accessibilityLabel={isUpdate ? t('forceUpdate.updateTitle') : t('forceUpdate.maintenanceTitle')}>
-      <LinearGradient
-        colors={brandGradientFull}
-        style={[styles.topStrip, { height: insets.top + 8 }]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-      />
+      <View style={[styles.topStrip, { height: insets.top + 8 }]} />
 
       <View style={[styles.content, { paddingBottom: insets.bottom + 32 }]}>
-        <LinearGradient
-          colors={isUpdate ? brandGradient : [palette.violet, palette.gray900]}
-          style={styles.iconBg}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
+        <View style={[styles.iconBg, { backgroundColor: isUpdate ? palette.violet : palette.gray900 }]}>
           {isUpdate ? (
             <Download color={palette.white} size={48} strokeWidth={1.5} />
           ) : (
             <Wrench color={palette.white} size={48} strokeWidth={1.5} />
           )}
-        </LinearGradient>
+        </View>
 
         <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]}>
           {isUpdate
@@ -181,6 +170,7 @@ const styles = StyleSheet.create({
   },
   topStrip: {
     width: '100%',
+    backgroundColor: palette.violet,
   },
   content: {
     flex: 1,
@@ -196,15 +186,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
-    shadowColor: palette.gray900,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 2,
   },
   title: {
     fontSize: 24,
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: 'Lexend_600SemiBold',
     textAlign: 'center',
     lineHeight: 32,
   },

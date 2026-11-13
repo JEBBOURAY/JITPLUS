@@ -33,7 +33,8 @@ export interface ShownResult {
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export function useLuckyWheel(visible: boolean, onClose: () => void) {
+/** `preferredMerchantId`: merchant whose tickets are shown first (wheel opened from its notification). */
+export function useLuckyWheel(visible: boolean, onClose: () => void, preferredMerchantId?: string) {
   const { t } = useLanguage();
   const router = useRouter();
   const { isAuthenticated } = useAuth();
@@ -70,7 +71,9 @@ export function useLuckyWheel(visible: boolean, onClose: () => void) {
     [tickets, usedIds],
   );
   const groups = useMemo(() => groupTicketsByCampaign(available), [available]);
-  const group = groups.find((g) => g.campaignId === selectedCampaignId) ?? groups[0];
+  const group = groups.find((g) => g.campaignId === selectedCampaignId)
+    ?? (preferredMerchantId ? groups.find((g) => g.tickets[0]?.campaign?.merchantId === preferredMerchantId) : undefined)
+    ?? groups[0];
   const ticket = group?.tickets[0];
   const campaign = lockedCampaign ?? ticket?.campaign ?? null;
   const availableCountRef = useRef(0);

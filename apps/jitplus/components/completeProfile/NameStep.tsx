@@ -1,13 +1,13 @@
 import { memo } from 'react';
 import type { RefObject } from 'react';
 import { View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { User, CheckCircle2, Info } from 'lucide-react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { palette } from '@/contexts/ThemeContext';
 import type { ThemeColors } from '@/contexts/ThemeContext';
-import { s, AVATAR_COLORS, GRAD_START, GRAD_END_DIAG, ICON_16, ICON_18 } from './styles';
+import { s, ICON_16, ICON_18 } from './styles';
 import type { TranslateFn } from './types';
+import { firstChar } from '@/utils/profileCompletion';
 
 interface NameStepProps {
   theme: ThemeColors;
@@ -33,11 +33,11 @@ export const NameStep = memo(function NameStep({
     <View>
       {prenomTrimmed.length > 0 && (
         <View style={s.avatarRow}>
-          <LinearGradient colors={AVATAR_COLORS} start={GRAD_START} end={GRAD_END_DIAG} style={s.avatar}>
+          <View style={[s.avatar, { backgroundColor: palette.violet }]}>
             <Text style={s.initials}>
-              {(prenomTrimmed.charAt(0) + (nomTrimmed.charAt(0) || '')).toUpperCase()}
+              {(firstChar(prenomTrimmed) + firstChar(nomTrimmed)).toUpperCase()}
             </Text>
-          </LinearGradient>
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={[s.avatarName, { color: theme.text }]} numberOfLines={1}>
               {prenomTrimmed} {nomTrimmed}
@@ -95,8 +95,8 @@ export const NameStep = memo(function NameStep({
         </View>
       </View>
 
-      <View style={[s.infoBox, { backgroundColor: `${palette.gold}08` }]}>
-        <Info size={ICON_16} color={palette.gold} strokeWidth={1.5} />
+      <View style={[s.infoBox, { backgroundColor: theme.bgInput }]}>
+        <Info size={ICON_16} color={theme.textSecondary} strokeWidth={1.5} />
         <Text style={[s.infoText, { color: theme.textMuted }]}>
           {t('completeProfile.namePrivacyHint')}
         </Text>

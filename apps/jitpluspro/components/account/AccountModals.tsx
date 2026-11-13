@@ -1,21 +1,18 @@
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, Trash2 } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
 import { ActionButton } from '@/components/ui/ActionButton';
+import BottomSheet from '@/components/ui/BottomSheet';
 import { hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import type { Merchant } from '@/types';
 import { merchantInitials } from './merchantInitials';
 
-const PICK_BTN_GRADIENT = [palette.violet, palette.violetDark] as const;
-
-interface LogoModalProps {
+interface MediaModalProps {
   visible: boolean;
   onClose: () => void;
   theme: ThemeColors;
@@ -28,8 +25,8 @@ interface LogoModalProps {
 
 /**
  * iOS refuses to present the image picker while a RN Modal is still dismissing.
- * We flag the intent, close the modal, then launch the picker from onDismiss
- * (fires only after the native dismissal completes).
+ * We flag the intent, close the sheet, then launch the picker from onDismiss
+ * (fires only after the slide-out and the native dismissal complete).
  */
 function useDeferredPick(onClose: () => void, onPickPhoto: () => void) {
   const pendingPickRef = useRef(false);
@@ -51,183 +48,122 @@ function useDeferredPick(onClose: () => void, onPickPhoto: () => void) {
   return { handlePickPress, handleDismiss };
 }
 
-export function LogoEditModal({
-  visible, onClose, theme, t, merchant, uploadIsPending, onPickPhoto, onDelete,
-}: LogoModalProps) {
-  const insets = useSafeAreaInsets();
+/** Bottom sheet shared by the logo and cover editors: pick, delete, cancel. */
+function MediaEditSheet({
+  visible, onClose, theme, onPickPhoto, onDelete,
+  preview, title, hint, pickLabel, deleteLabel, cancelLabel,
+}: Pick<MediaModalProps, 'visible' | 'onClose' | 'theme' | 'onPickPhoto' | 'onDelete'> & {
+  /** Optional preview shown above the title. */
+  preview?: ReactNode;
+  title: string;
+  hint: string;
+  pickLabel: string;
+  /** Omitted when there is no photo to delete. */
+  deleteLabel?: string;
+  cancelLabel: string;
+}) {
   const { handlePickPress, handleDismiss } = useDeferredPick(onClose, onPickPhoto);
-  const initials = merchantInitials(merchant?.nom);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose} onDismiss={handleDismiss}>
-      <Pressable style={styles.bottomSheetOverlay} onPress={onClose}>
-        <Pressable
-          style={[styles.logoModalSheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + hp(16), hp(36)) }]}
-          onPress={() => {}}
+    <BottomSheet visible={visible} onClose={onClose} onDismiss={handleDismiss} style={styles.sheet}>
+      {preview}
+
+      <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+      <Text style={[styles.hint, { color: theme.textMuted }]}>{hint}</Text>
+
+      <ActionButton
+        label={pickLabel}
+        icon={Camera}
+        size="lg"
+        onPress={handlePickPress}
+        style={styles.pickBtn}
+      />
+
+      {deleteLabel ? (
+        <TouchableOpacity
+          style={[styles.outlineBtn, { borderColor: `${theme.danger}35` }]}
+          activeOpacity={0.8}
+          onPress={onDelete}
+          accessibilityRole="button"
         >
-          <View style={[styles.sheetHandle, { backgroundColor: `${palette.charbon}20` }]} />
+          <Trash2 size={ms(16)} color={theme.danger} strokeWidth={icon.stroke} />
+          <Text style={[styles.outlineBtnText, { color: theme.danger }]}>{deleteLabel}</Text>
+        </TouchableOpacity>
+      ) : null}
 
-          <View style={styles.logoModalPreviewRow}>
-            <LinearGradient
-              colors={['#A78BFA', '#7C3AED', '#1F2937']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoModalRing}
-            >
-              {uploadIsPending ? (
-                <View style={[styles.logoModalInner, { backgroundColor: theme.bgCard }]}>
-                  <ActivityIndicator size="large" color={palette.violet} />
-                </View>
-              ) : merchant?.logoUrl ? (
-                <MerchantLogo logoUrl={merchant.logoUrl} style={styles.logoModalInner} />
-              ) : (
-                <LinearGradient
-                  colors={[palette.charbon, palette.violet]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.logoModalInner}
-                >
-                  <Text style={styles.logoModalInitials}>{initials}</Text>
-                </LinearGradient>
-              )}
-            </LinearGradient>
-          </View>
-
-          <Text style={[styles.logoModalTitle, { color: theme.text }]}>{t('account.profilePhoto')}</Text>
-          <Text style={[styles.logoModalSubtitle, { color: theme.textMuted }]}>
-            {merchant?.logoUrl ? t('account.profilePhotoEditHint') : t('account.profilePhotoAddHint')}
-          </Text>
-
-          <ActionButton
-            label={merchant?.logoUrl ? t('account.changeProfilePhoto') : t('account.addProfilePhoto')}
-            icon={Camera}
-            size="lg"
-            onPress={handlePickPress}
-            gradient={PICK_BTN_GRADIENT}
-            gradientDirection="horizontal"
-            style={styles.logoModalBtn}
-          />
-
-          {!!merchant?.logoUrl && (
-            <TouchableOpacity
-              style={[styles.logoModalOutlineBtn, { borderColor: '#EF444435' }]}
-              activeOpacity={0.8}
-              onPress={onDelete}
-              accessibilityRole="button"
-              accessibilityLabel={t('account.deleteProfilePhoto')}
-            >
-              <Trash2 size={ms(16)} color="#EF4444" strokeWidth={icon.stroke} />
-              <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>{t('account.deleteProfilePhoto')}</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={[styles.logoModalOutlineBtn, { borderColor: theme.borderLight }]}
-            activeOpacity={0.7}
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.cancel')}
-          >
-            <Text style={[styles.logoModalOutlineBtnText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
-          </TouchableOpacity>
-        </Pressable>
-      </Pressable>
-    </Modal>
+      <TouchableOpacity
+        style={[styles.outlineBtn, { borderColor: theme.borderLight }]}
+        activeOpacity={0.7}
+        onPress={onClose}
+        accessibilityRole="button"
+      >
+        <Text style={[styles.outlineBtnText, { color: theme.textMuted }]}>{cancelLabel}</Text>
+      </TouchableOpacity>
+    </BottomSheet>
   );
 }
 
-export function CoverEditModal({
-  visible, onClose, theme, t, merchant, onPickPhoto, onDelete,
-}: LogoModalProps) {
-  const insets = useSafeAreaInsets();
-  const { handlePickPress, handleDismiss } = useDeferredPick(onClose, onPickPhoto);
+export function LogoEditModal({ t, merchant, uploadIsPending, ...sheet }: MediaModalProps) {
+  const { theme } = sheet;
+  const hasLogo = !!merchant?.logoUrl;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose} onDismiss={handleDismiss}>
-      <Pressable style={styles.bottomSheetOverlay} onPress={onClose}>
-        <Pressable
-          style={[styles.logoModalSheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + hp(16), hp(36)) }]}
-          onPress={() => {}}
-        >
-          <View style={[styles.sheetHandle, { backgroundColor: `${palette.charbon}20` }]} />
-
-          <Text style={[styles.logoModalTitle, styles.coverModalTitle, { color: theme.text }]}>{t('account.coverPhoto')}</Text>
-          <Text style={[styles.logoModalSubtitle, { color: theme.textMuted }]}>
-            {merchant?.coverUrl ? t('account.coverPhotoEditHint') : t('account.coverPhotoAddHint')}
-          </Text>
-
-          <ActionButton
-            label={merchant?.coverUrl ? t('account.changeCoverPhoto') : t('account.addCoverPhoto')}
-            icon={Camera}
-            size="lg"
-            onPress={handlePickPress}
-            gradient={PICK_BTN_GRADIENT}
-            gradientDirection="horizontal"
-            style={styles.logoModalBtn}
-          />
-
-          {!!merchant?.coverUrl && (
-            <TouchableOpacity
-              style={[styles.logoModalOutlineBtn, { borderColor: '#EF444435' }]}
-              activeOpacity={0.8}
-              onPress={onDelete}
-              accessibilityRole="button"
-              accessibilityLabel={t('account.deleteCoverPhoto')}
-            >
-              <Trash2 size={ms(16)} color="#EF4444" strokeWidth={icon.stroke} />
-              <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>{t('account.deleteCoverPhoto')}</Text>
-            </TouchableOpacity>
+    <MediaEditSheet
+      {...sheet}
+      title={t('account.profilePhoto')}
+      hint={hasLogo ? t('account.profilePhotoEditHint') : t('account.profilePhotoAddHint')}
+      pickLabel={hasLogo ? t('account.changeProfilePhoto') : t('account.addProfilePhoto')}
+      deleteLabel={hasLogo ? t('account.deleteProfilePhoto') : undefined}
+      cancelLabel={t('common.cancel')}
+      preview={
+        <View style={[styles.logoRing, { backgroundColor: palette.violet }]}>
+          {uploadIsPending ? (
+            <View style={[styles.logoInner, { backgroundColor: theme.bgCard }]}>
+              <ActivityIndicator size="large" color={palette.violet} />
+            </View>
+          ) : merchant?.logoUrl ? (
+            <MerchantLogo logoUrl={merchant.logoUrl} style={styles.logoInner} />
+          ) : (
+            <View style={[styles.logoInner, { backgroundColor: palette.violetDark }]}>
+              <Text style={styles.logoInitials}>{merchantInitials(merchant?.nom)}</Text>
+            </View>
           )}
+        </View>
+      }
+    />
+  );
+}
 
-          <TouchableOpacity
-            style={[styles.logoModalOutlineBtn, { borderColor: theme.borderLight }]}
-            activeOpacity={0.7}
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.cancel')}
-          >
-            <Text style={[styles.logoModalOutlineBtnText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
-          </TouchableOpacity>
-        </Pressable>
-      </Pressable>
-    </Modal>
+export function CoverEditModal({ t, merchant, ...sheet }: Omit<MediaModalProps, 'uploadIsPending'>) {
+  const hasCover = !!merchant?.coverUrl;
+
+  return (
+    <MediaEditSheet
+      {...sheet}
+      title={t('account.coverPhoto')}
+      hint={hasCover ? t('account.coverPhotoEditHint') : t('account.coverPhotoAddHint')}
+      pickLabel={hasCover ? t('account.changeCoverPhoto') : t('account.addCoverPhoto')}
+      deleteLabel={hasCover ? t('account.deleteCoverPhoto') : undefined}
+      cancelLabel={t('common.cancel')}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  bottomSheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  logoModalSheet: {
-    borderTopLeftRadius: radius['2xl'],
-    borderTopRightRadius: radius['2xl'],
-    paddingTop: hp(14),
+  sheet: {
     paddingHorizontal: ms(24),
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 10,
   },
-  sheetHandle: {
-    width: ms(40),
-    height: ms(4),
-    borderRadius: ms(2),
-    marginBottom: hp(20),
-  },
-  logoModalPreviewRow: { marginBottom: hp(16) },
-  logoModalRing: {
+  logoRing: {
     width: ms(100),
     height: ms(100),
     borderRadius: ms(50),
     padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: hp(16),
   },
-  logoModalInner: {
+  logoInner: {
     width: ms(94),
     height: ms(94),
     borderRadius: ms(47),
@@ -235,30 +171,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoModalInitials: {
+  logoInitials: {
     fontSize: ms(32),
     color: '#fff',
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
-  logoModalTitle: {
+  title: {
     fontSize: FS.lg,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     marginBottom: hp(6),
   },
-  coverModalTitle: { marginTop: hp(16) },
-  logoModalSubtitle: {
+  hint: {
     fontSize: FS.sm,
     fontFamily: font.regular,
     textAlign: 'center',
     marginBottom: hp(24),
     lineHeight: FS.sm * 1.5,
   },
-  logoModalBtn: {
+  pickBtn: {
     width: '100%',
     marginBottom: hp(10),
     borderWidth: 0,
   },
-  logoModalOutlineBtn: {
+  outlineBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -269,7 +204,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: hp(10),
   },
-  logoModalOutlineBtnText: {
+  outlineBtnText: {
     fontSize: FS.md,
     fontFamily: font.semibold,
   },

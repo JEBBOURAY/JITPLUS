@@ -5,7 +5,7 @@ import { Info } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
   message?: string | null;
@@ -54,6 +54,6 @@ const styles = StyleSheet.create({
 
   legal: { alignSelf: 'stretch', marginTop: hp(22), gap: hp(6) },
   legalHeader: { flexDirection: 'row', alignItems: 'center', gap: ms(6) },
-  legalTitle: { color: 'rgba(255,255,255,0.7)', fontSize: FS.xs, textTransform: 'uppercase', letterSpacing: 0.8 },
+  legalTitle: { color: 'rgba(255,255,255,0.7)', fontSize: FS.xs },
   legalText: { color: 'rgba(255,255,255,0.45)', fontSize: ms(11), lineHeight: ms(16) },
 });

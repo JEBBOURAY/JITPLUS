@@ -8,7 +8,7 @@ import { CanActivate, ExecutionContext, Injectable, ServiceUnavailableException 
  * 2026-11-05). Guards run before interceptors, so a refused request is
  * rejected before its body is buffered.
  */
-export const MAX_CONCURRENT_UPLOADS = 8;
+const MAX_CONCURRENT_UPLOADS = 8;
 
 let inFlight = 0;
 
@@ -31,9 +31,4 @@ export class UploadConcurrencyGuard implements CanActivate {
     res.once('finish', release);
     return true;
   }
-}
-
-/** Test helper. */
-export function __uploadsInFlight(): number {
-  return inFlight;
 }

@@ -11,7 +11,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import WalletCard from '@/components/home/WalletCard';
 import type { LoyaltyCard } from '@/types';
 import { useAppFonts } from '@/utils/fonts';
-import { haptic } from '@/utils/haptics';
+import { hapticSelection } from '@/utils/haptics';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
 const CARD_RATIO = 1.586; // ISO/IEC 7810 ID-1, the shape of a real bank / loyalty card
@@ -168,7 +168,7 @@ export default memo(function CardCarousel({ cards, onCardPress }: Props) {
           activeRef.current = idx;
           setActive(idx);
           setHasSwiped(true);
-          haptic();
+          hapticSelection();
         }
       },
     },

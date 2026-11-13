@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,14 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { hapticError, hapticSuccess, safeImpact, safeNotification } from '@/utils/haptics';
+import { EASE_OUT } from '@/utils/motion';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { CheckCircle2, XCircle, MinusCircle, CircleUser } from 'lucide-react-native';
 import { JitScan, JitTicket } from '@/components/icons';
 import { randomUUID } from '@/utils/crypto';
@@ -69,12 +76,16 @@ export default function CouponValidateScreen() {
     (input: { token?: string; code?: string }) => {
       checkCoupon.mutate(input, {
         onSuccess: (data) => {
+          // Found but not usable is a warning, not an error: the coupon exists.
+          if (data.canRedeem) safeImpact(Haptics.ImpactFeedbackStyle.Light);
+          else safeNotification(Haptics.NotificationFeedbackType.Warning);
           idemKeyRef.current = randomUUID();
           setCheckResult(data);
           setAmount('');
           setRedeemResult(null);
         },
         onError: (err) => {
+          hapticError();
           Alert.alert(t('common.error'), getErrorMessage(err, t('scratch.validate.checkError')));
         },
       });
@@ -138,8 +149,12 @@ export default function CouponValidateScreen() {
         idempotencyKey: idemKeyRef.current,
       },
       {
-        onSuccess: (data) => setRedeemResult(data),
+        onSuccess: (data) => {
+          hapticSuccess();
+          setRedeemResult(data);
+        },
         onError: (err) => {
+          hapticError();
           Alert.alert(t('common.error'), getErrorMessage(err, t('scratch.validate.checkError')));
         },
       },
@@ -220,9 +235,9 @@ export default function CouponValidateScreen() {
       <View style={[styles.container, { backgroundColor: theme.bg }]}>
         <ScreenHeader title={t('scratch.validate.title')} onBack={() => router.back()} />
         <View style={styles.successWrap}>
-          <View style={[styles.successIcon, { backgroundColor: `${theme.success}14` }]}>
+          <SuccessIconPop style={[styles.successIcon, { backgroundColor: `${theme.success}14` }]}>
             <CheckCircle2 size={ms(48)} color={theme.success} strokeWidth={icon.stroke} />
-          </View>
+          </SuccessIconPop>
           <Text style={[styles.successTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
             {t('scratch.validate.successTitle')}
           </Text>
@@ -410,24 +425,40 @@ export default function CouponValidateScreen() {
   );
 }
 
+/** Only the success icon moves (scale 0.9 → 1, 200ms): the card and buttons are read at once. */
+function SuccessIconPop({ style, children }: { style: StyleProp<ViewStyle>; children: ReactNode }) {
+  const reduceMotion = useReduceMotion();
+  const [progress] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (reduceMotion === null) return;
+    if (reduceMotion) {
+      progress.setValue(1);
+      return;
+    }
+    Animated.timing(progress, { toValue: 1, duration: 200, easing: EASE_OUT, useNativeDriver: true }).start();
+  }, [progress, reduceMotion]);
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
+  return <Animated.View style={[style, { opacity: progress, transform: [{ scale }] }]}>{children}</Animated.View>;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { flex: 1 },
   contentInner: { padding: 16, gap: 14, paddingBottom: 24 },
-  codeInput: { fontSize: ms(22), fontFamily: font.bold, letterSpacing: 4, textAlign: 'center' },
+  codeInput: { fontSize: ms(22), fontFamily: font.semibold, letterSpacing: 4, textAlign: 'center' },
   entryActions: { gap: 10 },
   entryButton: { flex: 1 },
   clientRow: { alignItems: 'center', gap: 10 },
   clientName: { flex: 1, fontSize: ms(15), fontFamily: font.semibold },
   codeChip: { fontSize: ms(13), fontFamily: font.medium, letterSpacing: 1 },
   rewardLabel: { flex: 1, fontSize: ms(15), fontFamily: font.semibold },
-  rewardValue: { fontSize: ms(15), fontFamily: font.bold },
+  rewardValue: { fontSize: ms(15), fontFamily: font.semibold },
   checkRow: { alignItems: 'center', gap: 10 },
   checkText: { flex: 1, fontSize: ms(14), fontFamily: font.medium },
   previewBox: { gap: 8 },
   previewRow: { alignItems: 'center', justifyContent: 'space-between' },
   previewLabel: { fontSize: ms(14), fontFamily: font.medium },
-  previewValue: { fontSize: ms(16), fontFamily: font.bold },
+  previewValue: { fontSize: ms(16), fontFamily: font.semibold },
   previewStamps: { fontSize: ms(14), fontFamily: font.semibold },
   previewHint: { fontSize: ms(12), fontFamily: font.regular },
   footer: {
@@ -440,7 +471,7 @@ const styles = StyleSheet.create({
   footerBtn: { flex: 1 },
   successWrap: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 18 },
   successIcon: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
-  successTitle: { fontSize: ms(22), fontFamily: font.bold, textAlign: 'center' },
+  successTitle: { fontSize: ms(22), fontFamily: font.semibold, textAlign: 'center' },
   successCard: { alignSelf: 'stretch' },
   successLine: { fontSize: ms(15), fontFamily: font.medium },
   successActions: { alignSelf: 'stretch', gap: 10 },

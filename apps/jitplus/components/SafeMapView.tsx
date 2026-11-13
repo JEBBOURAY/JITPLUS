@@ -164,5 +164,5 @@ const slowStyles = StyleSheet.create({
   },
   slowTitle: { fontSize: ms(14), fontWeight: '600', textAlign: 'center' },
   slowHint: { fontSize: ms(12), marginTop: 2, textAlign: 'center' },
-  slowRetry: { fontSize: ms(13), fontWeight: '700', color: palette.violet, marginTop: ms(6) },
+  slowRetry: { fontSize: ms(13), fontWeight: '600', color: palette.violet, marginTop: ms(6) },
 });

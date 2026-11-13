@@ -41,7 +41,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.5.5',
+    version: '1.5.6',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -61,7 +61,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '59',
+      buildNumber: '60',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -93,7 +93,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 68,
+      versionCode: 69,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -245,22 +245,22 @@ module.exports = ({ config }) => {
       // Cloud Run's *.a.run.app wildcard cert rotates too frequently for pinning.
       // './plugins/withCertificatePinning',
       // Network security — enforces HTTPS, blocks cleartext traffic in production
-      './plugins/withNetworkSecurity',
+      '../../packages/shared/expo-plugins/withNetworkSecurity',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
-      './plugins/withMoroccoRegion',
+      '../../packages/shared/expo-plugins/withMoroccoRegion',
       // Enable RTL support on Android — required for Arabic/Darija layout
-      './plugins/withSupportsRTL',
+      '../../packages/shared/expo-plugins/withSupportsRTL',
       // Force modular headers for GoogleUtilities/RecaptchaInterop so Swift pod
       // AppCheckCore (pulled in by GoogleSignIn 9) can import them.
-      './plugins/withGoogleModularHeaders',
+      '../../packages/shared/expo-plugins/withGoogleModularHeaders',
       // Disable Swift 6 strict concurrency for all pods (Xcode 26 + expo-image@55.0.9 incompat)
-      './plugins/withDisableStrictConcurrency',
+      '../../packages/shared/expo-plugins/withDisableStrictConcurrency',
       // iOS Notification Service Extension — temporarily disabled for v1.3.11.
       // Xcode 16/26 reports "Unexpected duplicate tasks" during archive (likely
       // duplicated Info.plist processing). Android already shows notification
       // images natively; iOS will fall back to text-only push until the plugin
       // is reworked (e.g. via @bacons/apple-targets or OneSignal NSE pattern).
-      // './plugins/withNotificationServiceExtension',
+      // '../../packages/shared/expo-plugins/withNotificationServiceExtension',
       [
         'expo-notifications',
         {

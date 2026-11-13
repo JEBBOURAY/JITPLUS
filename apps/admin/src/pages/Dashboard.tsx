@@ -1,16 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
 import { getFollowUps, getInsights, getRevenue, getWorklist } from '../api';
 import type { AdminInsights, FollowUpsResponse, InsightPeriod, MerchantBrief, RevenueReport, Worklist } from '../types';
 import { BarChart, Card, DataTable, Empty, Funnel, KpiStrip, Legend, LineChart, type Column } from '../components/charts';
 import { DeltaBadge } from '../components/StatCard';
-import { ContactButtons, FollowUpBadge, PlanKindBadge, QuickNoteModal } from '../components/crm';
+import { ContactButtons, FollowUpBadge, MerchantCell, PlanKindBadge, QuickNoteModal } from '../components/crm';
 import { Dash, LastActivity, Muted, useToast } from '../components/ui';
 import { useAlertsContext } from '../utils/alerts';
 import { C, S } from '../theme';
 import { CATEGORY_LABELS, daysSince, deltaPct, fmtDate, fmtMAD, fmtNumber, fmtRelative, fmtTime, sharePct } from '../utils/format';
-import { FOLLOW_UP_ORDER, FOLLOW_UP_STATUS, PAYMENT_METHOD, WA_TEMPLATES, daysUntil, fmtDue, fmtMonth } from '../utils/crm';
+import { FOLLOW_UP_ORDER, PAYMENT_METHOD, WA_TEMPLATES, daysUntil, fmtDue, fmtMonth } from '../utils/crm';
 
 const PERIODS: { value: InsightPeriod; label: string }[] = [
   { value: 7, label: '7 j' },
@@ -33,17 +33,6 @@ const QUEUES: { key: QueueKey; label: string; hint: string }[] = [
 function shortDay(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
-}
-
-function MerchantCell({ m }: { m: MerchantBrief }) {
-  return (
-    <div style={{ minWidth: 0 }}>
-      <Link to={`/merchants/${m.id}`} onClick={(e) => e.stopPropagation()} style={{ color: C.text, fontWeight: 500, textDecoration: 'none' }}>{m.nom}</Link>
-      <div style={{ fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>
-        {[CATEGORY_LABELS[m.categorie] ?? m.categorie, m.ville, m.phone].filter(Boolean).join(' · ')}
-      </div>
-    </div>
-  );
 }
 
 export default function Dashboard() {

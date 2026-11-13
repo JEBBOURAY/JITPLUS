@@ -1,20 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
-import { LinearGradient } from 'expo-linear-gradient';
 import { CalendarClock, Gift, RotateCcw, Store, Trophy } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import type { ThemeColors } from '@/contexts/ThemeContext';
-import type { LuckyWheelDrawResult } from '@/types';
+import BottomSheet from '@/components/BottomSheet';
 import { hp, ms, wp, fontSize as FS, radius } from '@/utils/responsive';
 import ConfettiBurst from './ConfettiBurst';
+import type { ShownResult } from './useLuckyWheel';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
-  result: LuckyWheelDrawResult;
-  merchantName: string;
-  remainingTickets: number;
+  /** The draw to show; null slides the sheet away. */
+  shown: ShownResult | null;
   localeTag: string;
   bottomInset: number;
   theme: ThemeColors;
@@ -28,25 +27,27 @@ interface Props {
 }
 
 export default React.memo(function WheelResultSheet({
-  result, merchantName, remainingTickets, localeTag, bottomInset, theme, fonts, t, onReplay, onClose, onViewPrizes, onDismiss,
+  shown, localeTag, bottomInset, theme, fonts, t, onReplay, onClose, onViewPrizes, onDismiss,
 }: Props) {
-  const [fade] = useState(() => new Animated.Value(0));
-  const [slide] = useState(() => new Animated.Value(1));
-  const [pop] = useState(() => new Animated.Value(0.5));
-  const won = result.result === 'WON';
+  // Keeps the last draw on screen while the sheet slides out.
+  const [last, setLast] = useState<ShownResult | null>(shown);
+  useEffect(() => { if (shown) setLast(shown); }, [shown]);
 
+  const [pop] = useState(() => new Animated.Value(0.85));
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
-      Animated.spring(slide, { toValue: 0, damping: 18, stiffness: 170, mass: 0.9, useNativeDriver: true }),
-      Animated.sequence([
-        Animated.delay(120),
-        Animated.spring(pop, { toValue: 1, damping: 8, stiffness: 160, useNativeDriver: true }),
-      ]),
-    ]).start();
-  }, [fade, slide, pop]);
+    if (!shown) return;
+    pop.setValue(0.85);
+    const anim = Animated.sequence([
+      Animated.delay(120),
+      Animated.timing(pop, { toValue: 1, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [shown, pop]);
 
-  const translateY = slide.interpolate({ inputRange: [0, 1], outputRange: [0, hp(420)] });
+  if (!last) return null;
+  const { data: result, merchantName, remaining: remainingTickets } = last;
+  const won = result.result === 'WON';
   const claimBefore = won && result.draw.claimBefore
     ? new Date(result.draw.claimBefore).toLocaleDateString(localeTag, { day: 'numeric', month: 'long' })
     : null;
@@ -59,24 +60,24 @@ export default React.memo(function WheelResultSheet({
   const onPrimary = remainingTickets > 0 ? onReplay : won ? onViewPrizes : onClose;
 
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: fade }]}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss ?? onClose} accessibilityRole="button" accessibilityLabel={t('common.close')} />
-      {won && <ConfettiBurst play />}
-      <Animated.View
-        style={[
-          styles.sheet,
-          { backgroundColor: theme.bgCard, paddingBottom: Math.max(bottomInset, hp(16)) + hp(8), transform: [{ translateY }] },
-        ]}
-        accessibilityViewIsModal
-        accessibilityLiveRegion="assertive"
-      >
-        <View style={[styles.handle, { backgroundColor: theme.border }]} />
+    <BottomSheet
+      inline
+      visible={!!shown}
+      onClose={onDismiss ?? onClose}
+      onExited={() => setLast(null)}
+      backdropColor="rgba(5,2,12,0.55)"
+      backdropLabel={t('common.close')}
+      backdropContent={won ? <ConfettiBurst play /> : null}
+      handleStyle={styles.handle}
+      style={[styles.sheet, { paddingBottom: Math.max(bottomInset, hp(16)) + hp(8) }]}
+    >
+      <View style={styles.content} accessibilityLiveRegion="assertive">
 
         <Animated.View style={{ transform: [{ scale: pop }] }}>
           {won ? (
-            <LinearGradient colors={[palette.goldLight, palette.goldDark]} style={styles.badge}>
+            <View style={[styles.badge, { backgroundColor: palette.goldDark }]}>
               <Trophy size={ms(40)} color="#fff" strokeWidth={2} />
-            </LinearGradient>
+            </View>
           ) : (
             <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(148,163,184,0.16)' : '#F1F5F9' }]}>
               <RotateCcw size={ms(36)} color={theme.textMuted} strokeWidth={2} />
@@ -131,9 +132,9 @@ export default React.memo(function WheelResultSheet({
         )}
 
         <TouchableOpacity onPress={onPrimary} activeOpacity={0.85} style={styles.primaryWrap} accessibilityRole="button">
-          <LinearGradient colors={[palette.violetVivid, palette.violetDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primary}>
+          <View style={[styles.primary, { backgroundColor: palette.violet }]}>
             <Text style={[styles.primaryText, { fontFamily: fonts.bold }]}>{primaryLabel}</Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         {(remainingTickets > 0 || won) && (
@@ -141,28 +142,27 @@ export default React.memo(function WheelResultSheet({
             <Text style={[styles.secondaryText, { color: theme.textMuted, fontFamily: fonts.semibold }]}>{t('luckyWheel.close')}</Text>
           </TouchableOpacity>
         )}
-      </Animated.View>
-    </Animated.View>
+      </View>
+    </BottomSheet>
   );
 });
 
 const styles = StyleSheet.create({
-  backdrop: { backgroundColor: 'rgba(5,2,12,0.55)', justifyContent: 'flex-end', zIndex: 20 },
   sheet: {
     borderTopLeftRadius: radius['2xl'],
     borderTopRightRadius: radius['2xl'],
     paddingHorizontal: wp(22),
-    paddingTop: hp(10),
-    alignItems: 'center',
+
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    elevation: 24,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  handle: { width: ms(40), height: 4, borderRadius: 2, marginBottom: hp(18) },
+  handle: { marginBottom: hp(18) },
+  content: { alignItems: 'center' },
   badge: { width: ms(84), height: ms(84), borderRadius: ms(42), alignItems: 'center', justifyContent: 'center', marginBottom: hp(14) },
-  kicker: { fontSize: FS.sm, textTransform: 'uppercase', letterSpacing: 1.2, textAlign: 'center' },
+  kicker: { fontSize: FS.sm, textAlign: 'center' },
   prize: { fontSize: FS['2xl'], textAlign: 'center', marginTop: hp(4), letterSpacing: -0.4 },
   title: { fontSize: FS['2xl'], textAlign: 'center', letterSpacing: -0.4 },
   desc: { fontSize: FS.md, textAlign: 'center', marginTop: hp(6), lineHeight: ms(21), paddingHorizontal: wp(8) },

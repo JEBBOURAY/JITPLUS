@@ -320,10 +320,10 @@ const styles = StyleSheet.create({
   info: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular },
   kpiRow: { gap: 8 },
   kpi: { flex: 1, borderRadius: 12, padding: 10, gap: 4 },
-  kpiValue: { fontSize: ms(17), fontFamily: font.bold },
+  kpiValue: { fontSize: ms(17), fontFamily: font.semibold },
   kpiLabel: { fontSize: ms(12), fontFamily: font.regular },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', padding: 20 },
   modal: { borderRadius: 24, padding: 20, gap: 12 },
-  modalTitle: { fontSize: ms(17), fontFamily: font.bold, textAlign: 'center' },
+  modalTitle: { fontSize: ms(17), fontFamily: font.semibold, textAlign: 'center' },
   modalBody: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular, textAlign: 'center' },
 });

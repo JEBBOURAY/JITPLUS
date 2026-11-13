@@ -17,13 +17,13 @@ export interface CsvColumn<T> {
   value: (row: T) => unknown;
 }
 
-export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
+function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
   const lines = [columns.map((c) => cell(c.header)).join(SEP)];
   for (const r of rows) lines.push(columns.map((c) => cell(c.value(r))).join(SEP));
   return '\uFEFF' + lines.join('\r\n');
 }
 
-export function downloadCsv(filename: string, content: string): void {
+function downloadCsv(filename: string, content: string): void {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

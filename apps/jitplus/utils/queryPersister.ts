@@ -6,17 +6,15 @@ export const asyncStoragePersister = createQueryPersister(QUERY_CACHE_KEY);
 
 /**
  * Account data that must not land on disk (nor in device backups): coupon and
- * scratch-card QR tokens, payout history (bank details), referral stats.
+ * scratch-card QR tokens.
  */
-const CLIENT_PRIVATE_KEYS = new Set(['scratch', 'payouthistory', 'referralstats']);
+const CLIENT_PRIVATE_KEYS = new Set(['scratch']);
 
 export function shouldPersistQuery(query: {
   queryKey: readonly unknown[];
   state: { status: string };
 }): boolean {
   if (query.state.status !== 'success') return false;
-  // Geo queries change with every map pan — not worth persisting
-  if (query.queryKey.includes('merchants-nearby')) return false;
   // Deals depend on the position and expire within days: a stale list on disk would show ended offers.
   if (query.queryKey[0] === 'deals') return false;
   if (!shouldDehydrateQuery(query)) return false;

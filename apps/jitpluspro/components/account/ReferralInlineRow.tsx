@@ -7,13 +7,14 @@ import { useTheme, palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
-import type { ImperativeRouter } from 'expo-router';
+import { hapticLight } from '@/utils/haptics';
 
 interface Props {
   theme: ReturnType<typeof useTheme>;
   t: (key: string, opts?: Record<string, unknown>) => string;
   referralCode: string;
-  router: ImperativeRouter;
+  /** Opens the referral screen. */
+  onPress: () => void;
 }
 
 /**
@@ -21,7 +22,7 @@ interface Props {
  * Tap on the label routes to /referral; tap on the code copies it to clipboard.
  * Only rendered when a `referralCode` is provided.
  */
-export default React.memo(function ReferralInlineRow({ theme, t, referralCode, router }: Props) {
+export default React.memo(function ReferralInlineRow({ theme, t, referralCode, onPress }: Props) {
   const dir = useDir();
   const [codeCopied, setCodeCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,12 +33,10 @@ export default React.memo(function ReferralInlineRow({ theme, t, referralCode, r
     if (copyTimer.current) clearTimeout(copyTimer.current);
   }, []);
 
-  const goToReferral = useCallback(() => router.push('/referral'), [router]);
-
   const copyReferral = useCallback(async () => {
-    if (!referralCode) return;
     try {
       await Clipboard.setStringAsync(referralCode);
+      hapticLight();
       setCodeCopied(true);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCodeCopied(false), 1500);
@@ -48,7 +47,7 @@ export default React.memo(function ReferralInlineRow({ theme, t, referralCode, r
 
   return (
     <Pressable
-      onPress={goToReferral}
+      onPress={onPress}
       style={({ pressed }) => [
         styles.row,
         { flexDirection: dir.row, backgroundColor: theme.bgCard, borderColor: theme.borderLight },
@@ -57,7 +56,7 @@ export default React.memo(function ReferralInlineRow({ theme, t, referralCode, r
       accessibilityRole="button"
       accessibilityLabel={t('account.referralActive')}
     >
-      <View style={styles.icon}>
+      <View style={[styles.icon, { backgroundColor: theme.primaryBg }]}>
         <JitGift size={ms(17)} color={palette.violet} strokeWidth={icon.stroke} />
       </View>
       <View style={styles.body}>
@@ -73,7 +72,7 @@ export default React.memo(function ReferralInlineRow({ theme, t, referralCode, r
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={({ pressed }) => [
           styles.codeChip,
-          { flexDirection: dir.row },
+          { flexDirection: dir.row, backgroundColor: theme.primaryBg },
           pressed && { opacity: 0.7 },
         ]}
         accessibilityRole="button"
@@ -106,7 +105,6 @@ const styles = StyleSheet.create({
     width: ms(36),
     height: ms(36),
     borderRadius: radius.md,
-    backgroundColor: 'rgba(124,58,237,0.09)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -130,7 +128,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(10),
     paddingVertical: hp(5),
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(124,58,237,0.08)',
   },
   codeText: {
     fontSize: ms(12),

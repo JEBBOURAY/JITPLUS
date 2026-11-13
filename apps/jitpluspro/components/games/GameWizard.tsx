@@ -43,8 +43,10 @@ export function useGameWizard<S extends string>({ steps, validate, dirty, onLeav
   const lastIndex = steps.length - 1;
   const step = steps[index];
 
+  // The prompt needs `disablePrevention`, which only exists once the guard is set up: the guard reaches it through a ref.
+  const confirmDiscardRef = useRef<(discard: () => void) => void>(() => {});
   // Also covers the iOS swipe-back, which removes the screen without going through `back`.
-  const disablePrevention = usePreventRemove(dirty, ({ repeat }) => confirmDiscard(repeat));
+  const disablePrevention = usePreventRemove(dirty, ({ repeat }) => confirmDiscardRef.current(repeat));
 
   const showError = useCallback((err: FormError) => Alert.alert(t('common.error'), t(err.key, err.params)), [t]);
 
@@ -61,6 +63,9 @@ export function useGameWizard<S extends string>({ steps, validate, dirty, onLeav
       },
     ]);
   }, [i18nPrefix, t, disablePrevention]);
+  useEffect(() => {
+    confirmDiscardRef.current = confirmDiscard;
+  }, [confirmDiscard]);
 
   const goTo = useCallback((i: number) => {
     setIndex(Math.max(0, Math.min(i, lastIndex)));
@@ -300,7 +305,7 @@ const styles = StyleSheet.create({
   stepOf: { fontSize: ms(12), fontFamily: font.medium },
   content: { paddingHorizontal: 16, paddingTop: 12, gap: 14 },
   intro: { gap: 4, paddingHorizontal: 4, marginBottom: 2 },
-  heading: { fontSize: ms(20), lineHeight: ms(27), fontFamily: font.bold, letterSpacing: -0.3 },
+  heading: { fontSize: ms(20), lineHeight: ms(27), fontFamily: font.semibold, letterSpacing: -0.3 },
   hint: { fontSize: ms(14), lineHeight: ms(21), fontFamily: font.regular },
   help: { fontSize: ms(12), lineHeight: ms(18), fontFamily: font.regular },
   footer: {

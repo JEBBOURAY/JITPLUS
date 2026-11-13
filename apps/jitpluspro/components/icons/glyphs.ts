@@ -115,5 +115,46 @@ export const glyphs = {
     ['path', { d: 'M7.5 8.8L8.17 10.37L9.76 9.74L9.13 11.33L10.7 12L9.13 12.67L9.76 14.26L8.17 13.63L7.5 15.2L6.83 13.63L5.24 14.26L5.87 12.67L4.3 12L5.87 11.33L5.24 9.74L6.83 10.37Z', fill: ACCENT_FILL, key: 'star' }],
     ['path', { d: 'M13 10.5h5M13 13.5h3', key: 'lines' }],
   ],
+  phone: [
+    ['rect', { x: '7', y: '2.5', width: '10', height: '19', rx: '2.5', key: 'body' }],
+    ['path', { d: 'M12 7.6L12.61 9.03L14.05 8.45L13.47 9.89L14.9 10.5L13.47 11.11L14.05 12.55L12.61 11.97L12 13.4L11.39 11.97L9.95 12.55L10.53 11.11L9.1 10.5L10.53 9.89L9.95 8.45L11.39 9.03Z', fill: ACCENT_FILL, key: 'star' }],
+    ['path', { d: 'M10.75 18.25h2.5', key: 'bar' }],
+  ],
+  clock: [
+    ['circle', { cx: '12', cy: '12', r: '9.5', key: 'face' }],
+    ['path', { d: 'M12 6.5V12l3.5 2', key: 'hands' }],
+  ],
+  roller: [
+    ['rect', { x: '3.5', y: '3.5', width: '14', height: '5.5', rx: '1.5', key: 'roll' }],
+    ['path', { d: 'M17.5 6.25H20a.5.5 0 0 1 .5.5v4.75a1 1 0 0 1-1 1H12v2.5', key: 'arm' }],
+    ['rect', { x: '10.5', y: '15', width: '3', height: '6', rx: '1', key: 'handle' }],
+  ],
+  eye: [
+    ['path', { d: 'M2.5 12C4.6 8 8 5.75 12 5.75S19.4 8 21.5 12c-2.1 4-5.5 6.25-9.5 6.25S4.6 16 2.5 12Z', key: 'lid' }],
+    ['path', { d: 'M12 8.8L12.67 10.37L14.26 9.74L13.63 11.33L15.2 12L13.63 12.67L14.26 14.26L12.67 13.63L12 15.2L11.33 13.63L9.74 14.26L10.37 12.67L8.8 12L10.37 11.33L9.74 9.74L11.33 10.37Z', fill: ACCENT_FILL, key: 'star' }],
+  ],
+  poster: [
+    ['rect', { x: '5', y: '2.5', width: '14', height: '19', rx: '2', key: 'sheet' }],
+    ['path', { d: 'M12 5.8L12.57 7.13L13.91 6.59L13.37 7.93L14.7 8.5L13.37 9.07L13.91 10.41L12.57 9.87L12 11.2L11.43 9.87L10.09 10.41L10.63 9.07L9.3 8.5L10.63 7.93L10.09 6.59L11.43 7.13Z', fill: ACCENT_FILL, key: 'star' }],
+    ['path', { d: 'M9 14.5h6M9 17.5h3.5', key: 'lines' }],
+  ],
+  parcel: [
+    ['path', { d: 'M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5Z', key: 'box' }],
+    ['path', { d: 'M3.5 7.5L12 12l8.5-4.5M12 12v9', key: 'edges' }],
+  ],
+  calendar: [
+    ['rect', { x: '3.5', y: '5', width: '17', height: '15.5', rx: '2.5', key: 'sheet' }],
+    ['path', { d: 'M8 3v4M16 3v4M3.5 10h17', key: 'rings' }],
+    ['path', { d: 'M12 12.6L12.55 13.88L13.84 13.36L13.32 14.65L14.6 15.2L13.32 15.75L13.84 17.04L12.55 16.52L12 17.8L11.45 16.52L10.16 17.04L10.68 15.75L9.4 15.2L10.68 14.65L10.16 13.36L11.45 13.88Z', fill: ACCENT_FILL, key: 'star' }],
+  ],
+  mail: [
+    ['rect', { x: '3', y: '5', width: '18', height: '14', rx: '2.5', key: 'envelope' }],
+    ['path', { d: 'M3.5 7.5l8.5 6 8.5-6', key: 'flap' }],
+  ],
+  megaphone: [
+    ['path', { d: 'M3 10v4a1 1 0 0 0 1 1h3l8 4.5V4.5L7 9H4a1 1 0 0 0-1 1Z', key: 'horn' }],
+    ['path', { d: 'M18.5 9.5a3.5 3.5 0 0 1 0 5', key: 'wave' }],
+    ['path', { d: 'M8 15v3.5a1.5 1.5 0 0 0 3 0v-1.8', key: 'handle' }],
+  ],
 } satisfies Record<string, IconNode>;
 

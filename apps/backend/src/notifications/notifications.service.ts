@@ -8,6 +8,7 @@ import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY, type IClientNotificationStatusRepository,
+  TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../common/repositories';
 import { IEmailBlastProvider, EMAIL_BLAST_PROVIDER, IPushProvider, PUSH_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { EventsGateway } from '../events';
@@ -23,6 +24,7 @@ import type { SendAdminNotificationDto } from '../admin/dto/admin-notification.d
 import { maskPhone } from '../common/utils/pii-mask';
 import { mapLimit } from '../common/tasks/cron-utils';
 import { randomUUID } from 'crypto';
+import { notificationLink } from './notification-link';
 
 /** Concurrent single-client pushes in a {@link NotificationsService.sendToClients} batch. */
 const CLIENT_PUSH_CONCURRENCY = 8;
@@ -57,6 +59,7 @@ export class NotificationsService {
     @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(CLIENT_NOTIFICATION_STATUS_REPOSITORY) private clientNotifStatusRepo: IClientNotificationStatusRepository,
+    @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(PUSH_PROVIDER) private pushProvider: IPushProvider,
     @Inject(EMAIL_BLAST_PROVIDER) private resendService: IEmailBlastProvider,
     @Inject(SMS_PROVIDER) private smsProvider: ISmsProvider,
@@ -121,6 +124,75 @@ export class NotificationsService {
     }
   }
 
+  /** Server-side content moderation (anti-phishing / anti-spam). Throws 400 on a violation. */
+  assertBroadcastContentAllowed(dto: SendNotificationDto): void {
+    const violation = detectProhibitedContent(dto.title, dto.body);
+    if (violation) throw new BadRequestException(violation.message);
+  }
+
+  /**
+   * Persistent per-merchant push quota over a rolling 24 h. Uses the
+   * notifications(merchant_id, is_broadcast, created_at) index.
+   * `nextSendAt` is set once the quota is spent: the moment a slot frees up.
+   */
+  private async pushBroadcastQuota(
+    merchantId: string,
+    repo: Pick<INotificationRepository, 'findMany'> = this.notificationRepo,
+  ): Promise<{ remaining: number; nextSendAt: Date | null }> {
+    const recent = await repo.findMany({
+      where: { merchantId, isBroadcast: true, channel: 'PUSH', createdAt: { gte: new Date(Date.now() - MS_PER_DAY) } },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: MERCHANT_PUSH_BROADCASTS_PER_DAY,
+    });
+    const remaining = MERCHANT_PUSH_BROADCASTS_PER_DAY - recent.length;
+    const oldest = recent[recent.length - 1];
+    return {
+      remaining,
+      nextSendAt: remaining === 0 && oldest ? new Date(oldest.createdAt.getTime() + MS_PER_DAY) : null,
+    };
+  }
+
+  /**
+   * Checks the daily quota and records the broadcast in one step. The advisory
+   * lock serialises the sends of one merchant, so two parallel requests cannot
+   * both take the last slot. (The route throttle is per IP and per instance, so
+   * it does not bound a merchant: security audit 2026-11-05.)
+   * The recipient counts are filled in once the push has left.
+   */
+  private reservePushBroadcast(merchantId: string, dto: SendNotificationDto, link: Record<string, string>): Promise<Notification> {
+    return this.txRunner.run(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`push-broadcast:${merchantId}`}))`;
+      const quota = await this.pushBroadcastQuota(merchantId, tx.notification);
+      if (quota.remaining === 0) {
+        throw new HttpException(
+          {
+            code: 'PUSH_DAILY_LIMIT',
+            message: `Limite atteinte : ${MERCHANT_PUSH_BROADCASTS_PER_DAY} notifications à tous vos clients par 24 h. Réessayez plus tard.`,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      return tx.notification.create({
+        data: { merchantId, title: dto.title, body: dto.body, isBroadcast: true, channel: 'PUSH', data: notificationLink(link) },
+      });
+    });
+  }
+
+  /** What the merchant app shows before a broadcast: who receives it and what is left of the daily quota. */
+  async getBroadcastStatus(merchantId: string): Promise<{
+    recipientCount: number;
+    dailyLimit: number;
+    remaining: number;
+    nextSendAt: Date | null;
+  }> {
+    const [recipientCount, quota] = await Promise.all([
+      this.loyaltyCardRepo.count({ where: { merchantId, deactivatedAt: null } }),
+      this.pushBroadcastQuota(merchantId),
+    ]);
+    return { recipientCount, dailyLimit: MERCHANT_PUSH_BROADCASTS_PER_DAY, ...quota };
+  }
+
   async sendToAll(merchantId: string, dto: SendNotificationDto): Promise<{
     id: string;
     title: string;
@@ -130,27 +202,11 @@ export class NotificationsService {
     failureCount: number;
     createdAt: Date;
   }> {
+    this.assertBroadcastContentAllowed(dto);
 
-    // Server-side content moderation (anti-phishing / anti-spam)
-    const violation = detectProhibitedContent(dto.title, dto.body);
-    if (violation) throw new BadRequestException(violation.message);
-
-    // Persistent per-merchant quota: the route throttle is per IP and per
-    // instance, so it did not bound how often one merchant can push to all
-    // its clients (security audit 2026-11-05). Uses the
-    // notifications(merchant_id, is_broadcast, created_at) index.
-    const sentLastDay = await this.notificationRepo.count({
-      where: { merchantId, isBroadcast: true, channel: 'PUSH', createdAt: { gte: new Date(Date.now() - MS_PER_DAY) } },
-    });
-    if (sentLastDay >= MERCHANT_PUSH_BROADCASTS_PER_DAY) {
-      throw new HttpException(
-        {
-          code: 'PUSH_DAILY_LIMIT',
-          message: `Limite atteinte : ${MERCHANT_PUSH_BROADCASTS_PER_DAY} notifications à tous vos clients par 24 h. Réessayez plus tard.`,
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
+    // Routing keys of the push payload: the client deep-link router opens the merchant card on tap.
+    const link: Record<string, string> = { event: 'notification_new', action: 'open_card', merchantId };
+    const reserved = await this.reservePushBroadcast(merchantId, dto, link);
 
     // Collect ALL clients with a loyalty card + push info.
     // Single paginated query fetches both client IDs and push tokens,
@@ -172,13 +228,8 @@ export class NotificationsService {
     }
 
     const tokens = [...new Set(pushRecipients.map((r) => r.pushToken))];
-    // Include data payload so client-side handleFcmDataPayload triggers cache invalidation
-    // and the deep-link router sends the user to the merchant card on tap.
-    const fcmData: Record<string, string> = {
-      event: 'notification_new',
-      action: 'open_card',
-      merchantId,
-    };
+    // The data payload also lets the client-side handleFcmDataPayload invalidate its cache.
+    const fcmData: Record<string, string> = { ...link };
 
     if (imageUrl) fcmData.merchantLogo = imageUrl;
     if (mDetails?.email) fcmData.merchantEmail = mDetails.email;
@@ -212,8 +263,9 @@ export class NotificationsService {
     // All clients are notified via DB record + WebSocket; FCM push is an additional wake-up signal.
     // successCount = all clients notified (not just FCM), failureCount = FCM-only failures (for monitoring).
     const uniqueClientIds = [...new Set(allClientIds)];
-    const notification = await this.notificationRepo.create({
-      data: { merchantId, title: dto.title, body: dto.body, recipientCount: uniqueClientIds.length, successCount: uniqueClientIds.length, failureCount: fcmFailureCount, isBroadcast: true, channel: 'PUSH' },
+    const notification = await this.notificationRepo.update({
+      where: { id: reserved.id },
+      data: { recipientCount: uniqueClientIds.length, successCount: uniqueClientIds.length, failureCount: fcmFailureCount },
     });
 
     this.logger.log(`Push notification stored: ${uniqueClientIds.length} clients notified, FCM: ${fcmSuccessCount} OK / ${fcmFailureCount} failed`);
@@ -341,7 +393,7 @@ export class NotificationsService {
 
       // 3. Create in-app notification record
       const notification = await this.notificationRepo.create({
-        data: { merchantId, title, body, recipientCount: 1, successCount, failureCount, channel: 'PUSH' },
+        data: { merchantId, title, body, recipientCount: 1, successCount, failureCount, channel: 'PUSH', data: notificationLink(fcmData) },
       });
 
       // 4. Create per-client status so it appears in the client's feed
@@ -418,7 +470,7 @@ export class NotificationsService {
       await this.notificationRepo.createMany({
         data: items.map((item, i) => ({
           id: ids[i], merchantId, title: item.title, body: item.body,
-          recipientCount: 1, ...results[i], channel: 'PUSH' as const,
+          recipientCount: 1, ...results[i], channel: 'PUSH' as const, data: notificationLink(item.data),
         })),
       });
       await this.clientNotifStatusRepo.createMany({

@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { Clock } from 'lucide-react-native';
 import { JitGift, JitStamp } from '@/components/icons';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { useDir } from '@/hooks/useDir';
 import { font, icon } from '@/constants/design';
+import { initialsOf } from '@/utils/initials';
 import { HEX_RE } from '@/components/stores/brand';
 import type { Merchant } from '@/types';
 
@@ -21,17 +21,16 @@ interface Props {
   total: number;
   /** Earning rule summary, e.g. "1 visite = 1 tampon". */
   ruleText: string;
-  /** Validity summary; hidden when the rule is off. */
-  validityText?: string | null;
 }
 
 function slotSize(total: number) {
-  if (total <= 10) return 40;
-  if (total <= 20) return 32;
-  return 26;
+  if (total <= 10) return 30;
+  if (total <= 20) return 26;
+  return 22;
 }
 
-function LoyaltyCardPreview({ theme, t, merchant, total, ruleText, validityText }: Props) {
+/** Sample of the client's card shown in the setup wizard, with the rule under the name. */
+function LoyaltyCardPreview({ theme, t, merchant, total, ruleText }: Props) {
   const { row, textAlign } = useDir();
   const visible = Math.max(1, Math.min(total, MAX_VISIBLE_SLOTS));
   const filled = Math.min(3, visible - 1);
@@ -71,7 +70,7 @@ function LoyaltyCardPreview({ theme, t, merchant, total, ruleText, validityText 
           {logo ? (
             <ExpoImage source={logo} style={styles.logoImg} contentFit="cover" cachePolicy="disk" />
           ) : (
-            <Text style={[styles.logoInitial, { color: accent }]}>{(merchant.nom || '?').charAt(0).toUpperCase()}</Text>
+            <Text style={[styles.logoInitial, { color: accent }]}>{initialsOf([merchant.nom], 1)}</Text>
           )}
         </View>
         <View style={styles.headerText}>
@@ -79,7 +78,7 @@ function LoyaltyCardPreview({ theme, t, merchant, total, ruleText, validityText 
             {merchant.nom}
           </Text>
           <Text style={[styles.subtitle, { color: textSecondary, textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-            {t('settingsPage.previewSubtitle')}
+            {ruleText}
           </Text>
         </View>
         <View style={[styles.previewBadge, { backgroundColor: hasCustomBg ? 'rgba(0,0,0,0.18)' : theme.bgInput }]}>
@@ -89,7 +88,7 @@ function LoyaltyCardPreview({ theme, t, merchant, total, ruleText, validityText 
         </View>
       </View>
 
-      <View style={[styles.grid, { flexDirection: row, gap: size >= 40 ? 10 : 7 }]}>
+      <View style={[styles.grid, { flexDirection: row }]}>
         {slots.map((i) => {
           const isFilled = i < filled;
           const isLast = i === visible - 1;
@@ -118,26 +117,6 @@ function LoyaltyCardPreview({ theme, t, merchant, total, ruleText, validityText 
         })}
       </View>
 
-      <View style={[styles.footer, { flexDirection: row }]}>
-        <Text style={[styles.progress, { color: textPrimary }]} maxFontSizeMultiplier={1.2}>
-          {filled}
-          <Text style={[styles.progressTotal, { color: textSecondary }]}> / {total}</Text>
-        </Text>
-        <View style={[styles.ruleChip, { backgroundColor: hasCustomBg ? 'rgba(0,0,0,0.18)' : accent + '14' }]}>
-          <Text style={[styles.ruleChipText, { color: hasCustomBg ? textPrimary : accent }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-            {ruleText}
-          </Text>
-        </View>
-      </View>
-
-      {validityText ? (
-        <View style={[styles.validityRow, { flexDirection: row }]}>
-          <Clock size={12} color={textSecondary} strokeWidth={icon.strokeSmall} />
-          <Text style={[styles.validityText, { color: textSecondary, textAlign }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
-            {validityText}
-          </Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -147,9 +126,9 @@ export default React.memo(LoyaltyCardPreview);
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    marginTop: 4,
-    borderRadius: 24,
-    padding: 18,
+    marginTop: 12,
+    borderRadius: 20,
+    padding: 14,
     overflow: 'hidden',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
@@ -159,19 +138,12 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', gap: 12 },
   logo: { width: 42, height: 42, borderRadius: 999, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   logoImg: { width: '100%', height: '100%' },
-  logoInitial: { fontSize: 18, fontFamily: font.bold },
+  logoInitial: { fontSize: 18, fontFamily: font.semibold },
   headerText: { flex: 1, minWidth: 0 },
   name: { fontSize: 16, fontFamily: font.semibold, letterSpacing: -0.2 },
   subtitle: { fontSize: 12, fontFamily: font.regular, marginTop: 1 },
   previewBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   previewBadgeText: { fontSize: 11, fontFamily: font.medium },
-  grid: { flexWrap: 'wrap', justifyContent: 'center', marginTop: 18 },
+  grid: { flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 12 },
   slot: { borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  footer: { alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 18 },
-  progress: { fontSize: 18, fontFamily: font.bold },
-  progressTotal: { fontSize: 13, fontFamily: font.medium },
-  ruleChip: { flexShrink: 1, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
-  ruleChipText: { fontSize: 12, fontFamily: font.medium },
-  validityRow: { alignItems: 'center', gap: 6, marginTop: 10 },
-  validityText: { flex: 1, fontSize: 12, fontFamily: font.regular },
 });

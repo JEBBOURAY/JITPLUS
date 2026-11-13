@@ -16,6 +16,8 @@ export interface RegisterDraft {
   adresse?: string;
   latitude?: number | null;
   longitude?: number | null;
+  /** Online-only business, no store position asked. */
+  isEcommerce?: boolean;
   referralCode?: string;
 }
 

@@ -7,10 +7,9 @@ import en from '@/i18n/locales/en';
 import ar from '@/i18n/locales/ar';
 
 const mockPush = jest.fn();
-const mockBack = jest.fn();
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: mockBack }),
+  useRouter: () => ({ push: mockPush }),
 }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 24, bottom: 16, left: 0, right: 0 }),
@@ -51,22 +50,21 @@ describe('GamesScreen', () => {
 
   it('opens the existing lucky wheel screen', () => {
     const { getByRole } = render(<GamesScreen />);
-    fireEvent.press(getByRole('button', { name: 'games.wheelTitle, games.premium' }));
+    fireEvent.press(getByRole('button', { name: 'games.wheelTitle, games.wheelDescription, common.pro' }));
     expect(mockPush).toHaveBeenCalledWith('/lucky-wheel');
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
   it('opens the scratch card campaigns', () => {
     const { getByRole } = render(<GamesScreen />);
-    fireEvent.press(getByRole('button', { name: 'games.scratchTitle, games.premium' }));
+    fireEvent.press(getByRole('button', { name: 'games.scratchTitle, games.scratchDescription, common.pro' }));
     expect(mockPush).toHaveBeenCalledWith('/scratch-campaigns');
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
-  it('returns to the previous screen', () => {
-    const { getByRole } = render(<GamesScreen />);
-    fireEvent.press(getByRole('button', { name: 'common.back' }));
-    expect(mockBack).toHaveBeenCalledTimes(1);
+  it('has no back arrow: the system back gesture is the way out', () => {
+    const { queryByRole } = render(<GamesScreen />);
+    expect(queryByRole('button', { name: 'common.back' })).toBeNull();
   });
 
   it('does not show protected content while authentication is pending', () => {

@@ -12,9 +12,10 @@ import { font, icon } from '@/constants/design';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { StepPassword, type PasswordField } from './StepPassword';
 import { FieldError } from './FieldError';
+import { TermsCheckbox } from './TermsCheckbox';
 import { formStyles, HIT_SLOP } from './formStyles';
 
-export type AccountField = 'email' | PasswordField;
+export type AccountField = 'email' | PasswordField | 'terms';
 
 interface Props {
   google: ReturnType<typeof useGoogleIdToken>;
@@ -47,11 +48,16 @@ interface Props {
   submitAttempted: boolean;
   onFieldLayout: (field: AccountField, e: LayoutChangeEvent) => void;
   onSubmit: () => void;
+  termsAccepted: boolean;
+  onToggleTerms: () => void;
+  onOpenTerms: () => void;
+  showTermsError: boolean;
 }
 
-/** Step 1: Google / Apple, or e-mail + password. */
+/** Step 1: Google / Apple, or e-mail + password, then the terms. */
 export function AccountStep({
   google, apple, socialProvider, onResetSocial, email, onEmailChange, onEmailBlur, emailValid, emailChecking, emailTaken, showEmailInvalid, showEmailRequired, onLoginWithEmail, password, setPassword, confirmPassword, setConfirmPassword, showPassword, setShowPassword, emailRef, passwordRef, confirmRef, isLoading, submitAttempted, onFieldLayout, onSubmit,
+  termsAccepted, onToggleTerms, onOpenTerms, showTermsError,
 }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
@@ -59,6 +65,7 @@ export function AccountStep({
 
   if (socialProvider) {
     return (
+      <>
       <View style={[styles.linkedCard, { flexDirection: dir.row, backgroundColor: `${theme.success}10`, borderColor: `${theme.success}30` }]}>
         <View style={styles.linkedAvatar}>
           {socialProvider === 'apple' ? <AppleLogo size={ms(18)} color="#fff" /> : <GoogleLogo size={ms(18)} />}
@@ -83,6 +90,14 @@ export function AccountStep({
           </Text>
         </TouchableOpacity>
       </View>
+      <TermsCheckbox
+        accepted={termsAccepted}
+        onToggle={onToggleTerms}
+        onOpenTerms={onOpenTerms}
+        showError={showTermsError}
+        onLayout={(e) => onFieldLayout('terms', e)}
+      />
+      </>
     );
   }
 
@@ -210,6 +225,14 @@ export function AccountStep({
         onFieldLayout={onFieldLayout}
         onSubmit={onSubmit}
       />
+
+      <TermsCheckbox
+        accepted={termsAccepted}
+        onToggle={onToggleTerms}
+        onOpenTerms={onOpenTerms}
+        showError={showTermsError}
+        onLayout={(e) => onFieldLayout('terms', e)}
+      />
     </>
   );
 }
@@ -220,8 +243,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderRadius: radius.md,
-    minHeight: 48,
-    height: hp(50),
+    minHeight: 44,
+    height: hp(46),
     gap: wp(10),
     shadowColor: '#000',
     shadowOpacity: 0.04,
@@ -229,13 +252,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  appleBtn: { backgroundColor: '#000', borderColor: '#000', marginTop: hp(8) },
+  appleBtn: { backgroundColor: '#000', borderColor: '#000', marginTop: hp(6) },
   appleBtnText: { color: '#fff' },
   socialBtnText: { fontSize: fontSize.md, fontFamily: font.semibold },
-  separator: { flexDirection: 'row', alignItems: 'center', marginVertical: hp(14) },
+  separator: { flexDirection: 'row', alignItems: 'center', marginVertical: hp(8) },
   separatorLine: { flex: 1, height: StyleSheet.hairlineWidth },
   separatorText: { marginHorizontal: wp(14), fontSize: fontSize.xs, fontFamily: font.semibold },
-  linkedCard: { alignItems: 'center', gap: wp(10), padding: wp(12), borderRadius: radius.lg, borderWidth: 1.5, marginBottom: hp(18) },
+  linkedCard: { alignItems: 'center', gap: wp(10), padding: wp(12), borderRadius: radius.lg, borderWidth: 1.5, marginBottom: hp(12) },
   linkedAvatar: {
     width: ms(36),
     height: ms(36),

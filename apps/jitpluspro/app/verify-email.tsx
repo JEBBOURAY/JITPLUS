@@ -20,14 +20,13 @@ import { useDir } from '@/hooks/useDir';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { font, icon } from '@/constants/design';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import { wp, hp, ms, fontSize as fs, radius } from '@/utils/responsive';
+import { spring } from '@/utils/sheetPhysics';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
-const VIOLET_GRADIENT = [palette.violet, palette.violetDark] as const;
 
 // Module-level guard: prevents duplicate sends across remounts (ref resets on
 // unmount, but the module variable persists). Keyed by email so switching
@@ -59,8 +58,8 @@ export default function VerifyEmailScreen() {
 
   useEffect(() => {
     const anim = Animated.stagger(200, [
-      Animated.spring(iconAnim, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 6 }),
-      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, speed: 10, bounciness: 4 }),
+      Animated.spring(iconAnim, { toValue: 1, useNativeDriver: true, ...spring(1, 0.4) }),
+      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...spring(1, 0.4) }),
     ]);
     anim.start();
     return () => anim.stop();
@@ -194,14 +193,9 @@ export default function VerifyEmailScreen() {
               },
             ]}
           >
-            <LinearGradient
-              colors={VIOLET_GRADIENT}
-              style={styles.iconCircle}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
+            <View style={[styles.iconCircle, { backgroundColor: palette.violet }]}>
               <Mail color="#fff" size={36} strokeWidth={icon.stroke} />
-            </LinearGradient>
+            </View>
           </Animated.View>
 
           <Text style={[styles.title, { color: theme.text }]}>
@@ -271,8 +265,6 @@ export default function VerifyEmailScreen() {
               disabled={code.length !== OTP_LENGTH}
               loading={isVerifying}
               size="lg"
-              gradient={VIOLET_GRADIENT}
-              gradientDirection="horizontal"
               style={styles.verifyBtn}
             />
           </Animated.View>
@@ -335,7 +327,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: ms(24),
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     textAlign: 'center',
     marginBottom: hp(8),
   },
@@ -360,7 +352,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1.5,
     fontSize: ms(28),
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: 12,
     paddingHorizontal: wp(16),
   },
@@ -406,6 +398,6 @@ const styles = StyleSheet.create({
   },
   resendBtnText: {
     fontSize: fs.sm,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
 });

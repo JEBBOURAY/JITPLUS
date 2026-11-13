@@ -18,7 +18,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { getErrorMessage } from '@/utils/error';
 import { isValidEmail } from '@/utils/validation';
 import { Eye, EyeOff, Mail, ArrowRight, ChevronDown, WifiOff, TriangleAlert } from 'lucide-react-native';
@@ -32,7 +32,7 @@ import { GoogleLogo } from '@/components/GoogleLogo';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { useDir } from '@/hooks/useDir';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import { font, icon } from '@/constants/design';
+import { font, icon, shadow } from '@/constants/design';
 import { useSplashStore } from '@/stores/splashStore';
 import { hapticError, hapticLight, hapticSuccess } from '@/utils/haptics';
 import LoginBackdrop from '@/components/login/LoginBackdrop';
@@ -167,7 +167,6 @@ export default function LoginScreen() {
     draw: new Animated.Value(0),
     reveal: new Animated.Value(0),
     keystone: new Animated.Value(0),
-    halo: new Animated.Value(0),
     text: new Animated.Value(0),
     /** Google, Apple, divider, email, sign-up — staggered in that order. */
     items: Array.from({ length: INTRO_ITEMS }, () => new Animated.Value(0)),
@@ -199,17 +198,8 @@ export default function LoginScreen() {
         Animated.timing(intro.twinkle, { toValue: 0, duration: 280, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
       ])),
     ]);
-    // Lantern-like breathing of the halo behind the logo.
-    const breathe = Animated.loop(Animated.sequence([
-      Animated.timing(intro.halo, { toValue: 1, duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      Animated.timing(intro.halo, { toValue: 0, duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-    ]));
     sequence.start();
-    breathe.start();
-    return () => {
-      sequence.stop();
-      breathe.stop();
-    };
+    return () => sequence.stop();
   }, [introStarted, reduceMotion, intro]);
 
   // Animated styles are built once: recreating interpolations on each render
@@ -771,7 +761,6 @@ export default function LoginScreen() {
                   icon={ArrowRight}
                   iconPosition="end"
                   flipIconInRTL
-                  gradient={submitIdle ? undefined : brandGradient}
                   iconColor={submitIdle ? theme.textMuted : undefined}
                   style={[styles.button, submitIdle ? { backgroundColor: theme.inputBg, borderColor: theme.inputBorder } : styles.buttonActiveShadow]}
                   labelStyle={submitIdle ? [styles.buttonIdleText, { color: theme.textMuted }] : undefined}
@@ -887,11 +876,11 @@ const styles = StyleSheet.create({
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOpacity: 0.26,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 2 },
       },
-      android: { elevation: 4 },
+      android: { elevation: 2 },
     }),
   },
   appleBtnDark: {
@@ -971,17 +960,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: wp(10),
   },
-  inputFocus: {
-    ...Platform.select({
-      ios: {
-        shadowColor: palette.violet,
-        shadowOpacity: 0.26,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 0 },
-      },
-      android: { elevation: 0 },
-    }),
-  },
+  inputFocus: {},
   inputError: {
     backgroundColor: 'rgba(239,68,68,0.04)',
   },
@@ -1025,15 +1004,7 @@ const styles = StyleSheet.create({
   },
   buttonActiveShadow: {
     borderWidth: 0,
-    ...Platform.select({
-      ios: {
-        shadowColor: palette.violet,
-        shadowOpacity: 0.38,
-        shadowRadius: 13,
-        shadowOffset: { width: 0, height: 7 },
-      },
-      android: { elevation: 8 },
-    }),
+    ...shadow.sm,
   },
   buttonIdleText: { opacity: 0.8 },
 
@@ -1059,7 +1030,7 @@ const styles = StyleSheet.create({
   },
   noAccountTitle: {
     fontSize: fontSize.md,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   noAccountMsg: {
     fontSize: fontSize.sm,

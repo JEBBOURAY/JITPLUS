@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { JitLock } from '@/components/icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ProBadge } from '@/components/ui/ProBadge';
@@ -19,26 +18,15 @@ interface PremiumLockContentProps {
   tone?: 'card' | 'sheet';
 }
 
-const CARD_BG_GRADIENT = [palette.premiumBg, palette.premiumBgMid, palette.premiumBg] as const;
-const CARD_ICON_GRADIENT = [palette.gold, palette.goldDeep] as const;
-const VIOLET_GRADIENT = [palette.violetDark, palette.violet] as const;
-const DIAGONAL_START = { x: 0, y: 0 };
-const DIAGONAL_END = { x: 1, y: 1 };
-
 /** Shared body of every Pro lock surface (inline card and bottom sheet). */
 export function PremiumLockContent({ title, description, ctaLabel, onPress, ctaSize = 'md', tone = 'card' }: PremiumLockContentProps) {
   const theme = useTheme();
   const isSheet = tone === 'sheet';
   return (
     <View style={styles.content}>
-      <LinearGradient
-        colors={isSheet ? VIOLET_GRADIENT : CARD_ICON_GRADIENT}
-        start={DIAGONAL_START}
-        end={DIAGONAL_END}
-        style={styles.iconTile}
-      >
+      <View style={[styles.iconTile, { backgroundColor: isSheet ? palette.violet : palette.gold }]}>
         <JitLock size={icon.lg} color={isSheet ? palette.gold : palette.premiumBg} strokeWidth={icon.stroke} />
-      </LinearGradient>
+      </View>
       <ProBadge variant="premium" style={[styles.badge, !isSheet && styles.badgeCard]} />
       <Text style={styles.title} maxFontSizeMultiplier={1.4}>
         {title}
@@ -47,7 +35,7 @@ export function PremiumLockContent({ title, description, ctaLabel, onPress, ctaS
         {description}
       </Text>
       {ctaLabel && onPress && (
-        <ActionButton label={ctaLabel} onPress={onPress} size={ctaSize} gradient={VIOLET_GRADIENT} style={styles.cta} />
+        <ActionButton label={ctaLabel} onPress={onPress} size={ctaSize} style={styles.cta} />
       )}
     </View>
   );
@@ -67,12 +55,6 @@ export default React.memo(function PremiumLockCard({ descriptionKey, titleKey, c
 
   return (
     <View style={[styles.wrapper, style]}>
-      <LinearGradient
-        colors={CARD_BG_GRADIENT}
-        start={DIAGONAL_START}
-        end={DIAGONAL_END}
-        style={StyleSheet.absoluteFill}
-      />
       <PremiumLockContent
         title={t(titleKey ?? 'messages.premiumFeatureTitle')}
         description={t(descriptionKey)}
@@ -90,6 +72,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: palette.premiumBorder,
+    backgroundColor: palette.premiumBg,
     overflow: 'hidden',
     paddingVertical: 24,
     paddingHorizontal: 20,
@@ -115,7 +98,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     color: '#fff',
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     textAlign: 'center',
   },
   desc: {

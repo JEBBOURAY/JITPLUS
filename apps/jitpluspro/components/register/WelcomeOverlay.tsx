@@ -93,6 +93,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: hp(24),
   },
-  title: { fontSize: ms(22), fontFamily: font.bold, textAlign: 'center', marginBottom: hp(8) },
+  title: { fontSize: ms(22), fontFamily: font.semibold, textAlign: 'center', marginBottom: hp(8) },
   subtitle: { fontSize: fontSize.sm, fontFamily: font.medium, textAlign: 'center', lineHeight: ms(20) },
 });

@@ -38,7 +38,7 @@ function MerchantStickyHeader({ title, scrollY, onBack, onShare, onMore }: Props
     return scrollY.interpolate({ inputRange: [end - hp(50), end], outputRange: [0, 1], extrapolate: 'clamp' });
   }, [scrollY, insets.top]);
 
-  const buttonBg = theme.mode === 'dark' ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.94)';
+  const buttonBg = theme.mode === 'dark' ? 'rgba(20,20,21,0.72)' : 'rgba(255,255,255,0.94)';
 
   const renderButton = (Icon: LucideIcon, label: string, onPress: () => void) => (
     <Pressable
@@ -78,8 +78,8 @@ const styles = StyleSheet.create({
   bar: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     ...Platform.select({
-      ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
-      android: { elevation: 3 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+      android: { elevation: 2 },
     }),
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: wp(10), paddingHorizontal: wp(16) },
@@ -88,8 +88,8 @@ const styles = StyleSheet.create({
     width: BUTTON_SIZE, height: BUTTON_SIZE, borderRadius: BUTTON_SIZE / 2,
     alignItems: 'center', justifyContent: 'center',
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8 },
-      android: { elevation: 3 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6 },
+      android: { elevation: 2 },
     }),
   },
 });

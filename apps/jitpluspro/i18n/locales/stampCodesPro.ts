@@ -1,7 +1,7 @@
 // JitPlus Pro strings of the "stampCodes" namespace (QR e-commerce / parcels).
 
 export const stampCodesProFr = {
-  title: 'QR Colis',
+  title: 'QR livraison',
   list: {
     emptyTitle: 'Fidélisez vos clients en ligne',
     intro: 'Créez des QR codes à usage unique à glisser dans vos colis : à la réception, le client scanne et ses tampons s’ajoutent tout seuls.',
@@ -9,7 +9,7 @@ export const stampCodesProFr = {
     how2: 'Partagez ou imprimez-les, puis glissez-en un dans chaque colis.',
     how3: 'Le client scanne avec l’appareil photo : ses tampons sont ajoutés.',
     create: 'Nouveau lot',
-    quotaFree: '%{used}/%{limit} QR codes ce mois (plan Gratuit)',
+    quotaLabel: 'QR codes ce mois',
     quotaPremium: 'QR codes illimités avec le plan Pro',
     quotaReached: 'Vous avez utilisé vos %{limit} QR codes de ce mois. Passez au plan Pro pour des QR codes illimités.',
     upgrade: 'Voir le plan Pro',
@@ -83,7 +83,7 @@ export const stampCodesProFr = {
 };
 
 export const stampCodesProEn: typeof stampCodesProFr = {
-  title: 'Parcel QR',
+  title: 'Delivery QR',
   list: {
     emptyTitle: 'Reward your online customers',
     intro: 'Create single-use QR codes to slip into your parcels: on delivery, the customer scans and their stamps are added automatically.',
@@ -91,7 +91,7 @@ export const stampCodesProEn: typeof stampCodesProFr = {
     how2: 'Share or print them, then slip one into each parcel.',
     how3: 'The customer scans with the camera: their stamps are added.',
     create: 'New batch',
-    quotaFree: '%{used}/%{limit} QR codes this month (Free plan)',
+    quotaLabel: 'QR codes this month',
     quotaPremium: 'Unlimited QR codes with the Pro plan',
     quotaReached: 'You used your %{limit} QR codes for this month. Upgrade to the Pro plan for unlimited QR codes.',
     upgrade: 'See the Pro plan',
@@ -165,18 +165,18 @@ export const stampCodesProEn: typeof stampCodesProFr = {
 };
 
 export const stampCodesProAr: typeof stampCodesProFr = {
-  title: 'QR الطرود',
+  title: 'QR التوصيل',
   list: {
-    emptyTitle: 'ربح وفاء الكليان ديالك أونلاين',
-    intro: 'صاوب QR codes كيتخدمو مرة وحدة باش تحطهم فالطرود: ملي يوصلو، الكليان كيسكاني والطوابع كيتزادو بوحدهم.',
+    emptyTitle: 'ربح وفاء الزبناء ديالك أونلاين',
+    intro: 'صاوب QR codes كيتخدمو مرة وحدة باش تحطهم فالطرود: ملي يوصلو، الزبون كيسكاني والطوابع كيتزادو بوحدهم.',
     how1: 'صاوب مجموعة ديال QR codes (عدد الطوابع ولا مبلغ الطلبية).',
     how2: 'بارطاجيهم ولا طبعهم، ومن بعد حط واحد فكل طرد.',
-    how3: 'الكليان كيسكاني بالكاميرا: الطوابع ديالو كيتزادو.',
+    how3: 'الزبون كيسكاني بالكاميرا: الطوابع ديالو كيتزادو.',
     create: 'مجموعة جديدة',
-    quotaFree: '%{used}/%{limit} QR codes هاد الشهر (الباقة المجانية)',
-    quotaPremium: 'QR codes بلا حدود مع باقة Pro',
-    quotaReached: 'ستعملتي %{limit} QR codes ديال هاد الشهر. دوز لباقة Pro باش تاخد QR codes بلا حدود.',
-    upgrade: 'شوف باقة Pro',
+    quotaLabel: 'QR codes هاد الشهر',
+    quotaPremium: 'QR codes بلا حدود مع عرض Pro',
+    quotaReached: 'ستعملتي %{limit} QR codes ديال هاد الشهر. دوز لعرض Pro باش تاخد QR codes بلا حدود.',
+    upgrade: 'شوف عرض Pro',
     ownerOnly: 'غير مول المحل لي يقدر يصاوب ولا يوقف QR codes.',
     loadError: 'ما قدرناش نجيبو QR codes ديالك.',
     stampsEach_one: '%{count} طابع فكل QR',
@@ -232,7 +232,7 @@ export const stampCodesProAr: typeof stampCodesProFr = {
     usedOn: 'تستعمل نهار %{date}',
   },
   qr: {
-    hint: 'حط هاد QR code فالطرد. الكليان كيسكانيه بكاميرا التيليفون. كيتخدم مرة وحدة برك.',
+    hint: 'حط هاد QR code فالطرد. الزبون كيسكانيه بكاميرا التيليفون. كيتخدم مرة وحدة برك.',
     oneUse: 'استعمال واحد',
     howTitle: 'كيفاش تاخد الطوابع ديالك؟',
     step1: 'حل الكاميرا ديال التيليفون ديالك.',

@@ -16,7 +16,7 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 type Session = ReturnType<typeof useScratchSession>;
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
   zone: ReturnType<typeof getScratchZone>;

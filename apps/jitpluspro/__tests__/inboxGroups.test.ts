@@ -47,7 +47,7 @@ describe('groupInboxByDate', () => {
 describe('routeForAction', () => {
   it('maps known actions', () => {
     expect(routeForAction('open_plan')).toBe('/plan');
-    expect(routeForAction('open_messages')).toBe('/(tabs)/messages');
+    expect(routeForAction('open_messages')).toBe('/messages');
     expect(routeForAction('open_notifications')).toBe('/admin-notifications');
     expect(routeForAction('open_deals')).toBe('/deals');
   });

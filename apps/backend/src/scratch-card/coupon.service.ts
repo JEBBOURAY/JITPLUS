@@ -579,7 +579,7 @@ export class CouponService {
           r.clientId,
           nt.luckyWheelTicketTitle(r.luckyWheelTickets),
           nt.luckyWheelTicketBody(r.luckyWheelTickets, r.merchantName),
-          { event: 'lucky_wheel_ticket', merchantId, tickets: String(r.luckyWheelTickets) },
+          { event: 'lucky_wheel_ticket', action: 'open_wheel', merchantId, tickets: String(r.luckyWheelTickets) },
         )
         .catch((err) => this.logger.warn(`Lucky-wheel ticket push failed: ${errMsg(err)}`));
     }

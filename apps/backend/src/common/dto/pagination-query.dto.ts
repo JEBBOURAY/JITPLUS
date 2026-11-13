@@ -26,6 +26,20 @@ export class PaginationQueryDto {
 }
 
 /**
+ * Wallet listing: a client sees every card at once, and app versions that send
+ * no `limit` must not be cut at the generic default of 20.
+ */
+export class WalletPaginationQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ default: 100, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit: number = 100;
+}
+
+/**
  * Pagination + optional text search.
  */
 class SearchPaginationQueryDto extends PaginationQueryDto {

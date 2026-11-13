@@ -56,7 +56,7 @@ export function daysUntil(iso: string): number {
 }
 
 /** Phone number for wa.me: digits only, Moroccan 06/07 numbers prefixed with 212. */
-export function waNumber(phone: string | null | undefined): string | null {
+function waNumber(phone: string | null | undefined): string | null {
   if (!phone) return null;
   let d = phone.replace(/[^\d+]/g, '');
   if (d.startsWith('+')) d = d.slice(1);

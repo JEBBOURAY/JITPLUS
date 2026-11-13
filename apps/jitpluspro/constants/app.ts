@@ -12,6 +12,8 @@ export const INACTIVE_CLIENT_DAYS = 30;
 export const ASYNC_STORAGE_KEYS = {
   // Contextual reminder banner (messages) dismissal.
   MESSAGES_LOGO_BANNER_DISMISSED: 'messages_logo_banner_dismissed',
+  // Notification being written (messages), suffixed with the account id.
+  MESSAGES_DRAFT: 'messages_draft',
   // Premium trial-end reminder (Accueil): stores the YYYY-MM-DD it was dismissed
   // so it reappears the next day until the trial converts or expires.
   TRIAL_END_BANNER_DISMISSED_DAY: 'trial_end_banner_dismissed_day',
@@ -21,10 +23,17 @@ export const ASYNC_STORAGE_KEYS = {
   // already detected as done, so they stay checked once older data leaves the
   // first loaded page (e.g. the first reward given).
   GUIDE_STEPS_DONE: 'guide_steps_done',
+  // Setup wizard (/setup): prefix of the per-merchant id of the step to resume
+  // at, so a merchant who leaves halfway picks up where they stopped.
+  SETUP_STEP: 'setup_step',
   // When set to 'true', disables anonymous crash diagnostics (Sentry).
   // Required so EU/GDPR users can opt out of diagnostic data collection,
   // even though it contains no PII.
   SENTRY_OPT_OUT: 'sentry_opt_out',
+  // "Tutoriels vidéo": JSON array of the clip ids already opened on this device.
+  DEMO_VIDEOS_SEEN: 'demo_videos_seen',
+  // "Voir la démo" coach mark: JSON map { [demoId]: times shown } (stops at 2).
+  DEMO_HINT_SHOWN: 'demo_hint_shown',
   // Intro demo video: auto-played once per merchant account on this device
   // (first sign-in / sign-up). Suffixed with the merchant id.
   INTRO_DEMO_SEEN: 'intro_demo_seen',
@@ -58,3 +67,6 @@ export const MAX_STAMP_CODES_PER_BATCH = 500;
 /** Store pages of the JitPlus client app (the one customers install). */
 export const CLIENT_APP_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.client';
 export const CLIENT_APP_IOS_URL = 'https://apps.apple.com/app/jitplus/id6762307929';
+
+/** Meta app id: Instagram and Facebook require it to accept a story. Mirrors app.config.js. */
+export const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID || '2706696686345947';

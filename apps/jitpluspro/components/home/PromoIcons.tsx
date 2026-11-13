@@ -66,23 +66,6 @@ export function LanternIcon({ color }: IconProps) {
   );
 }
 
-const GATE_STARS = `${khatamPath(18, 18, 3.2)} ${khatamPath(46, 18, 3.2)}`;
-
-/** Démarrer: the bab, a horseshoe-arch gate, as the way in. */
-export function GateIcon({ color }: IconProps) {
-  return (
-    <Frame color={color}>
-      <Path d="M6 58 H58 M12 58 V12 H52 V58" />
-      <Path d="M21 58 V40.66 A14 14 0 1 1 43 40.66 V58" />
-      <Path d="M24.5 58 V37.83 A9.5 9.5 0 1 1 39.5 37.83 V58 Z" fill={color} fillOpacity={SOFT} />
-      <Path d="M32 22.5 V58" strokeWidth={DETAIL} />
-      <Circle cx={29.5} cy={42} r={1.1} fill={color} stroke="none" />
-      <Circle cx={34.5} cy={42} r={1.1} fill={color} stroke="none" />
-      <Path d={GATE_STARS} strokeWidth={DETAIL} />
-    </Frame>
-  );
-}
-
 const TEAPOT_STAR = khatamPath(32, 41, 4.2);
 
 /** Vos clients: the berrad of mint tea, served to welcome guests. */

@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
   },
   warningBtnText: { color: '#FFFFFF', fontSize: ms(13) },
   note: { fontSize: FS.xs, marginTop: -hp(12), marginBottom: hp(20), marginHorizontal: wp(6), textAlign: 'left' },
-  groupTitle: { fontSize: FS.xs, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: hp(8), marginHorizontal: wp(6), textAlign: 'left' },
+  groupTitle: { fontSize: FS.xs, marginBottom: hp(8), marginHorizontal: wp(6), textAlign: 'left' },
   categoriesCard: { borderRadius: radius.xl, borderWidth: StyleSheet.hairlineWidth, padding: ms(14), marginBottom: hp(20) },
   hint: { fontSize: FS.xs, marginBottom: hp(10), textAlign: 'left' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(8) },

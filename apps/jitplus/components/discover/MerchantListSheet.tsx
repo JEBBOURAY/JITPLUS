@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react';
 import { View, FlatList, Pressable, StyleSheet, Platform } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import Animated, { Easing, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { X, ChevronRight, BadgePercent } from 'lucide-react-native';
 import { pluralKey } from '@jitplus/shared';
 import { Text } from '@/components/AppText';
@@ -11,9 +11,13 @@ import { Merchant } from '@/types';
 import { pointKey, pointName } from '@/utils/merchantPoint';
 import { getDistanceKm, formatDistance } from '@/utils/distance';
 import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
+import { EASE_OUT } from '@/utils/motion';
 
 /** Rows rendered at most: past that, zooming in is more useful than scrolling. */
 const MAX_ROWS = 50;
+// Built once: inline builders are recreated on every render.
+const SHEET_IN = SlideInDown.duration(220).easing(Easing.bezier(0.32, 0.72, 0, 1));
+const SHEET_OUT = SlideOutDown.duration(180).easing(EASE_OUT);
 
 const Row = memo(function Row({ merchant, distance, onPress }: {
   merchant: Merchant;
@@ -81,8 +85,8 @@ export const MerchantListSheet = memo(function MerchantListSheet({
 
   return (
     <Animated.View
-      entering={SlideInDown.duration(220)}
-      exiting={SlideOutDown.duration(180)}
+      entering={SHEET_IN}
+      exiting={SHEET_OUT}
       style={[styles.sheet, { backgroundColor: theme.bgCard, borderColor: theme.border, bottom, maxHeight }]}
     >
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
@@ -123,7 +127,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: wp(16), paddingVertical: hp(12), borderBottomWidth: StyleSheet.hairlineWidth, gap: wp(10),
   },
-  title: { flex: 1, fontSize: FS.md, fontWeight: '700' },
+  title: { flex: 1, fontSize: FS.md, fontWeight: '600' },
   closePill: { width: ms(28), height: ms(28), borderRadius: ms(14), alignItems: 'center', justifyContent: 'center' },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: wp(10),
@@ -135,7 +139,7 @@ const styles = StyleSheet.create({
   name: { fontSize: FS.sm, fontWeight: '600' },
   sub: { fontSize: FS.xs, marginTop: ms(2) },
   dealRow: { flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: ms(3) },
-  dealText: { flexShrink: 1, fontSize: FS.xs, fontWeight: '700' },
-  distance: { fontSize: FS.xs, fontWeight: '700', color: palette.violet },
+  dealText: { flexShrink: 1, fontSize: FS.xs, fontWeight: '600' },
+  distance: { fontSize: FS.xs, fontWeight: '600', color: palette.violet },
   empty: { textAlign: 'center', fontSize: FS.sm, paddingVertical: hp(18), paddingHorizontal: wp(16) },
 });

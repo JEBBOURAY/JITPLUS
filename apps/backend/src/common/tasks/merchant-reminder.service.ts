@@ -5,6 +5,7 @@ import {
   MerchantNotifierService,
   NOTIFY_TARGET_SELECT,
   tally,
+  type NotifyResult,
 } from '../../merchant-inbox/merchant-notifier.service';
 import { weekTag, weekIndexSinceReference, mapLimit, MERCHANT_PUSH_CONCURRENCY, cronEnabledOnce } from './cron-utils';
 import { lang } from './merchant-notif-messages';
@@ -84,6 +85,7 @@ export class MerchantReminderService {
           ...NOTIFY_TARGET_SELECT,
           language: true,
           logoUrl: true,
+          foundingMember: true,
           _count: { select: { rewards: true } },
         },
       });
@@ -110,6 +112,8 @@ export class MerchantReminderService {
             campaignId: `merchant_setup_reminder_${wtag}`,
           });
         }
+        // Founding members never see Premium: the "earn a Premium month" pitch is not for them.
+        if (merchant.foundingMember) return Promise.resolve<NotifyResult>('opted_out');
         const msg = REFERRAL_MESSAGES[l];
         return this.notifier.notify(merchant, {
           category: 'OFFER',

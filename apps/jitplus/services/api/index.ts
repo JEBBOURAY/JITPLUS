@@ -4,15 +4,14 @@ import { logInfo, logApiError } from '@/utils/devLogger';
 import {
   getToken, setToken, removeToken,
   getRefreshToken, setRefreshToken, removeRefreshToken,
-  getStoredToken, clearAuth, setRememberMe, persistSession, getRememberMe, clearRememberMe,
+  getStoredToken, clearAuth, setRememberMe, persistSession,
   setEmailOtpNewUser, getEmailOtpNewUser, clearEmailOtpNewUser,
-  setCachedProfile, getCachedProfile, clearCachedProfile,
+  setCachedProfile, getCachedProfile,
 } from './storage';
 import { createAuthMethods } from './auth';
 import { createProfileMethods } from './profile';
 import { createMerchantMethods } from './merchants';
 import { createNotificationMethods } from './notifications';
-import { createReferralMethods } from './referral';
 import { createLuckyWheelMethods } from './lucky-wheel';
 import { createScratchMethods } from './scratch';
 import { createDealMethods } from './deals';
@@ -31,8 +30,13 @@ export function getServerBaseUrl(): string {
   return resolveServerBaseUrl(ENV_URL, IS_DEV);
 }
 
+// Public sign-in routes: a 401 there means "wrong code / wrong password", never
+// an expired session. Refreshing on it failed with "No refresh token", wiped the
+// local session (pending claim included) and hid the server's message.
 const AUTH_ROUTES = [
   '/client-auth/refresh',
+  '/client-auth/send-otp-email',
+  '/client-auth/verify-otp-email',
   '/client-auth/login-email',
   '/client-auth/google-login',
   '/client-auth/apple-login',
@@ -79,16 +83,15 @@ export const api = {
 
   // Token / session management
   getStoredToken, clearAuth,
-  setRememberMe, persistSession, getRememberMe, clearRememberMe,
+  setRememberMe, persistSession,
   setEmailOtpNewUser, getEmailOtpNewUser, clearEmailOtpNewUser,
-  setCachedProfile, getCachedProfile, clearCachedProfile,
+  setCachedProfile, getCachedProfile,
 
   // Domain methods
   ...createAuthMethods(http),
   ...createProfileMethods(http),
   ...createMerchantMethods(http),
   ...createNotificationMethods(http),
-  ...createReferralMethods(http),
   ...createLuckyWheelMethods(http),
   ...createScratchMethods(http),
   ...createDealMethods(http),

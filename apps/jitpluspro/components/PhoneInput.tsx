@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useEffect, forwardRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, StyleProp, ViewStyle, TextInputProps, Animated } from 'react-native';
+import { useState, useMemo, useCallback, forwardRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, StyleProp, ViewStyle, TextInputProps } from 'react-native';
 import { ChevronDown, Phone } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -53,26 +53,16 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
     const showError = touched && hasContent && !isPhoneValid && showValidation;
     const showSuccess = hasContent && isPhoneValid;
 
-    const [borderAnim] = useState(() => new Animated.Value(0));
-
-    useEffect(() => {
-      Animated.timing(borderAnim, {
-        toValue: isFocused ? 1 : 0,
-        duration: 200,
-        useNativeDriver: false,
-      }).start();
-    }, [isFocused, borderAnim]);
-
+    // Validation colours win over focus. Focus uses the brand colour, not
+    // green, so an empty focused field never looks already valid. The width
+    // stays constant so the content does not shift on focus.
     const borderColor = showSuccess
       ? theme.success
       : showError
         ? theme.danger
-        : borderAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [theme.border, theme.success],
-          });
-
-    const borderWidth = showSuccess || showError || isFocused ? 2 : 1;
+        : isFocused
+          ? theme.primary
+          : theme.border;
 
     const handleCountrySelect = useCallback(
       (index: number) => {
@@ -136,8 +126,8 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
 
     return (
       <>
-        <Animated.View
-          style={[styles.container, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor, borderWidth }, style]}
+        <View
+          style={[styles.container, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor }, style]}
         >
           <TouchableOpacity
             activeOpacity={0.7}
@@ -187,7 +177,7 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
               ]}
             />
           )}
-        </Animated.View>
+        </View>
 
         <View style={[styles.hintRow, { flexDirection: dir.row }]}>
           {showError && (
@@ -243,7 +233,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     height: 52,
   },
   countryBtn: {

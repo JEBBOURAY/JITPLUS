@@ -36,6 +36,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSplashStore } from '@/stores/splashStore';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import { DemoHintHost } from '@/components/demo/DemoHint';
 import { Notifications, isExpoGo, setupAndroidChannels } from '@/utils/notifications';
 import AppErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
@@ -88,7 +89,18 @@ const GATEWAY_STATUSES = new Set([502, 503, 504]);
 const httpStatus = (error: unknown): number | undefined =>
   (error as { response?: { status?: number } } | null)?.response?.status;
 
+// The request never reached our API (timeout, DNS, lost cellular signal):
+// axios reports these without a response and with one of these codes. They
+// are the user's connectivity, not a bug, so Sentry does not need them.
+const CLIENT_NETWORK_CODES = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ERR_NETWORK', 'ERR_CANCELED']);
+
+function isClientNetworkError(error: unknown): boolean {
+  const e = error as { response?: unknown; code?: string } | null;
+  return !!e && !e.response && !!e.code && CLIENT_NETWORK_CODES.has(e.code);
+}
+
 function isServerOrNetworkError(error: unknown): boolean {
+  if (isClientNetworkError(error)) return false;
   const status = httpStatus(error);
   return !status || (status >= 500 && !GATEWAY_STATUSES.has(status));
 }
@@ -174,6 +186,8 @@ try {
       'Session expired',
       'Network Error',
       'ECONNABORTED',
+      // Axios timeouts carry the code in `error.code`, not in the message.
+      /timeout of \d+ms exceeded/,
     ],
     beforeSend(event) {
       const msg = event.exception?.values?.[0]?.value ?? '';
@@ -437,7 +451,9 @@ function ThemedNavigator() {
     () => ({
       headerShown: false,
       contentStyle: { backgroundColor: theme.bg },
-      animation: 'slide_from_right' as const,
+      // Same native push on iOS and Android. Exceptions below are full-screen
+      // tasks (slide from bottom) and the auth entry (fade).
+      animation: 'ios_from_right' as const,
       gestureEnabled: true,
     }),
     [theme.bg],
@@ -597,12 +613,10 @@ function ThemedNavigator() {
           <Stack.Screen name="login" options={{ animation: 'fade' }} />
           <Stack.Screen name="register" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="verify-email" options={{ animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="client-detail" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="scan-qr" options={{ animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="transaction-amount" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="transactions" options={{ animation: 'slide_from_right' }} />
         </Stack>
         <AuthRedirectGuard />
+        <DemoHintHost />
       </View>
     </NavThemeProvider>
   );

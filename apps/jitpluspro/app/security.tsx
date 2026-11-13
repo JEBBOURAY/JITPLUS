@@ -845,7 +845,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     fontSize: 28,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.5,
   },
 
@@ -910,7 +910,7 @@ const styles = StyleSheet.create({
 
   loadingCenter: { alignItems: 'center', paddingTop: 60 },
   emptyDevices: { alignItems: 'center', paddingTop: 60 },
-  emptyTitle: { fontSize: 18, marginTop: 16, fontFamily: font.bold },
+  emptyTitle: { fontSize: 18, marginTop: 16, fontFamily: font.semibold },
   emptyText: {
     fontSize: 13,
     textAlign: 'center',
@@ -982,7 +982,7 @@ const styles = StyleSheet.create({
   },
   dangerTitle: {
     fontSize: 16,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   dangerText: {
     fontSize: 13,

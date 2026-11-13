@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import i18n from '@/i18n';
-import { isExpoGo, loadNotifications } from '@/utils/expoNotifications';
+import { isExpoGo, loadNotifications } from '@jitplus/shared/src/expoNotifications';
 
 let didLogPushSkip = false;
 

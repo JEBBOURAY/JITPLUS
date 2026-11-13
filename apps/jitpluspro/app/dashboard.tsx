@@ -242,7 +242,8 @@ function StatTile({
       {note ? (
         <Text
           style={[styles.statNote, { color: noteHighlighted ? theme.primary : theme.textMuted, textAlign: dir.textAlign }]}
-          numberOfLines={1}
+          // The note can carry an amount ("1 234 567 DH de commandes"): wrap, never cut money.
+          numberOfLines={2}
           maxFontSizeMultiplier={1.3}
         >
           {note}
@@ -933,7 +934,7 @@ const styles = StyleSheet.create({
 
   header: { alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingBottom: 8 },
   backButton: { width: 32, height: 40, justifyContent: 'center' },
-  headerTitle: { flex: 1, fontSize: 26, fontFamily: font.bold, letterSpacing: -0.5 },
+  headerTitle: { flex: 1, fontSize: 26, fontFamily: font.semibold, letterSpacing: -0.5 },
 
   section: { marginTop: 28 },
   sectionTitle: { fontSize: 16, fontFamily: font.semibold, marginBottom: 12 },
@@ -954,14 +955,14 @@ const styles = StyleSheet.create({
   statTile: { flex: 1, minWidth: 0, paddingHorizontal: 16, paddingVertical: 16, gap: 6 },
   statLabelRow: { alignItems: 'center', gap: 6 },
   statLabel: { flexShrink: 1, fontSize: 12, fontFamily: font.medium },
-  statValue: { fontSize: 26, fontFamily: font.bold, letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
+  statValue: { fontSize: 26, fontFamily: font.semibold, letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
   statNote: { fontSize: 12, fontFamily: font.medium },
   overviewFooter: { alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
 
   tabs: { gap: 6, marginBottom: 18 },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6, borderRadius: 999 },
   tabText: { fontSize: 13, fontFamily: font.semibold },
-  totalValue: { fontSize: 32, fontFamily: font.bold, letterSpacing: -0.8, fontVariant: ['tabular-nums'] },
+  totalValue: { fontSize: 32, fontFamily: font.semibold, letterSpacing: -0.8, fontVariant: ['tabular-nums'] },
   stale: { opacity: 0.5 },
   chartPlaceholder: { height: CHART_HEIGHT + 72, alignItems: 'center', justifyContent: 'center' },
   chartArea: { height: CHART_HEIGHT, marginTop: 8 },
@@ -970,7 +971,7 @@ const styles = StyleSheet.create({
   xAxis: { height: 18, marginTop: 8 },
   xLabel: { position: 'absolute', width: X_LABEL_WIDTH, textAlign: 'center' },
   tooltip: { position: 'absolute', flexDirection: 'row', alignItems: 'baseline', gap: 6, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
-  tooltipValue: { fontSize: 13, fontFamily: font.bold, fontVariant: ['tabular-nums'] },
+  tooltipValue: { fontSize: 13, fontFamily: font.semibold, fontVariant: ['tabular-nums'] },
   tooltipDate: { fontSize: 11, fontFamily: font.regular, opacity: 0.75 },
 
   gameHeader: { alignItems: 'center', gap: 10 },
@@ -989,10 +990,10 @@ const styles = StyleSheet.create({
 
   wheelSummary: { alignItems: 'center', gap: 18 },
   ring: { width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center' },
-  ringLabel: { position: 'absolute', fontSize: 17, fontFamily: font.bold, fontVariant: ['tabular-nums'] },
+  ringLabel: { position: 'absolute', fontSize: 17, fontFamily: font.semibold, fontVariant: ['tabular-nums'] },
   wheelFigures: { flex: 1, gap: 10 },
   wheelFigureRow: { gap: 28 },
-  figureValue: { fontSize: 22, fontFamily: font.bold, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  figureValue: { fontSize: 22, fontFamily: font.semibold, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
   fulfilment: { marginTop: 18, gap: 10 },
   splitBar: { height: 8, borderRadius: 4, gap: 2 },
   legend: { flexWrap: 'wrap', gap: 16 },

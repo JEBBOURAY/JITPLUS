@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
 import { getFollowUps, updateMerchantFollowUp } from '../api';
 import type { FollowUpRow, FollowUpStatus, FollowUpsResponse } from '../types';
 import { DataTable, type Column } from '../components/charts';
-import { ContactButtons, PlanKindBadge, QuickNoteModal } from '../components/crm';
+import { ContactButtons, MerchantCell, PlanKindBadge, QuickNoteModal } from '../components/crm';
 import { Dash, Divider, ExportButton, FilterBar, LastActivity, PageHeader, Pagination, SearchInput, pillStyle, useToast } from '../components/ui';
 import { C, S } from '../theme';
-import { CATEGORY_LABELS, fmtNumber, fmtRelative } from '../utils/format';
+import { fmtNumber, fmtRelative } from '../utils/format';
 import { FOLLOW_UP_ORDER, FOLLOW_UP_STATUS, NOTE_KIND, WA_TEMPLATES, fmtDue } from '../utils/crm';
 import { exportCsv, fetchAllPages } from '../utils/csv';
 import { useDebouncedInput, useUrlFilters } from '../utils/useUrlFilters';
@@ -80,12 +80,7 @@ export default function FollowUps() {
   const columns: Column<FollowUpRow>[] = [
     {
       header: 'Commerce',
-      render: (r) => (
-        <div>
-          <Link to={`/merchants/${r.id}`} onClick={(e) => e.stopPropagation()} style={{ color: C.text, fontWeight: 500, textDecoration: 'none' }}>{r.nom}</Link>
-          <div style={{ fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>{[CATEGORY_LABELS[r.categorie] ?? r.categorie, r.ville, r.phone].filter(Boolean).join(' · ')}</div>
-        </div>
-      ),
+      render: (r) => <MerchantCell m={r} />,
     },
     { header: 'Statut', render: (r) => <StatusSelect row={r} onSaved={load} /> },
     {

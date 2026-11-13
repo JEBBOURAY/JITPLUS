@@ -188,7 +188,7 @@ export function nextAllowedSendTime(at: Date): Date {
  * Guard a cron method with both ENABLE_CRONS gate *and* quiet-hours check.
  * Returns true only if we're allowed to run and send.
  */
-export function isCronAllowed(logger: Logger, name: string, now: Date = new Date()): boolean {
+function isCronAllowed(logger: Logger, name: string, now: Date = new Date()): boolean {
   if (!isCronEnabled(logger, name)) return false;
   if (isQuietHours(now)) {
     logger.log(`[${name}] skipped — quiet hours (Maroc nuit / Jumu'ah)`);

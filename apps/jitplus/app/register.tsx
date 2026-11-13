@@ -11,7 +11,7 @@ import {
   Animated,
   Image,
   ScrollView,
-  Keyboard,
+  Keyboard, I18nManager,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { router } from 'expo-router';
@@ -30,7 +30,11 @@ import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { GoogleLogo } from '@/components/GoogleLogo';
 import { AppleLogo } from '@/components/AppleLogo';
 import { haptic } from '@/utils/haptics';
+import { SPRING_SMOOTH, rnSpring } from '@/utils/motion';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
+const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 export default function RegisterScreen() {
   const theme = useTheme();
@@ -58,8 +62,8 @@ export default function RegisterScreen() {
 
   useEffect(() => {
     const anim = Animated.stagger(150, [
-      Animated.spring(fadeAnim, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 6 }),
-      Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, speed: 10, bounciness: 4 }),
+      Animated.spring(fadeAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
+      Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
     ]);
     anim.start();
     return () => anim.stop();
@@ -99,7 +103,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: '#fff' }]}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -119,7 +123,7 @@ export default function RegisterScreen() {
               accessibilityRole="button"
               accessibilityLabel={t('common.back')}
             >
-              <ChevronLeft size={ms(24)} color={theme.text} strokeWidth={2} />
+              <ChevronLeft size={ms(24)} color={theme.text} strokeWidth={2} style={DIR_FLIP} />
             </TouchableOpacity>
 
             {/* Logo */}
@@ -286,7 +290,7 @@ export default function RegisterScreen() {
                     <Text style={[styles.buttonText, { opacity: emailValid ? 1 : 0.5 }]}>
                       {t('register.signUpButton')}
                     </Text>
-                    <ArrowRight size={ms(18)} color={emailValid ? '#fff' : 'rgba(255,255,255,0.5)'} />
+                    <ArrowRight size={ms(18)} color={emailValid ? '#fff' : 'rgba(255,255,255,0.5)'} style={DIR_FLIP} />
                   </>
                 )}
               </TouchableOpacity>
@@ -326,7 +330,7 @@ const styles = StyleSheet.create({
   // Form
   formSection: { paddingHorizontal: wp(4) },
   title: {
-    fontSize: ms(26), fontWeight: '700', letterSpacing: -0.3,
+    fontSize: ms(26), fontWeight: '600', letterSpacing: -0.3,
     marginBottom: hp(8),
   },
   subtitle: {
@@ -379,7 +383,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg, height: hp(56), gap: wp(8),
     paddingHorizontal: wp(20),
   },
-  buttonText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '700', letterSpacing: 0.5 },
+  buttonText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '600' },
 
   // Footer
   footerContainer: {
@@ -387,5 +391,5 @@ const styles = StyleSheet.create({
     paddingTop: hp(12), paddingBottom: hp(32),
   },
   footerText: { fontSize: fontSize.sm, color: palette.gray500 },
-  footerLink: { fontSize: fontSize.sm, color: palette.violet, fontWeight: '700' },
+  footerLink: { fontSize: fontSize.sm, color: palette.violet, fontWeight: '600' },
 });

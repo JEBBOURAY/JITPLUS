@@ -1,4 +1,5 @@
-import { QueryClient, QueryCache, MutationCache, onlineManager } from '@tanstack/react-query';
+import { QueryClient, QueryCache, MutationCache, onlineManager, focusManager } from '@tanstack/react-query';
+import { AppState } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import * as Sentry from '@sentry/react-native';
 
@@ -8,6 +9,16 @@ onlineManager.setEventListener((setOnline) => {
   return NetInfo.addEventListener((state) => {
     setOnline(!!state.isConnected);
   });
+});
+
+// React Query has no idea of "focus" in React Native (no `document`), so it
+// treats the app as always focused: `refetchIntervalInBackground: false` and
+// `refetchOnWindowFocus` only work once focus is tied to AppState.
+focusManager.setEventListener((setFocused) => {
+  const sub = AppState.addEventListener('change', (state) => {
+    setFocused(state === 'active');
+  });
+  return () => sub.remove();
 });
 
 // SECURITY: Reduced from 24h to 4h to limit data exposure window if device is
@@ -23,8 +34,20 @@ function getStatus(error: unknown): number | undefined {
 // test devices) rather than our API code, so they are noise in Sentry.
 const GATEWAY_STATUSES = new Set([502, 503, 504]);
 
-// Expected HTTP 4xx (business/validation failures) are not reported to Sentry.
-function isServerOrNetworkError(error: unknown): boolean {
+// The request never reached our API (timeout, DNS, lost cellular signal):
+// axios reports these without a response and with one of these codes.
+const CLIENT_NETWORK_CODES = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ERR_NETWORK', 'ERR_CANCELED']);
+
+export function isClientNetworkError(error: unknown): boolean {
+  const e = error as { response?: unknown; code?: string } | null;
+  return !!e && !e.response && !!e.code && CLIENT_NETWORK_CODES.has(e.code);
+}
+
+// Expected HTTP 4xx (business/validation failures) and the user's own
+// connectivity problems are not reported to Sentry; an API outage is visible
+// from Cloud Run monitoring, not from one phone on a dead 3G link.
+export function isServerOrNetworkError(error: unknown): boolean {
+  if (isClientNetworkError(error)) return false;
   const status = (error as { response?: { status?: number } })?.response?.status;
   return !status || (status >= 500 && !GATEWAY_STATUSES.has(status));
 }

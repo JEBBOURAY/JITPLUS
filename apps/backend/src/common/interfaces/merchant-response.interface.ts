@@ -30,6 +30,7 @@ export interface MerchantResponse {
   planExpiresAt: Date | null;
   planActivatedByAdmin: boolean;
   trialStartedAt: Date | null;
+  foundingMember?: boolean;
   createdAt: Date;
   updatedAt: Date;
   stores?: Array<{

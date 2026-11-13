@@ -8,3 +8,6 @@ export function useAppFonts() {
   const { locale } = useLanguage();
   return locale === 'ar' ? FONT_MAP.ar : FONT_MAP.default;
 }
+
+/** Font families passed down to presentational components. */
+export interface AppFonts { regular: string; medium: string; semibold: string; bold: string }

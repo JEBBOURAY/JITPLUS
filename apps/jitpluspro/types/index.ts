@@ -19,6 +19,8 @@ export interface PlanInfo {
   trialStartedAt: string | null;
   isTrial: boolean;
   daysRemaining: number | null;
+  /** One of the first 500 sign-ups: permanent free Premium, no plan UI. */
+  foundingMember?: boolean;
   limits: PlanLimits;
 }
 
@@ -62,6 +64,8 @@ export interface Merchant {
   planExpiresAt?: string | null;
   planActivatedByAdmin?: boolean;
   trialStartedAt?: string | null;
+  /** One of the first 500 sign-ups: permanent free Premium, no plan UI. */
+  foundingMember?: boolean;
   isActive?: boolean;
   emailVerified?: boolean;
   onboardingCompleted?: boolean;
@@ -288,6 +292,16 @@ export interface NotificationRecord {
   failureCount: number;
   readCount: number;
   createdAt: string;
+}
+
+/** GET /notifications/broadcast-status */
+export interface BroadcastStatus {
+  /** Customers holding an active card: everyone a broadcast reaches. */
+  recipientCount: number;
+  dailyLimit: number;
+  remaining: number;
+  /** ISO date the next slot frees up; set only once the quota is spent. */
+  nextSendAt: string | null;
 }
 
 export interface CreateStorePayload {

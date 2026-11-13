@@ -16,7 +16,7 @@ import FadeInView from '@/components/FadeInView';
 import GuestGuard from '@/components/GuestGuard';
 import {
   AccountActions, PreferencesSection, ProfileCompletionCard, ProfileHeader,
-  ReferralBanner, SecuritySection, SupportSection,
+  SecuritySection, SupportSection,
 } from '@/components/profile';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useAppFonts } from '@/utils/fonts';
@@ -60,7 +60,6 @@ export default function ProfileScreen() {
   const completion = useMemo(() => getProfileCompletion(client, t), [client, t]);
 
   const openEdit = useCallback(() => { haptic(HapticStyle.Light); router.push('/edit-profile'); }, [router]);
-  const openReferral = useCallback(() => { haptic(HapticStyle.Light); router.push('/referral'); }, [router]);
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/(tabs)');
@@ -122,7 +121,6 @@ export default function ProfileScreen() {
             />
           )}
 
-          <ReferralBanner onPress={openReferral} />
         </FadeInView>
 
         <FadeInView delay={80} duration={280} distance={hp(10)}>
@@ -151,11 +149,11 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   headerShadow: {
-    shadowColor: '#0F172A',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 3,
+    elevation: 2,
   },
   titleRow: { minHeight: ms(46), flexDirection: 'row', alignItems: 'center', gap: wp(12) },
   backBtn: { width: ms(40), height: ms(40), borderRadius: ms(20), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },

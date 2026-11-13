@@ -2,10 +2,10 @@
 // Memoised with stable Animated values as props, so typing in the form below
 // never re-renders the arch SVGs or rebuilds their animation nodes.
 import React, { useMemo } from 'react';
-import { Animated, Image, Platform, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import BrandName from '@/components/BrandName';
 import { palette } from '@/contexts/ThemeContext';
-import { font } from '@/constants/design';
+import { font, shadow } from '@/constants/design';
 import { fontSize, hp, ms, radius } from '@/utils/responsive';
 import ArchCrest from './ArchCrest';
 
@@ -16,7 +16,6 @@ interface LoginHeaderAnims {
   draw: Animated.Value;
   reveal: Animated.Value;
   keystone: Animated.Value;
-  halo: Animated.Value;
   text: Animated.Value;
 }
 
@@ -45,7 +44,6 @@ export default React.memo(function LoginHeader({
         draw={anims.draw}
         reveal={anims.reveal}
         keystone={anims.keystone}
-        halo={anims.halo}
         compact={compact}
         isCompact={isCompact}
       >
@@ -78,15 +76,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.lg,
     backgroundColor: '#FFFFFF',
-    ...Platform.select({
-      ios: {
-        shadowColor: palette.violet,
-        shadowOpacity: 0.42,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 8 },
-      },
-      android: { elevation: 7 },
-    }),
+    ...shadow.sm,
   },
   logo: {
     flex: 1,

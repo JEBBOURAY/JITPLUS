@@ -29,12 +29,6 @@ config.resolver.blockList = [
   /apps[\\/]jitpluspro[\\/].*/,
 ];
 
-// Enable symlink resolution for pnpm on Windows (not needed on Linux/macOS
-// where pnpm creates real symlinks that Metro follows natively).
-if (process.platform === 'win32') {
-  // config.resolver.unstable_enableSymlinks = true;
-}
-
 // Only resolve modules from the project-level node_modules (pnpm junctions
 // are correctly set up there for every transitive dependency).
 // NOTE: DO NOT add workspaceRoot/node_modules to nodeModulesPaths — pnpm

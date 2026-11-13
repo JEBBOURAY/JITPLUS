@@ -28,9 +28,7 @@ interface AuthContextType {
   client: Client | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  isProfileComplete: boolean;
   isGuest: boolean;
-  needsPasswordSetup: boolean;
   enterGuestMode: () => void;
   sendOtpEmail: (email: string, isRegister?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   verifyOtpEmail: (email: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
@@ -161,11 +159,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     client: store.client,
     isLoading: store.loading,
     isAuthenticated: !!store.client,
-    isProfileComplete: !!store.client?.nom && !!store.client?.prenom && (store.client?.termsAccepted !== false),
     isGuest: store.isGuest,
-    needsPasswordSetup: store.needsPasswordSetup,
     ...methods,
-  }), [store.client, store.loading, store.needsPasswordSetup, store.isGuest, methods]);
+  }), [store.client, store.loading, store.isGuest, methods]);
 
   return (
     <AuthContext.Provider value={value}>

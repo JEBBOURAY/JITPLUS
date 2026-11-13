@@ -83,7 +83,7 @@ export class CompleteProfileDto {
 
   @IsOptional()
   @IsString()
-  @Length(8, 100, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @Length(8, 128, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
   @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
     message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
   })
@@ -158,7 +158,7 @@ export class LoginEmailDto {
 export class SetPasswordDto {
   @IsString()
   @IsNotEmpty({ message: 'Le mot de passe est requis' })
-  @Length(8, 100, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @Length(8, 128, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
   @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
     message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
   })
@@ -173,7 +173,7 @@ export class ClientChangePasswordDto {
 
   @IsString()
   @IsNotEmpty({ message: 'Le nouveau mot de passe est requis' })
-  @Length(8, 100, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @Length(8, 128, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
   @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
     message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
   })

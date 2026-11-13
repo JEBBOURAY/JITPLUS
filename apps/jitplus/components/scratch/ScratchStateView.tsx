@@ -4,7 +4,7 @@ import { Text } from '@/components/AppText';
 import { hp, wp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { scratchSharedStyles as shared } from './scratchStyles';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
   icon: React.ReactNode;

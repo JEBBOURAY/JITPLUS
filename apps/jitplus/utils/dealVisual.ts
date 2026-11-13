@@ -1,51 +1,14 @@
 // Texts shared by the deal list, the detail screen and the merchant page (no React Native).
 import {
-  dealBadge, dealTimeLeft, type ClientDealStore, type DealOffer,
+  dealBadgeLabel, dealTimeLeftLabel, dealPrices,
+  type ClientDealStore, type DealTranslate,
 } from '@jitplus/shared/src/deals';
-import type { MoneyFormatter } from '@jitplus/shared/src/currency';
+import { intlLocaleTag } from '@jitplus/shared/src/currency';
 import { getDistanceKm } from '@/utils/distance';
 
-export type Translate = (key: string, params?: Record<string, unknown>) => string;
-
-export function dealBadgeLabel(offer: DealOffer, t: Translate): string | null {
-  const badge = dealBadge(offer);
-  if (!badge) return null;
-  switch (badge.kind) {
-    case 'percent':
-      return t('deals.badge.percent', { value: badge.value });
-    case 'bogo':
-      return t('deals.badge.bogo', { buy: badge.buy, free: badge.free });
-    default:
-      return t('deals.badge.free');
-  }
-}
-
-/** "Expire dans 3 j", with `urgent` under 24 h (shown in orange). */
-export function dealTimeLeftLabel(
-  endsAt: string | Date,
-  t: Translate,
-  now: Date = new Date(),
-): { text: string; urgent: boolean; ended: boolean } {
-  const left = dealTimeLeft(endsAt, now);
-  if (left.ended) return { text: t('deals.time.ended'), urgent: false, ended: true };
-  const text = left.days >= 1
-    ? t('deals.time.days', { count: left.days })
-    : left.hours >= 1
-      ? t('deals.time.hours', { count: left.hours })
-      : t('deals.time.minutes', { count: Math.max(1, left.minutes) });
-  return { text, urgent: left.urgent, ended: false };
-}
-
-/** Promo price and struck original price, in the merchant's currency (see moneyFormatter). */
-export function dealPrices(offer: DealOffer, money: MoneyFormatter): { price: string | null; original: string | null } {
-  if (offer.type === 'PRICE_DROP' && offer.dealPrice != null && offer.originalPrice != null) {
-    return { price: money(offer.dealPrice), original: money(offer.originalPrice) };
-  }
-  if (offer.type === 'FREE_ITEM' && offer.originalPrice != null) {
-    return { price: null, original: money(offer.originalPrice) };
-  }
-  return { price: null, original: null };
-}
+export type Translate = DealTranslate;
+// Badge, countdown and price texts are implemented once for both apps.
+export { dealBadgeLabel, dealTimeLeftLabel, dealPrices };
 
 /**
  * Deal links are typed by merchants: only plain https URLs are opened, and a
@@ -73,7 +36,7 @@ export function dealStoresByDistance(
 
 /** Last day of the deal ("12 juin"), in Morocco time where the deal ends at 23:59. */
 export function formatDealEndDate(endsAt: string, locale: string): string {
-  const tag = locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-GB' : 'fr-FR';
+  const tag = intlLocaleTag(locale);
   const date = new Date(endsAt);
   if (Number.isNaN(date.getTime())) return '';
   try {

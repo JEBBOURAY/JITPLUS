@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
-import { View, Text, Pressable, Animated, Easing, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, Animated, StyleSheet } from 'react-native';
 import { X, Smartphone, ArrowRight } from 'lucide-react-native';
 import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms, wp, hp, fontSize, radius } from '@/utils/responsive';
+import { EASE_OUT } from '@/utils/motion';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 interface Props {
   visible: boolean;
@@ -15,40 +16,31 @@ export default function FirstScanGuide({ visible, onClose }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
 
+  const reduceMotion = useReduceMotion() === true;
   const [slideAnim] = useState(() => new Animated.Value(0));
-  const [pulseAnim] = useState(() => new Animated.Value(1));
+  const closingRef = useRef(false);
 
   // Nothing renders while hidden (see below), so only the show transition is animated here;
   // the hide transition runs in handleClose before onClose flips `visible`.
   useEffect(() => {
     if (!visible) return;
+    closingRef.current = false;
     slideAnim.setValue(0);
-    Animated.spring(slideAnim, {
-      toValue: 1,
-      damping: 16,
-      stiffness: 140,
-      useNativeDriver: true,
-    }).start();
-
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.05, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    pulseLoop.start();
-    return () => pulseLoop.stop();
-  }, [visible, slideAnim, pulseAnim]);
+    // Not caused by a finger: a timed ease-out, no spring overshoot.
+    Animated.timing(slideAnim, { toValue: 1, duration: 260, easing: EASE_OUT, useNativeDriver: true }).start();
+  }, [visible, slideAnim]);
 
   const handleClose = () => {
-    Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    Animated.timing(slideAnim, { toValue: 0, duration: 180, easing: EASE_OUT, useNativeDriver: true }).start(() => {
       onClose();
     });
   };
 
   if (!visible) return null;
 
-  const translateY = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [200, 0] });
+  const translateY = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [reduceMotion ? 0 : 24, 0] });
   const opacity = slideAnim.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0.8, 1] });
 
   return (
@@ -69,14 +61,9 @@ export default function FirstScanGuide({ visible, onClose }: Props) {
         </Pressable>
 
         {/* Icon */}
-        <LinearGradient
-          colors={[palette.violetDark, palette.violet]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.iconCircle}
-        >
+        <View style={[styles.iconCircle, { backgroundColor: palette.violet }]}>
           <Smartphone size={ms(22)} color="#fff" strokeWidth={2} />
-        </LinearGradient>
+        </View>
 
         {/* Title */}
         <Text style={[styles.title, { color: theme.text }]}>
@@ -96,19 +83,14 @@ export default function FirstScanGuide({ visible, onClose }: Props) {
         </Text>
 
         {/* Got it button */}
-        <Animated.View style={{ transform: [{ scale: pulseAnim }], width: '100%' }}>
+        <View style={{ width: '100%' }}>
           <Pressable onPress={handleClose} accessibilityRole="button">
-            <LinearGradient
-              colors={[palette.violetDark, palette.violet]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.gotItBtn}
-            >
+            <View style={[styles.gotItBtn, { backgroundColor: palette.violet }]}>
               <Text style={styles.gotItText}>{t('scan.guideGotIt')}</Text>
               <ArrowRight size={ms(16)} color="#fff" strokeWidth={2} />
-            </LinearGradient>
+            </View>
           </Pressable>
-        </Animated.View>
+        </View>
       </View>
     </Animated.View>
   );
@@ -139,10 +121,10 @@ const styles = StyleSheet.create({
     paddingTop: ms(24),
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2,
   },
   closeBtn: {
     position: 'absolute',
@@ -165,7 +147,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: fontSize.md,
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'center',
     marginBottom: hp(12),
   },
@@ -189,7 +171,7 @@ const styles = StyleSheet.create({
   },
   stepNumber: {
     fontSize: fontSize.xs,
-    fontWeight: '700',
+    fontWeight: '600',
     color: palette.violet,
   },
   stepText: {
@@ -214,6 +196,6 @@ const styles = StyleSheet.create({
   gotItText: {
     color: '#fff',
     fontSize: fontSize.sm,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 });

@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 28,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.5,
     flex: 1,
   },
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
     fontSize: 34,
     letterSpacing: 2,
     marginVertical: 4,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   codeActions: {
     flexDirection: 'row',
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
   howItWorksTitle: {
     fontSize: 17,
     marginBottom: 18,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   stepRow: {
     flexDirection: 'row',
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
   stepTitle: {
     fontSize: 15,
     marginBottom: 4,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   stepDesc: {
     fontSize: 13,
@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rewardTitle: { fontSize: 15, fontFamily: font.bold },
+  rewardTitle: { fontSize: 15, fontFamily: font.semibold },
   rewardDesc: { fontSize: 14, lineHeight: 21, fontFamily: font.regular },
 
   emptyCard: {
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  emptyTitle: { fontSize: 16, fontFamily: font.bold },
+  emptyTitle: { fontSize: 16, fontFamily: font.semibold },
   emptyHint: { fontSize: 14, textAlign: 'center', lineHeight: 20, fontFamily: font.regular },
 
   listCard: {

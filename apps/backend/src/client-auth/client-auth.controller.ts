@@ -13,7 +13,7 @@ import { ClientReferralService } from './client-referral.service';
 import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload, JwtTokenPayload } from '../common/interfaces/jwt-payload.interface';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginationQueryDto, WalletPaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { SendOtpEmailDto, VerifyOtpEmailDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto, ReportMerchantDto } from './dto';
 import { ConsumeClaimDto } from '../merchant/dto/quick-add.dto';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
@@ -206,7 +206,7 @@ export class ClientController {
   @Get('stamps')
   async getStampsOverview(
     @CurrentUser() user: JwtPayload,
-    @Query() { page, limit }: PaginationQueryDto,
+    @Query() { page, limit }: WalletPaginationQueryDto,
   ) {
     return this.clientService.getStampsOverview(user.userId, page, limit);
   }

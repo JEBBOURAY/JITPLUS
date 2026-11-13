@@ -150,7 +150,6 @@ export function useMerchantMedia() {
         theme={theme}
         t={t}
         merchant={merchant}
-        uploadIsPending={uploadCover.isPending}
         onPickPhoto={pickCover}
         onDelete={removeCover}
       />

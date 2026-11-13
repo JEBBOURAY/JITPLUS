@@ -14,7 +14,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import * as SplashScreen from 'expo-splash-screen';
 import { palette } from '@/contexts/ThemeContext';
 import { haptic, HapticStyle } from '@/utils/haptics';
@@ -285,13 +285,7 @@ function GoldStar({ index, x, y, progress }: { index: number; x: number; y: numb
   return (
     <Animated.View style={[styles.star, { left: x - STAR_R, top: y - STAR_R }, style]}>
       <Svg width={STAR_SIZE} height={STAR_SIZE}>
-        <Defs>
-          <LinearGradient id={`launchGold${index}`} x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor={palette.goldLight} />
-            <Stop offset="1" stopColor={palette.gold} />
-          </LinearGradient>
-        </Defs>
-        <Path d={STAR_D} fill={`url(#launchGold${index})`} />
+        <Path d={STAR_D} fill={palette.gold} />
       </Svg>
     </Animated.View>
   );

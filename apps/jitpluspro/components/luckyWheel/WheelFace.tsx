@@ -110,5 +110,5 @@ export const WheelFace = React.memo(function WheelFace({ size, segments }: Props
 });
 
 const styles = StyleSheet.create({
-  label: { position: 'absolute', color: '#FFFFFF', textAlign: 'center', fontFamily: font.bold },
+  label: { position: 'absolute', color: '#FFFFFF', textAlign: 'center', fontFamily: font.semibold },
 });

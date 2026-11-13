@@ -1,9 +1,9 @@
-import { memo, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import { memo, useMemo } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Cake, Check, Plus } from 'lucide-react-native';
 import { JitGift } from '@/components/icons';
-import { brandGradientFull, palette } from '@/contexts/ThemeContext';
+import { palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { font, icon } from '@/constants/design';
 import { ms, radius } from '@/utils/responsive';
@@ -25,25 +25,6 @@ interface Props {
   isBirthday?: boolean;
 }
 
-function usePulse(active: boolean) {
-  const [value] = useState(() => new Animated.Value(1));
-  useEffect(() => {
-    if (!active) {
-      value.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(value, { toValue: 0.55, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(value, { toValue: 1, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [active, value]);
-  return value;
-}
-
 function StampClientCardBase({ name, prenom, nom, stamps, pendingStamps, goal, isBirthday }: Props) {
   const { t, isRTL } = useLanguage();
   const row = isRTL ? 'row-reverse' : 'row';
@@ -53,11 +34,10 @@ function StampClientCardBase({ name, prenom, nom, stamps, pendingStamps, goal, i
   const filled = Math.min(stamps, safeGoal);
   const preview = Math.min(stamps + pendingStamps, safeGoal);
   const ready = stamps >= safeGoal;
-  const pulse = usePulse(preview > filled);
   const slots = useMemo(() => Array.from({ length: safeGoal }, (_, i) => i), [safeGoal]);
 
   return (
-    <LinearGradient colors={[...brandGradientFull]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.card}>
+    <LinearGradient colors={[palette.violet, palette.violetDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.card}>
       <View style={[styles.top, { flexDirection: row }]}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText} maxFontSizeMultiplier={1.2}>
@@ -104,12 +84,9 @@ function StampClientCardBase({ name, prenom, nom, stamps, pendingStamps, goal, i
               const isLast = i === safeGoal - 1;
               if (isPending) {
                 return (
-                  <Animated.View
-                    key={i}
-                    style={[styles.circle, styles.circlePending, { opacity: pulse }]}
-                  >
+                  <View key={i} style={[styles.circle, styles.circlePending]}>
                     <Plus size={CIRCLE * 0.5} color={palette.charbonDark} strokeWidth={icon.strokeSmall} />
-                  </Animated.View>
+                  </View>
                 );
               }
               return (
@@ -131,12 +108,12 @@ function StampClientCardBase({ name, prenom, nom, stamps, pendingStamps, goal, i
           </View>
         ) : (
           <View style={styles.track}>
-            <Animated.View
+            <View
               style={[
                 styles.fill,
                 isRTL ? styles.fillRtl : styles.fillLtr,
                 styles.fillPending,
-                { width: `${(preview / safeGoal) * 100}%`, opacity: pulse },
+                { width: `${(preview / safeGoal) * 100}%` },
               ]}
             />
             <View
@@ -185,11 +162,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: 18,
     gap: 16,
-    shadowColor: palette.violet,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   top: { alignItems: 'center', gap: 12 },
   avatar: {
@@ -202,10 +179,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: '#fff', fontSize: ms(17), fontFamily: font.bold },
+  avatarText: { color: '#fff', fontSize: ms(17), fontFamily: font.semibold },
   identity: { flex: 1, gap: 2 },
   caption: { color: 'rgba(255,255,255,0.7)', fontSize: ms(12), fontFamily: font.medium },
-  name: { color: '#fff', fontSize: ms(18), fontFamily: font.bold, letterSpacing: -0.3 },
+  name: { color: '#fff', fontSize: ms(18), fontFamily: font.semibold, letterSpacing: -0.3 },
   birthday: {
     alignItems: 'center',
     gap: 4,
@@ -224,7 +201,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: WHITE_SOFT,
   },
-  balanceValue: { color: '#fff', fontSize: ms(28), fontFamily: font.bold, letterSpacing: -0.5 },
+  balanceValue: { color: '#fff', fontSize: ms(28), fontFamily: font.semibold, letterSpacing: -0.5 },
   balanceLabel: { color: 'rgba(255,255,255,0.8)', fontSize: ms(11), fontFamily: font.medium, marginTop: -3 },
   circles: { flexWrap: 'wrap', gap: 8 },
   circle: { width: CIRCLE, height: CIRCLE, borderRadius: CIRCLE / 2, alignItems: 'center', justifyContent: 'center' },

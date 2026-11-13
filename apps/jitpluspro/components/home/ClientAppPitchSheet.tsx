@@ -81,7 +81,7 @@ function ClientAppPitchSheet({ visible, onClose, onShare }: ClientAppPitchSheetP
             <JitStore size={16} color={theme.textSecondary} strokeWidth={2} />
           </View>
           <Text style={[styles.appRole, { color: muted }]} maxFontSizeMultiplier={1.2}>
-            {t('home.clientPitchProRole').toUpperCase()}
+            {t('home.clientPitchProRole')}
           </Text>
           <Text style={[styles.appName, { color: theme.text }]} maxFontSizeMultiplier={1.25}>
             {t('home.clientPitchProName')}
@@ -95,7 +95,7 @@ function ClientAppPitchSheet({ visible, onClose, onShare }: ClientAppPitchSheetP
             <Smartphone size={16} color={accentInk} strokeWidth={2} />
           </View>
           <Text style={[styles.appRole, { color: accentInk }]} maxFontSizeMultiplier={1.2}>
-            {t('home.clientPitchClientRole').toUpperCase()}
+            {t('home.clientPitchClientRole')}
           </Text>
           <Text style={[styles.appName, { color: theme.text }]} maxFontSizeMultiplier={1.25}>
             {t('home.clientPitchClientName')}
@@ -185,8 +185,8 @@ const styles = StyleSheet.create({
   appCardClient: { backgroundColor: `${ACCENT}10`, borderColor: `${ACCENT}55` },
   appIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   appIconClient: { backgroundColor: `${ACCENT}1F` },
-  appRole: { fontSize: 9.5, letterSpacing: 0.9, fontFamily: 'Lexend_700Bold' },
-  appName: { fontSize: 14, fontFamily: 'Lexend_700Bold', marginTop: 2 },
+  appRole: { fontSize: 12, fontFamily: 'Lexend_500Medium' },
+  appName: { fontSize: 14, fontFamily: 'Lexend_600SemiBold', marginTop: 2 },
   appText: { fontSize: 11.5, lineHeight: 16, marginTop: 4, fontFamily: 'Lexend_400Regular' },
 
   // Benefit / gain lists
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scriptNumberText: { color: '#FFFFFF', fontSize: 11.5, fontFamily: 'Lexend_700Bold' },
+  scriptNumberText: { color: '#FFFFFF', fontSize: 11.5, fontFamily: 'Lexend_600SemiBold' },
   scriptText: { flex: 1, fontSize: 12.5, lineHeight: 18, fontFamily: 'Lexend_500Medium', fontStyle: 'italic' },
 
   storeHint: { fontSize: 11.5, marginTop: 16, textAlign: 'center', fontFamily: 'Lexend_400Regular' },

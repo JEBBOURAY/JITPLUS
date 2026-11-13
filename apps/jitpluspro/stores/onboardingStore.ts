@@ -2,10 +2,10 @@ import { create } from 'zustand';
 
 /**
  * Full-screen onboarding surfaces. Only one may be on screen at a time so a
- * new merchant never gets a tour and a modal stacked on top of each other.
+ * new merchant never gets two modals stacked on top of each other.
  * Inline banners and the setup checklist are not tracked here.
  */
-type BlockingSurface = 'tour' | 'notif' | 'introVideo';
+type BlockingSurface = 'notif' | 'introVideo';
 
 interface OnboardingState {
   active: BlockingSurface | null;

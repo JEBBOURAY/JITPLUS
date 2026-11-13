@@ -232,12 +232,14 @@ export default function ScratchCampaignDetail() {
   const canEdit = isOwner && isPremium && (status === 'DRAFT' || status === 'SCHEDULED');
   const canCancel = isOwner && ['SCHEDULED', 'SENDING', 'SENT'].includes(status);
   const canExtend = isOwner && isPremium && (status === 'SENDING' || status === 'SENT');
-  const money = (n: number) => formatCurrency(n, currency, getIntlLocale(locale));
+  const intlLocale = getIntlLocale(locale);
+  // Whole units, like the dashboard: cents only make a 1/3-width tile shrink.
+  const money = (n: number) => formatCurrency(n, { ...currency, decimals: 0 }, intlLocale);
   const probabilities = rewardProbabilities(campaign.rewards.map((r) => r.weight));
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <ScreenHeader title={campaign.name} onBack={goBack} right={<CampaignStatusPill status={status} />} />
+      <ScreenHeader title={campaign.name} wrap onBack={goBack} right={<CampaignStatusPill status={status} />} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
         refreshControl={<RefreshControl refreshing={campaignQuery.isRefetching} onRefresh={onRefresh} tintColor={theme.primary} />}
@@ -296,7 +298,7 @@ export default function ScratchCampaignDetail() {
             <View style={[styles.kpiRow, { flexDirection: row }]}>
               <Kpi label={t('scratch.detail.revenue')} value={money(stats.revenue)} />
               <Kpi label={t('scratch.detail.discountGiven')} value={money(stats.discountGiven)} />
-              <Kpi label={t('scratch.detail.bonusStamps')} value={String(stats.bonusStamps)} />
+              <Kpi label={t('scratch.detail.bonusStamps')} value={stats.bonusStamps.toLocaleString(intlLocale)} />
             </View>
             <InfoLine text={t('scratch.detail.pushDelivered', { count: stats.pushDelivered })} muted />
             {stats.cancelledCoupons > 0 && <InfoLine text={t('scratch.detail.cancelledCoupons', { count: stats.cancelledCoupons })} muted />}
@@ -427,7 +429,7 @@ function Kpi({ label, value }: { label: string; value: string }) {
   const theme = useTheme();
   return (
     <View style={[styles.kpi, { backgroundColor: theme.bgElevated }]}>
-      <Text style={[styles.kpiValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.2}>{value}</Text>
+      <Text style={[styles.kpiValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} maxFontSizeMultiplier={1.2}>{value}</Text>
       <Text style={[styles.kpiLabel, { color: theme.textMuted }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>{label}</Text>
     </View>
   );
@@ -435,7 +437,9 @@ function Kpi({ label, value }: { label: string; value: string }) {
 
 function Funnel({ steps }: { steps: { label: string; value: number }[] }) {
   const theme = useTheme();
+  const { locale } = useLanguage();
   const { row, alignStart } = useDir();
+  const intlLocale = getIntlLocale(locale);
   const max = Math.max(1, steps[0]?.value ?? 1);
   return (
     <View style={styles.funnel}>
@@ -445,7 +449,7 @@ function Funnel({ steps }: { steps: { label: string; value: number }[] }) {
           <View key={s.label} style={styles.funnelStep}>
             <View style={[styles.funnelHeader, { flexDirection: row }]}>
               <Text style={[styles.funnelLabel, { color: theme.textSecondary }]}>{s.label}</Text>
-              <Text style={[styles.funnelValue, { color: theme.text }]}>{s.value} · {pct} %</Text>
+              <Text style={[styles.funnelValue, { color: theme.text }]}>{s.value.toLocaleString(intlLocale)} · {(pct / 100).toLocaleString(intlLocale, { style: 'percent', maximumFractionDigits: 0 })}</Text>
             </View>
             <View style={[styles.funnelTrack, { backgroundColor: theme.bgInput, alignItems: alignStart }]}>
               <View style={[styles.funnelFill, { backgroundColor: theme.primary, width: `${Math.max(2, pct)}%` }]} />
@@ -485,13 +489,14 @@ function FinalCancelModal({ visible, preview, loading, onConfirm, onClose }: {
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={[styles.modal, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()} accessibilityViewIsModal>
-          <Text style={[styles.modalTitle, { color: theme.danger }]}>{t('scratch.detail.cancelFinalTitle')}</Text>
+          <ScrollView contentContainerStyle={styles.modalContent} bounces={false} keyboardShouldPersistTaps="handled">
+          <Text maxFontSizeMultiplier={1.4} style={[styles.modalTitle, { color: theme.danger }]}>{t('scratch.detail.cancelFinalTitle')}</Text>
           {preview && (
-            <Text style={[styles.modalBody, { color: theme.textSecondary }]}>
+            <Text maxFontSizeMultiplier={1.4} style={[styles.modalBody, { color: theme.textSecondary }]}>
               {t('scratch.detail.cancelStep1', { cards: preview.pendingCards, coupons: preview.activeCoupons, redeemed: preview.redeemedCoupons })}
             </Text>
           )}
-          <Text style={[styles.modalBody, { color: theme.text }]}>{t('scratch.detail.cancelFinalBody')}</Text>
+          <Text maxFontSizeMultiplier={1.4} style={[styles.modalBody, { color: theme.text }]}>{t('scratch.detail.cancelFinalBody')}</Text>
           <Button
             variant="danger"
             label={remaining > 0 ? t('scratch.detail.cancelWait', { seconds: remaining }) : t('scratch.detail.cancelFinal')}
@@ -500,6 +505,7 @@ function FinalCancelModal({ visible, preview, loading, onConfirm, onClose }: {
             onPress={onConfirm}
           />
           <Button variant="ghost" label={t('common.cancel')} onPress={onClose} />
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -539,8 +545,9 @@ function ExtendDatesModal({ visible, campaign, loading, onClose, onSave }: {
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={[styles.modal, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()} accessibilityViewIsModal>
-          <Text style={[styles.modalTitle, { color: theme.text }]}>{t('scratch.detail.extendTitle')}</Text>
-          <Text style={[styles.modalBody, { color: theme.textSecondary }]}>{t('scratch.detail.extendHint')}</Text>
+          <ScrollView contentContainerStyle={styles.modalContent} bounces={false} keyboardShouldPersistTaps="handled">
+          <Text maxFontSizeMultiplier={1.4} style={[styles.modalTitle, { color: theme.text }]}>{t('scratch.detail.extendTitle')}</Text>
+          <Text maxFontSizeMultiplier={1.4} style={[styles.modalBody, { color: theme.textSecondary }]}>{t('scratch.detail.extendHint')}</Text>
           <DateField
             label={t('scratch.wizard.cardDeadline')}
             value={card}
@@ -569,6 +576,7 @@ function ExtendDatesModal({ visible, campaign, loading, onClose, onSave }: {
             })}
           />
           <Button variant="ghost" label={t('common.cancel')} onPress={onClose} />
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -585,7 +593,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
   kpiRow: { gap: 8 },
   kpi: { flex: 1, borderRadius: 12, padding: 10, gap: 4 },
-  kpiValue: { fontSize: ms(15), fontFamily: font.bold },
+  kpiValue: { fontSize: ms(15), fontFamily: font.semibold },
   kpiLabel: { fontSize: ms(11), fontFamily: font.regular },
   funnel: { gap: 10 },
   funnelStep: { gap: 4 },
@@ -604,7 +612,9 @@ const styles = StyleSheet.create({
   waBtn: { alignItems: 'center', gap: 6, backgroundColor: '#25D366', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, minHeight: 36 },
   waText: { color: '#FFFFFF', fontSize: ms(13), fontFamily: font.semibold },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', padding: 20 },
-  modal: { borderRadius: 24, padding: 20, gap: 12 },
-  modalTitle: { fontSize: ms(17), fontFamily: font.bold, textAlign: 'center' },
+  // Long FR copy at large text sizes: the card scrolls instead of pushing its buttons off-screen.
+  modal: { borderRadius: 24, maxHeight: '85%', overflow: 'hidden' },
+  modalContent: { padding: 20, gap: 12 },
+  modalTitle: { fontSize: ms(17), fontFamily: font.semibold, textAlign: 'center' },
   modalBody: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular, textAlign: 'center' },
 });

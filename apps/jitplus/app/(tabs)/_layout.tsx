@@ -8,7 +8,7 @@ import { View, StyleSheet } from 'react-native';
 
 // Module-level stable ref so TabLayout re-renders don't recreate the prop
 // (which would force the entire bottom navigator to remount).
-const renderTabBar = (props: any) => <CustomTabBar {...props} />;
+const renderTabBar = (props: React.ComponentProps<typeof CustomTabBar>) => <CustomTabBar {...props} />;
 
 export default function TabLayout() {
   const theme = useTheme();

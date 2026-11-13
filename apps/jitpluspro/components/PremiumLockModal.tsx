@@ -6,15 +6,12 @@ import {
   Pressable,
 } from 'react-native';
 import { X } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PremiumLockContent } from '@/components/PremiumLockCard';
 import { font, icon } from '@/constants/design';
 import { radius } from '@/utils/responsive';
-
-const SHEET_GRADIENT = ['#120826', palette.premiumBg] as const;
 
 interface PremiumLockModalProps {
   visible: boolean;
@@ -47,12 +44,6 @@ export default function PremiumLockModal({ visible, onClose, titleKey, descKey }
           accessibilityRole="summary"
           accessibilityViewIsModal={true}
         >
-          <LinearGradient
-            colors={SHEET_GRADIENT}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
           <TouchableOpacity
             style={[styles.closeBtn, isRTL ? { left: 16 } : { right: 16 }]}
             onPress={onClose}
@@ -93,6 +84,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: palette.premiumBorder,
+    backgroundColor: palette.premiumBg,
     overflow: 'hidden',
     borderTopLeftRadius: radius['2xl'],
     borderTopRightRadius: radius['2xl'],

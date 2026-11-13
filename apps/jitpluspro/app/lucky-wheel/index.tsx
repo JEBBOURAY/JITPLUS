@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react';
+import { Image } from 'expo-image';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
 import { Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -15,16 +16,17 @@ import { ms } from '@/utils/responsive';
 import { font } from '@/constants/design';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { Button, MoreOptions, Notice, ScreenHeader, Section } from '@/components/scratch/ScratchUI';
-import { moroccoToday } from '@/components/scratch/campaignForm';
 import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
-import { WheelStage, WheelTile } from '@/components/luckyWheel/WheelStage';
-import { GameStage } from '@/components/games/GameStage';
+import { WheelTile } from '@/components/luckyWheel/WheelStage';
 import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { WheelStatusPill, formatWheelPeriod } from '@/components/luckyWheel/WheelUI';
 import { FulfilledPrizeList, PendingPrizeList } from '@/components/luckyWheel/PendingPrizes';
-import { initialWheelForm, liveState, previewSegments } from '@/components/luckyWheel/wheelForm';
+import { liveState } from '@/components/luckyWheel/wheelForm';
 import type { WheelCampaign } from '@/components/luckyWheel/types';
 import { WHEEL_TONE } from '@/components/luckyWheel/colors';
+
+// Same artwork as the "Roue de la chance" card of the Jeux page.
+const WHEEL_IMAGE = require('@/assets/images/tools/jeux.png');
 
 /** Wheels list row; memoised so its small wheel is not redrawn on every list render. */
 const WheelCampaignRow = memo(function WheelCampaignRow({ campaign, onOpen }: {
@@ -78,15 +80,6 @@ export default function LuckyWheelListScreen() {
   const fulfilled = fulfilledQuery.data ?? [];
   const [showHistory, setShowHistory] = useState(false);
 
-  const demoSegments = useMemo(
-    () => previewSegments(
-      initialWheelForm(moroccoToday(), '', (k) => t(`luckyWheel.samplePrize.${k}`)),
-      t('luckyWheel.preview.lostSlice'),
-      (i) => t('luckyWheel.prize.title', { n: i + 1 }),
-    ),
-    [t],
-  );
-
   // refetch functions are stable, unlike the query result objects.
   const { refetch: refetchCampaigns } = campaignsQuery;
   const { refetch: refetchPending } = pendingQuery;
@@ -134,7 +127,7 @@ export default function LuckyWheelListScreen() {
 
       {isPremium && campaigns.length === 0 && !loading && !campaignsQuery.isError && (
         <GameEmptyState
-          visual={<GameStage><WheelStage size={ms(150)} segments={demoSegments} /></GameStage>}
+          visual={<Image source={WHEEL_IMAGE} style={styles.emptyImage} contentFit="contain" accessible={false} />}
           title={t('luckyWheel.list.emptyTitle')}
           text={t('luckyWheel.list.intro')}
           steps={[t('luckyWheel.list.how1'), t('luckyWheel.list.how2'), t('luckyWheel.list.how3')]}
@@ -168,7 +161,6 @@ export default function LuckyWheelListScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <ScreenHeader
         title={t('luckyWheel.list.title')}
-        onBack={() => (router.canGoBack() ? router.back() : router.replace('/games'))}
         right={(
           <DemoHeaderActions id="roue">
             {canManage && campaigns.length > 0 ? <HeaderAddButton label={t('luckyWheel.list.create')} onPress={create} /> : null}
@@ -202,6 +194,7 @@ const styles = StyleSheet.create({
   headerContent: { gap: 14, marginBottom: 10 },
   footer: { marginTop: 14 },
   stretch: { alignSelf: 'stretch' },
-  blockTitle: { fontSize: ms(16), fontFamily: font.semibold, marginTop: 4 },
+  emptyImage: { width: 104, height: 104 },
+  blockTitle: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.3, marginTop: 4 },
   hint: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
 });

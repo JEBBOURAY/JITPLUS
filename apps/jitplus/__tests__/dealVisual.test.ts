@@ -25,8 +25,10 @@ describe('dealBadgeLabel', () => {
 describe('dealTimeLeftLabel', () => {
   const now = new Date('2025-06-10T10:00:00Z');
   it('shows days, hours or minutes, urgent under 24 h', () => {
-    expect(dealTimeLeftLabel('2025-06-13T11:00:00Z', t, now)).toEqual({ text: 'deals.time.days:{"count":3}', urgent: false, ended: false });
-    expect(dealTimeLeftLabel('2025-06-10T15:30:00Z', t, now)).toEqual({ text: 'deals.time.hours:{"count":5}', urgent: true, ended: false });
+    // 2 to 10 use the "Few" key (Darija plural noun), other counts the plain one.
+    expect(dealTimeLeftLabel('2025-06-13T11:00:00Z', t, now)).toEqual({ text: 'deals.time.daysFew:{"count":3}', urgent: false, ended: false });
+    expect(dealTimeLeftLabel('2025-06-25T11:00:00Z', t, now)).toEqual({ text: 'deals.time.days:{"count":15}', urgent: false, ended: false });
+    expect(dealTimeLeftLabel('2025-06-10T15:30:00Z', t, now)).toEqual({ text: 'deals.time.hoursFew:{"count":5}', urgent: true, ended: false });
     expect(dealTimeLeftLabel('2025-06-10T10:00:20Z', t, now)).toEqual({ text: 'deals.time.minutes:{"count":1}', urgent: true, ended: false });
   });
 

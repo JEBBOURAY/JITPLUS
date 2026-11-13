@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/stores/authStore';
-import { useClients, useNotificationHistory, useRewards, useTransactions } from '@/hooks/useQueryHooks';
+import { useHasClients, useHasSentNotification, useRewards, useTransactions } from '@/hooks/useQueryHooks';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { sectionDone } from '@/components/stores/brand';
 
@@ -58,7 +58,7 @@ function isStepId(v: unknown): v is GuideStepId {
 }
 
 /**
- * Progress of the "Maîtrisez JitPlus" guide, detected from the merchant's real
+ * Progress of the "Guide de départ", detected from the merchant's real
  * data. Queries only run while `active`, and stop for good once every step is
  * saved as done.
  */
@@ -86,13 +86,14 @@ export function useGuideProgress(active: boolean): GuideProgressState {
   const ownerEnabled = enabled && !isTeamMember;
 
   const rewardsQuery = useRewards(ownerEnabled);
-  const clientsQuery = useClients(enabled);
+  // One-row probes: the guide only needs to know whether a client and a sent message exist.
+  const clientsQuery = useHasClients(enabled);
   const transactionsQuery = useTransactions(enabled);
-  const notificationsQuery = useNotificationHistory(ownerEnabled);
+  const notificationsQuery = useHasSentNotification(ownerEnabled);
   const rewards = rewardsQuery.data;
-  const clients = clientsQuery.data;
+  const hasClients = clientsQuery.data ?? false;
   const transactions = transactionsQuery.data;
-  const notifications = notificationsQuery.data;
+  const hasSentNotification = notificationsQuery.data ?? false;
   const liveFetched =
     (!ownerEnabled || (rewardsQuery.isFetched && notificationsQuery.isFetched)) &&
     clientsQuery.isFetched &&
@@ -126,12 +127,12 @@ export function useGuideProgress(active: boolean): GuideProgressState {
       logo: !!merchant?.logoUrl,
       // Same rule as the "Ma boutique" hub so both screens always agree.
       shop: !!merchant && sectionDone('appearance', merchant, []),
-      invite: (clients?.length ?? 0) > 0 || txs.length > 0,
+      invite: hasClients || txs.length > 0,
       scan: txs.some((tx) => tx.type === 'EARN_STAMPS'),
       reward: txs.some((tx) => tx.type === 'REDEEM_REWARD' && tx.status !== 'CANCELLED'),
-      message: (notifications?.length ?? 0) > 0,
+      message: hasSentNotification,
     };
-  }, [rewards, clients, transactions, notifications, merchant]);
+  }, [rewards, hasClients, transactions, hasSentNotification, merchant]);
 
   // Persist newly detected steps; a done step never goes back to "to do".
   const written = useRef<{ key: string | null; ids: ReadonlySet<GuideStepId> }>({ key: null, ids: new Set() });

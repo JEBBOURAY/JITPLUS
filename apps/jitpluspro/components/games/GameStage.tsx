@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   },
   dimmed: { opacity: 0.55 },
   gold: { height: ms(52), alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
-  goldText: { color: GAME_GOLD.ink, fontSize: ms(16), fontFamily: font.bold, letterSpacing: 0.2 },
+  goldText: { color: GAME_GOLD.ink, fontSize: ms(16), fontFamily: font.semibold, letterSpacing: 0.2 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',

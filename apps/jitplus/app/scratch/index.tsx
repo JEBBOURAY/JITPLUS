@@ -8,9 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import {
-  ChevronLeft, ChevronRight, Gift, History, Info, RefreshCw, X,
-} from 'lucide-react-native';
+import { Gift, Info, RefreshCw } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
@@ -18,6 +16,7 @@ import { formatDate } from '@/utils/date';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { useScratchCards } from '@/hooks/useScratchHooks';
 import { splitScratchCards } from '@/utils/scratchHistory';
+import { GameHeader, GameStateCard } from '@/components/GameStage';
 import MerchantLogo from '@/components/MerchantLogo';
 import ScratchHistory from '@/components/scratch/ScratchHistory';
 import { ScratchCardCover, ScratchCardFace } from '@jitplus/shared/src/scratch/ScratchCardFace';
@@ -51,11 +50,12 @@ export default function ScratchHubScreen() {
   }, [phase]);
 
   const goBack = useCallback(() => { router.back(); }, [router]);
+  const showMain = useCallback(() => setPhase('main'), []);
+  const showHistory = useCallback(() => setPhase('history'), []);
   const openCard = useCallback((card: ScratchCardDto) => {
     router.push({ pathname: '/scratch/[id]', params: { id: card.id } });
   }, [router]);
 
-  const BackIcon = isRTL ? ChevronRight : ChevronLeft;
   const previewW = Math.min(screenW - wp(64), 340);
 
   const renderMain = () => {
@@ -64,19 +64,17 @@ export default function ScratchHubScreen() {
     }
     if (isError && !cards.length) {
       return (
-        <View style={styles.stateCard}>
-          <Text style={[styles.stateTitle, { fontFamily: fonts.bold }]}>{t('scratch.hub.loadError')}</Text>
-          <TouchableOpacity onPress={() => { void refetch(); }} activeOpacity={0.8} style={styles.ghostBtn} accessibilityRole="button">
-            <RefreshCw size={ms(16)} color="#fff" strokeWidth={2} />
-            <Text style={[styles.ghostBtnText, { fontFamily: fonts.semibold }]}>{t('common.retry')}</Text>
-          </TouchableOpacity>
-        </View>
+        <GameStateCard
+          title={t('scratch.hub.loadError')}
+          action={{ label: t('common.retry'), onPress: () => { void refetch(); }, Icon: RefreshCw }}
+          fonts={fonts}
+        />
       );
     }
 
     if (pending.length > 0) {
       return (
-        <Animated.View entering={FadeInDown.springify().damping(16)} style={styles.pendingBlock}>
+        <Animated.View entering={FadeInDown.duration(200)} style={styles.pendingBlock}>
           <Text style={[styles.section, { fontFamily: fonts.semibold }]}>
             {t('scratch.hub.toScratch', { count: pending.length })}
           </Text>
@@ -111,7 +109,7 @@ export default function ScratchHubScreen() {
     }
 
     return (
-      <Animated.View entering={FadeInDown.springify().damping(16)} style={styles.emptyBlock}>
+      <Animated.View entering={FadeInDown.duration(200)} style={styles.emptyBlock}>
         <View style={[styles.preview, { width: previewW }]} pointerEvents="none" importantForAccessibility="no-hide-descendants">
           <ScratchCardFace
             width={previewW}
@@ -123,21 +121,15 @@ export default function ScratchHubScreen() {
           <ScratchCardCover width={previewW} label={t('scratch.card.scratchHere')} />
         </View>
 
-        <View style={styles.stateCard}>
-          <View style={styles.stateIcon}>
-            <Gift size={ms(26)} color={palette.goldLight} strokeWidth={1.8} />
-          </View>
-          <Text style={[styles.stateTitle, { fontFamily: fonts.bold }]}>{t('scratch.hub.emptyTitle')}</Text>
-          <Text style={[styles.stateHint, { fontFamily: fonts.regular }]}>{t('scratch.hub.emptyHint')}</Text>
-          {toUse.length > 0 && (
-            <TouchableOpacity onPress={() => setPhase('history')} activeOpacity={0.8} style={styles.ghostBtn} accessibilityRole="button">
-              <Text style={[styles.ghostBtnText, { fontFamily: fonts.semibold }]}>{t('scratch.hub.viewPrizes')}</Text>
-              <View style={styles.badge}>
-                <Text style={[styles.badgeText, { fontFamily: fonts.bold }]}>{toUse.length}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
+        <GameStateCard
+          Icon={Gift}
+          title={t('scratch.hub.emptyTitle')}
+          hint={t('scratch.hub.emptyHint')}
+          action={toUse.length > 0
+            ? { label: t('scratch.hub.viewPrizes'), onPress: () => setPhase('history'), badge: toUse.length }
+            : undefined}
+          fonts={fonts}
+        />
       </Animated.View>
     );
   };
@@ -145,44 +137,20 @@ export default function ScratchHubScreen() {
   return (
     <LinearGradient colors={BG_GRADIENT} style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <View style={[styles.header, { paddingTop: insets.top + hp(8) }]}>
-        <TouchableOpacity
-          onPress={phase === 'history' ? () => setPhase('main') : goBack}
-          activeOpacity={0.7}
-          style={styles.iconBtn}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={phase === 'history' ? t('common.back') : t('common.close')}
-        >
-          {phase === 'history'
-            ? <BackIcon size={ms(22)} color="#fff" strokeWidth={2} />
-            : <X size={ms(20)} color="#fff" strokeWidth={2} />}
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { fontFamily: fonts.bold }]} numberOfLines={1} accessibilityRole="header">
-          {phase === 'history' ? t('scratch.hub.history') : t('home.scratchTileTitle')}
-        </Text>
-        {phase === 'main' ? (
-          <TouchableOpacity
-            onPress={() => setPhase('history')}
-            activeOpacity={0.7}
-            style={styles.iconBtn}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={toUse.length > 0
-              ? `${t('scratch.hub.history')}, ${t('scratch.hub.toUse', { count: toUse.length })}`
-              : t('scratch.hub.history')}
-          >
-            <History size={ms(20)} color="#fff" strokeWidth={2} />
-            {toUse.length > 0 && (
-              <View style={styles.headerBadge}>
-                <Text style={[styles.headerBadgeText, { fontFamily: fonts.bold }]}>{toUse.length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.iconBtnSpacer} />
-        )}
-      </View>
+      <GameHeader
+        inHistory={phase === 'history'}
+        title={phase === 'history' ? t('scratch.hub.history') : t('home.scratchTileTitle')}
+        historyLabel={t('scratch.hub.history')}
+        badgeLabel={t('scratch.hub.toUse', { count: toUse.length })}
+        badgeCount={toUse.length}
+        isRTL={isRTL}
+        topInset={insets.top}
+        fonts={fonts}
+        t={t}
+        onClose={goBack}
+        onBack={showMain}
+        onOpenHistory={showHistory}
+      />
 
       {phase === 'history' ? (
         <Animated.View key="history" entering={FadeIn.duration(220)} style={styles.body}>
@@ -218,51 +186,14 @@ export default function ScratchHubScreen() {
   );
 }
 
-const ICON_BTN = ms(40);
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: wp(16),
-    paddingBottom: hp(8),
-  },
-  headerTitle: { flex: 1, color: '#fff', fontSize: FS.lg, textAlign: 'center', marginHorizontal: ms(8) },
-  iconBtn: {
-    width: ICON_BTN,
-    height: ICON_BTN,
-    borderRadius: ICON_BTN / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  iconBtnSpacer: { width: ICON_BTN, height: ICON_BTN },
-  headerBadge: {
-    position: 'absolute',
-    top: -ms(3),
-    right: -ms(3),
-    minWidth: ms(18),
-    height: ms(18),
-    borderRadius: ms(9),
-    paddingHorizontal: ms(4),
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: palette.goldLight,
-    borderWidth: 2,
-    borderColor: '#1E0D40',
-  },
-  headerBadgeText: { color: '#3B1D06', fontSize: ms(10) },
-
   body: { flex: 1 },
   scroll: { paddingTop: hp(8) },
 
   pendingBlock: { alignSelf: 'stretch' },
   section: {
-    color: 'rgba(255,255,255,0.9)', fontSize: FS.sm, letterSpacing: 0.4, textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.9)', fontSize: FS.sm,
     marginTop: hp(10), marginBottom: hp(4), paddingHorizontal: wp(20),
   },
   group: {
@@ -288,54 +219,8 @@ const styles = StyleSheet.create({
   emptyBlock: { alignItems: 'center', paddingHorizontal: wp(24), paddingTop: hp(16), gap: hp(22) },
   preview: { opacity: 0.45, transform: [{ rotate: '-4deg' }] },
 
-  stateCard: {
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    gap: hp(8),
-    paddingVertical: hp(18),
-    paddingHorizontal: wp(20),
-    borderRadius: radius.xl,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.09)',
-  },
-  stateIcon: {
-    width: ms(52),
-    height: ms(52),
-    borderRadius: ms(26),
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(251,191,36,0.12)',
-    marginBottom: hp(2),
-  },
-  stateTitle: { color: '#fff', fontSize: FS.lg, textAlign: 'center' },
-  stateHint: { color: 'rgba(255,255,255,0.6)', fontSize: FS.sm, textAlign: 'center', lineHeight: ms(20) },
-  ghostBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: ms(8),
-    marginTop: hp(6),
-    paddingHorizontal: ms(16),
-    height: ms(42),
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-  },
-  ghostBtnText: { color: '#fff', fontSize: FS.sm },
-  badge: {
-    minWidth: ms(20),
-    height: ms(20),
-    borderRadius: ms(10),
-    paddingHorizontal: ms(5),
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: palette.goldLight,
-  },
-  badgeText: { color: '#3B1D06', fontSize: FS.xs },
-
   legal: { alignSelf: 'stretch', paddingHorizontal: wp(24), marginTop: hp(26), gap: hp(6) },
   legalHeader: { flexDirection: 'row', alignItems: 'center', gap: ms(6) },
-  legalTitle: { color: 'rgba(255,255,255,0.7)', fontSize: FS.xs, textTransform: 'uppercase', letterSpacing: 0.8 },
+  legalTitle: { color: 'rgba(255,255,255,0.7)', fontSize: FS.xs },
   legalText: { color: 'rgba(255,255,255,0.45)', fontSize: ms(11), lineHeight: ms(16) },
 });

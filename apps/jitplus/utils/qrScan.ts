@@ -42,7 +42,8 @@ export function detectBalanceScan(
   const before = previous.get(changed.merchantId) ?? 0;
   const after = changed.balance ?? 0;
   return {
-    clientId: changed.clientId,
+    // The wallet endpoint does not return it, and nothing downstream reads it.
+    clientId: '',
     merchantId: changed.merchantId,
     merchantName: changed.merchant?.nomBoutique ?? '',
     stamps: Math.abs(after - before),

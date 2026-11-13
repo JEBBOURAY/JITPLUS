@@ -18,7 +18,7 @@ import { LocationField } from './LocationField';
 import { ReferralField } from './ReferralField';
 import { formStyles, HIT_SLOP } from './formStyles';
 
-export type StoreField = 'name' | 'phone' | 'terms';
+export type StoreField = 'name' | 'category' | 'phone' | 'location';
 
 const STORE_NAME_MAX = 100;
 
@@ -29,6 +29,7 @@ interface Props {
 
   categorie: MerchantCategory | '';
   onOpenCategory: () => void;
+  showCategoryError: boolean;
 
   phoneNumber: string;
   onPhoneChange: (value: string) => void;
@@ -37,15 +38,15 @@ interface Props {
   phoneChecking: boolean;
   phoneTaken: boolean;
   showPhoneRequired: boolean;
+  showPhoneInvalid: boolean;
   onLoginInstead: () => void;
 
   location: StoreLocationState;
+  isEcommerce: boolean;
+  onToggleEcommerce: () => void;
+  showLocationError: boolean;
+  mapOpenRequest: number;
   referral: ReferralCodeState;
-
-  termsAccepted: boolean;
-  onToggleTerms: () => void;
-  onOpenTerms: () => void;
-  showTermsError: boolean;
 
   nameRef: RefObject<TextInput | null>;
   phoneRef: RefObject<TextInput | null>;
@@ -53,9 +54,9 @@ interface Props {
   onFieldLayout: (field: StoreField, e: LayoutChangeEvent) => void;
 }
 
-/** Step 2: the store (name, category, phone, position, referral, terms). */
+/** Step 2: the store (name, category, phone, position, referral). */
 export function StoreStep({
-  nomCommerce, onNameChange, showNameError, categorie, onOpenCategory, phoneNumber, onPhoneChange, onPhoneBlur, defaultCountry, phoneChecking, phoneTaken, showPhoneRequired, onLoginInstead, location, referral, termsAccepted, onToggleTerms, onOpenTerms, showTermsError, nameRef, phoneRef, isLoading, onFieldLayout,
+  nomCommerce, onNameChange, showNameError, categorie, onOpenCategory, showCategoryError, phoneNumber, onPhoneChange, onPhoneBlur, defaultCountry, phoneChecking, phoneTaken, showPhoneRequired, showPhoneInvalid, onLoginInstead, location, isEcommerce, onToggleEcommerce, showLocationError, mapOpenRequest, referral, nameRef, phoneRef, isLoading, onFieldLayout,
 }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
@@ -98,10 +99,9 @@ export function StoreStep({
         {showNameError && <FieldError>{t('registerExtra.nameRequired')}</FieldError>}
       </View>
 
-      <View style={formStyles.field}>
+      <View style={formStyles.field} onLayout={(e) => onFieldLayout('category', e)}>
         <Text style={[formStyles.label, { color: theme.text, textAlign: dir.textAlign }]}>
-          {t('register.categoryLabel')}{' '}
-          <Text style={[formStyles.optionalTag, { color: theme.textMuted }]}>({t('registerExtra.optional')})</Text>
+          {t('register.categoryLabel')} *
         </Text>
         <TouchableOpacity
           activeOpacity={0.8}
@@ -112,11 +112,12 @@ export function StoreStep({
             {
               flexDirection: dir.row,
               backgroundColor: theme.bgInput,
-              borderColor: categorie ? palette.charbon : theme.border,
-              borderWidth: categorie ? 2 : 1.5,
+              borderColor: categorie ? palette.charbon : showCategoryError ? theme.danger : theme.border,
+              borderWidth: categorie || showCategoryError ? 2 : 1.5,
             },
           ]}
           accessibilityRole="button"
+          accessibilityLabel={categorie ? getCategoryLabel(categorie) : t('register.categoryPlaceholder')}
         >
           {categorie ? (
             <MerchantCategoryIcon category={categorie} size={ms(20)} />
@@ -131,6 +132,7 @@ export function StoreStep({
           </Text>
           <ChevronDown size={ms(18)} color={theme.textMuted} strokeWidth={icon.stroke} />
         </TouchableOpacity>
+        {showCategoryError && <FieldError>{t('registerExtra.categoryRequired')}</FieldError>}
       </View>
 
       <View style={formStyles.field} onLayout={(e) => onFieldLayout('phone', e)}>
@@ -152,6 +154,7 @@ export function StoreStep({
           returnKeyType="done"
         />
         {showPhoneRequired && <FieldError>{t('registerExtra.phoneRequired')}</FieldError>}
+        {showPhoneInvalid && <FieldError>{t('registerExtra.phoneInvalid')}</FieldError>}
         {phoneTaken && (
           <View style={[styles.takenRow, { flexDirection: dir.row }]}>
             <Text style={[formStyles.takenText, { color: theme.danger, textAlign: dir.textAlign }]}>{t('registerExtra.phoneAlreadyUsed')}</Text>
@@ -162,50 +165,23 @@ export function StoreStep({
         )}
       </View>
 
-      <LocationField location={location} disabled={isLoading} />
+      <View onLayout={(e) => onFieldLayout('location', e)}>
+        <LocationField
+          location={location}
+          disabled={isLoading}
+          isEcommerce={isEcommerce}
+          onToggleEcommerce={onToggleEcommerce}
+          showError={showLocationError}
+          openRequest={mapOpenRequest}
+        />
+      </View>
 
       <ReferralField referral={referral} disabled={isLoading} />
-
-      <View onLayout={(e) => onFieldLayout('terms', e)}>
-        <TouchableOpacity
-          style={[styles.termsRow, { flexDirection: dir.row }]}
-          onPress={onToggleTerms}
-          activeOpacity={0.7}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: termsAccepted }}
-        >
-          <View
-            style={[
-              styles.checkbox,
-              dir.isRTL ? styles.checkboxRtl : styles.checkboxLtr,
-              {
-                borderColor: termsAccepted ? theme.primary : showTermsError ? theme.danger : theme.border,
-                backgroundColor: termsAccepted ? theme.primary : 'transparent',
-              },
-            ]}
-          >
-            {termsAccepted && <Check size={ms(14)} color="#fff" strokeWidth={icon.strokeSmall} />}
-          </View>
-          <Text style={[styles.termsText, { color: theme.textSecondary, textAlign: dir.textAlign }]}>
-            {t('registerExtra.termsText')}{' '}
-            <Text style={[styles.termsLink, { color: theme.primary }]} onPress={onOpenTerms}>
-              {t('registerExtra.termsLink')}
-            </Text>
-          </Text>
-        </TouchableOpacity>
-        {showTermsError && <FieldError>{t('registerExtra.termsRequired')}</FieldError>}
-      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
   takenRow: { alignItems: 'center', gap: wp(8), marginTop: hp(6) },
-  takenLink: { fontSize: fontSize.xs, fontFamily: font.bold, textDecorationLine: 'underline' },
-  termsRow: { alignItems: 'center', marginTop: hp(2), marginBottom: hp(1), paddingHorizontal: wp(1) },
-  checkbox: { width: ms(22), height: ms(22), borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  checkboxLtr: { marginRight: ms(10) },
-  checkboxRtl: { marginLeft: ms(10) },
-  termsText: { flex: 1, fontSize: fontSize.sm, lineHeight: ms(20), fontFamily: font.regular },
-  termsLink: { fontFamily: font.semibold },
+  takenLink: { fontSize: fontSize.xs, fontFamily: font.semibold, textDecorationLine: 'underline' },
 });

@@ -21,8 +21,13 @@ export function getProfileCompletion(client: Client | null, t: Translate): Profi
   return { percent, missingLabels };
 }
 
+/** First character of a name, whole: `charAt(0)` would split an emoji into half a surrogate pair ("�"). */
+export function firstChar(s: string | null | undefined): string {
+  return Array.from(s?.trim() ?? '')[0] ?? '';
+}
+
 export function getInitials(client: Client | null): string {
   if (!client) return '?';
-  const initials = `${client.prenom?.trim().charAt(0) ?? ''}${client.nom?.trim().charAt(0) ?? ''}`;
+  const initials = `${firstChar(client.prenom)}${firstChar(client.nom)}`;
   return initials ? initials.toUpperCase() : '?';
 }

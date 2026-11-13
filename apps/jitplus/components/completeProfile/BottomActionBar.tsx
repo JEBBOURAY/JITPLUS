@@ -1,11 +1,14 @@
 import { memo } from 'react';
-import { View, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, TouchableOpacity, ActivityIndicator, I18nManager } from 'react-native';
 import { ArrowLeft, ArrowRight } from 'lucide-react-native';
 import { Text } from '@/components/AppText';
+import { palette } from '@/contexts/ThemeContext';
 import type { ThemeColors } from '@/contexts/ThemeContext';
-import { s, ACTIVE_COLORS, DISABLED_COLORS, GRAD_START, GRAD_END_HORIZ, ICON_18, ICON_20 } from './styles';
+import { s, DISABLED_COLORS, ICON_18, ICON_20 } from './styles';
 import type { TranslateFn } from './types';
+
+// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
+const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 interface BottomActionBarProps {
   theme: ThemeColors;
@@ -21,12 +24,12 @@ interface BottomActionBarProps {
 export const BottomActionBar = memo(function BottomActionBar({
   theme, t, step, isLoading, canProceed, hasDate, onBack, onPrimary,
 }: BottomActionBarProps) {
-  const btnColors = canProceed ? ACTIVE_COLORS : DISABLED_COLORS;
+  const btnColor = canProceed ? palette.violet : DISABLED_COLORS[0];
   return (
     <View style={[s.bottomBar, { borderTopColor: theme.border }]}>
       {step > 0 ? (
         <TouchableOpacity onPress={onBack} style={[s.backBtn, { borderColor: theme.border }]} activeOpacity={0.7}>
-          <ArrowLeft size={ICON_20} color={theme.text} strokeWidth={2} />
+          <ArrowLeft size={ICON_20} color={theme.text} strokeWidth={2} style={DIR_FLIP} />
         </TouchableOpacity>
       ) : (
         <View style={s.backBtnPlaceholder} />
@@ -38,7 +41,7 @@ export const BottomActionBar = memo(function BottomActionBar({
         activeOpacity={0.85}
         style={{ flex: 1 }}
       >
-        <LinearGradient colors={btnColors} start={GRAD_START} end={GRAD_END_HORIZ} style={s.mainBtn}>
+        <View style={[s.mainBtn, { backgroundColor: btnColor }]}>
           {isLoading ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -50,10 +53,10 @@ export const BottomActionBar = memo(function BottomActionBar({
                     ? t('completeProfile.createAccount')
                     : t('completeProfile.skipAndFinish')}
               </Text>
-              <ArrowRight size={ICON_18} color={canProceed ? '#fff' : 'rgba(255,255,255,0.5)'} />
+              <ArrowRight size={ICON_18} color={canProceed ? '#fff' : 'rgba(255,255,255,0.5)'} style={DIR_FLIP} />
             </>
           )}
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
     </View>
   );

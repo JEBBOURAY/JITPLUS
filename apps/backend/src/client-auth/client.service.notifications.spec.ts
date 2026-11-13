@@ -89,7 +89,8 @@ describe('ClientService — notification feed', () => {
       ]);
       // Prisma returns rows in arbitrary order: the response must follow the SQL page order.
       notificationRepo.findMany.mockResolvedValue([
-        { id: 'n-old', title: 'B', body: 'b', createdAt: d2, audience: DEAL_DIGEST_AUDIENCE, merchant: null, clientStatuses: [] },
+        { id: 'n-old', title: 'B', body: 'b', createdAt: d2, audience: DEAL_DIGEST_AUDIENCE, merchant: null, clientStatuses: [],
+          data: { event: 'deals_digest', action: 'open_deals' }, isBroadcast: false },
         {
           id: 'n-new', title: 'A', body: 'a', createdAt: d1, audience: null,
           merchant: { id: 'm1', nom: 'Café', categorie: 'CAFE', logoUrl: 'https://x/logo.png' },
@@ -114,10 +115,13 @@ describe('ClientService — notification feed', () => {
       expect(res.notifications[0]).toEqual({
         id: 'n-new', title: 'A', body: 'a', type: 'promo',
         merchantName: 'Café', merchantCategory: 'CAFE', merchantLogoUrl: 'https://x/logo.png',
+        // Stored before deep links existed: falls back to its merchant.
+        link: { action: 'open_card', merchantId: 'm1' },
         isRead: true, readAt: d1, createdAt: d1,
       });
       expect(res.notifications[1]).toMatchObject({
         type: 'deals_digest', merchantName: null, merchantLogoUrl: EMAIL_LOGO_JITPLUS, isRead: false, readAt: null,
+        link: { event: 'deals_digest', action: 'open_deals' },
       });
       expect(res.pagination).toEqual({ page: 2, limit: 10, total: 12, totalPages: 2 });
     });

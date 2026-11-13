@@ -5,7 +5,7 @@ import { Info } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { hp, ms, wp, fontSize as FS } from '@/utils/responsive';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
   fonts: AppFonts;
@@ -34,7 +34,7 @@ export default React.memo(function WheelLegalNotice({ fonts, t, onOpenRules }: P
 const styles = StyleSheet.create({
   legal: { alignSelf: 'stretch', paddingHorizontal: wp(24), marginTop: hp(22), gap: hp(6) },
   legalHeader: { flexDirection: 'row', alignItems: 'center', gap: ms(6), marginBottom: hp(2) },
-  legalTitle: { color: 'rgba(255,255,255,0.7)', fontSize: FS.xs, textTransform: 'uppercase', letterSpacing: 0.8 },
+  legalTitle: { color: 'rgba(255,255,255,0.7)', fontSize: FS.xs },
   legalText: { color: 'rgba(255,255,255,0.45)', fontSize: ms(11), lineHeight: ms(16) },
   rulesBtn: { alignSelf: 'flex-start', marginTop: hp(4) },
   rulesText: { color: palette.goldLight, fontSize: FS.xs, textDecorationLine: 'underline' },

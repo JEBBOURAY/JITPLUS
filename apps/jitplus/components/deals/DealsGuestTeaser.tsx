@@ -1,11 +1,10 @@
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BadgePercent } from 'lucide-react-native';
 import { pluralKey } from '@jitplus/shared';
 import { Text } from '@/components/AppText';
-import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { resolveImageUrl } from '@/utils/imageUrl';
@@ -57,9 +56,9 @@ export default function DealsGuestTeaser() {
         accessibilityRole="button"
         accessibilityLabel={t('welcome.createAccount')}
       >
-        <LinearGradient colors={[brandGradient[0], brandGradient[1]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.gradient}>
+        <View style={[styles.gradient, { backgroundColor: palette.violet }]}>
           <Text style={[styles.btnText, { fontFamily: fonts.semibold }]}>{t('welcome.createAccount')}</Text>
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
       <TouchableOpacity
         activeOpacity={0.7}

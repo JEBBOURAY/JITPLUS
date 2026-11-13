@@ -14,7 +14,7 @@ import {
 } from '../../merchant-inbox/merchant-notifier.service';
 import { isEvenWeek, weekTag, mapLimit, MERCHANT_PUSH_CONCURRENCY, cronEnabledOnce } from './cron-utils';
 import { TIP_ACTIONS, TIP_MESSAGES, type TipKey } from './merchant-notif-messages';
-import { type AppLang, pickAppLang } from '../utils/app-lang';
+import { pickAppLang } from '../utils/app-lang';
 import { MS_PER_DAY } from '../constants';
 
 // ── Merchant performance digest messages ────────────────────────────────
@@ -83,7 +83,6 @@ const MESSAGES = {
   },
 } as const;
 
-type Lang = AppLang;
 const lang = pickAppLang;
 
 /** What a merchant already uses, for picking the tip of the week. */

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, Animated, Easing, AccessibilityInfo, type StyleProp, type TextStyle } from 'react-native';
+import { Text, Animated, AccessibilityInfo, type StyleProp, type TextStyle } from 'react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getIntlLocale } from '@/config/currency';
+import { EASE_OUT } from '@/utils/motion';
 
 interface Props {
   value: number;
@@ -26,10 +27,8 @@ function KpiCounter({ value, ready = true, style }: Props) {
   useEffect(() => {
     if (!ready || countedRef.current) return;
     countedRef.current = true;
-    if (value <= 0) {
-      setDisplay(value);
-      return;
-    }
+    // Nothing to count up to: the sync effect below shows the value.
+    if (value <= 0) return;
     let cancelled = false;
     let listenerId: string | undefined;
     AccessibilityInfo.isReduceMotionEnabled()
@@ -41,11 +40,19 @@ function KpiCounter({ value, ready = true, style }: Props) {
         }
         animatingRef.current = true;
         anim.setValue(0);
-        listenerId = anim.addListener(({ value: v }) => setDisplay(Math.round(v)));
+        // Re-render only when the shown integer changes, not on every frame.
+        let last = -1;
+        listenerId = anim.addListener(({ value: v }) => {
+          const r = Math.round(v);
+          if (r !== last) {
+            last = r;
+            setDisplay(r);
+          }
+        });
         Animated.timing(anim, {
           toValue: value,
-          duration: 1000,
-          easing: Easing.out(Easing.cubic),
+          duration: 600,
+          easing: EASE_OUT,
           useNativeDriver: false,
         }).start(() => {
           animatingRef.current = false;

@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: ms(16),
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   content: {
     padding: 16,
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: ms(14),
     marginBottom: 6,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
   },
   body: {
     fontSize: ms(13),
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   },
   bodySpaced: { marginTop: 8 },
   center: { textAlign: 'center' },
-  strong: { fontFamily: font.bold },
+  strong: { fontFamily: font.semibold },
   link: { fontFamily: font.medium },
   bullet: {
     fontSize: ms(13),

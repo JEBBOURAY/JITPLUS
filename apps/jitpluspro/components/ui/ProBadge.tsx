@@ -1,14 +1,12 @@
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { JitLock } from '@/components/icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { font } from '@/constants/design';
+import { useAuthStore } from '@/stores/authStore';
+import { getPlanStatus } from '@/utils/plan';
 
 const GOLD_FG = '#B45309';
-const GOLD_GRADIENT = [palette.gold, palette.goldDeep] as const;
-const GRADIENT_START = { x: 0, y: 0 };
-const GRADIENT_END = { x: 1, y: 0 };
 
 type Variant = 'gold' | 'premium' | 'primary' | 'goldGradient';
 
@@ -17,7 +15,7 @@ interface Props {
   locked?: boolean;
   /**
    * `premium`: violet badge for the dark premium surfaces. `primary`: theme accent.
-   * `goldGradient`: gold pill for dark cards.
+   * `goldGradient`: solid gold pill for dark cards (name kept for callers).
    */
   variant?: Variant;
   style?: StyleProp<ViewStyle>;
@@ -27,12 +25,12 @@ interface Props {
 export function ProBadge({ locked = false, variant = 'gold', style }: Props) {
   const { t } = useLanguage();
   const theme = useTheme();
+  // Founding members never see the Pro marker: every feature is simply theirs.
+  const hidePlan = useAuthStore((s) => getPlanStatus(s.merchant).hidePlan);
+  if (hidePlan) return null;
   const primary = variant === 'primary';
   return (
     <View style={[styles.badge, BADGE[variant], primary && { backgroundColor: theme.primaryBg }, style]}>
-      {variant === 'goldGradient' && (
-        <LinearGradient colors={GOLD_GRADIENT} start={GRADIENT_START} end={GRADIENT_END} style={StyleSheet.absoluteFill} />
-      )}
       {locked && <JitLock size={10} color={primary ? theme.primary : LOCK_FG[variant]} strokeWidth={2} />}
       <Text style={[styles.label, LABEL[variant], primary && { color: theme.primary }]} maxFontSizeMultiplier={1.3}>
         {t('common.pro')}
@@ -57,13 +55,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.premiumBadgeBorder,
   },
-  clip: { overflow: 'hidden' },
+  goldSolid: { backgroundColor: palette.gold },
   label: { fontSize: 11, fontFamily: font.semibold },
   labelGold: { color: GOLD_FG },
   labelPremium: { color: palette.violetLight },
   labelCharbon: { color: palette.charbon },
 });
 
-const BADGE = { gold: styles.gold, premium: styles.premium, primary: undefined, goldGradient: styles.clip };
+const BADGE = { gold: styles.gold, premium: styles.premium, primary: undefined, goldGradient: styles.goldSolid };
 const LABEL = { gold: styles.labelGold, premium: styles.labelPremium, primary: undefined, goldGradient: styles.labelCharbon };
 const LOCK_FG = { gold: GOLD_FG, premium: palette.violetLight, goldGradient: palette.charbon };

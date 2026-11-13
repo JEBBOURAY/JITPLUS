@@ -31,7 +31,7 @@ export const profileStyles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: hp(12),
   },
-  modalTitle: { fontSize: ms(18), fontWeight: '700', marginBottom: hp(8), textAlign: 'center' },
+  modalTitle: { fontSize: ms(18), fontWeight: '600', marginBottom: hp(8), textAlign: 'center' },
   modalBody: { fontSize: ms(14), textAlign: 'center', lineHeight: ms(20), marginBottom: hp(16) },
   modalInstruction: { fontSize: ms(13), marginBottom: hp(8), textAlign: 'center' },
   modalInput: {
@@ -41,14 +41,14 @@ export const profileStyles = StyleSheet.create({
     paddingHorizontal: ms(14),
     paddingVertical: hp(10),
     fontSize: ms(16),
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'center',
     letterSpacing: 2,
     marginBottom: hp(16),
   },
   modalActions: { flexDirection: 'row', gap: ms(12), width: '100%' },
   modalBtn: { flex: 1, paddingVertical: hp(12), borderRadius: ms(12), alignItems: 'center' },
-  modalBtnText: { fontSize: ms(14), fontWeight: '700' },
+  modalBtnText: { fontSize: ms(14), fontWeight: '600' },
 
   /* ── Language selector ── */
   langModalCard: modalCardBase,
@@ -73,7 +73,7 @@ export const profileStyles = StyleSheet.create({
   otpInput: {
     width: '100%',
     fontSize: FS.xl,
-    fontWeight: '700',
+    fontWeight: '600',
     letterSpacing: ms(8),
     borderWidth: 1.5,
     borderRadius: radius.lg,

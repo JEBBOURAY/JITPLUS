@@ -13,6 +13,7 @@ jest.mock('@/hooks/useQueryHooks', () => ({
 }));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
 jest.mock('@/services/api', () => ({ get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/components/PremiumLockModal', () => () => null);
 jest.mock('@/components/settings/InfoHint', () => () => null);
 

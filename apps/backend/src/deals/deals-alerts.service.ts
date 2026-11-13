@@ -1,3 +1,4 @@
+import { notificationLink } from '../notifications/notification-link';
 import { randomUUID } from 'crypto';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -317,7 +318,7 @@ export class DealsAlertsService {
       let notificationId = notifications.get(key);
       if (!notificationId) {
         const created = await this.prisma.notification.create({
-          data: { title: msg.title, body: msg.body, channel: 'PUSH', audience: DEAL_DIGEST_AUDIENCE, isBroadcast: false },
+          data: { title: msg.title, body: msg.body, channel: 'PUSH', audience: DEAL_DIGEST_AUDIENCE, isBroadcast: false, data: notificationLink(msg.data) },
           select: { id: true },
         });
         notificationId = created.id;

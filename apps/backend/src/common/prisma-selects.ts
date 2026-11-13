@@ -49,6 +49,7 @@ export const MERCHANT_PROFILE_SELECT = {
   planExpiresAt: true,
   planActivatedByAdmin: true,
   trialStartedAt: true,
+  foundingMember: true,
   lastAdminNotifReadAt: true,
   language: true,
   createdAt: true,

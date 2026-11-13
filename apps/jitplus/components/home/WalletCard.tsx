@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, Animated, Easing, I18nManager } from 'react-native';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { View, StyleSheet, I18nManager } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,10 +17,6 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 const MAX_DOT_STAMPS = 20;
 const DIAG_START = { x: 0, y: 0 } as const;
 const DIAG_END = { x: 1, y: 1 } as const;
-const H_START = { x: 0, y: 0 } as const;
-const H_END = { x: 1, y: 0 } as const;
-const SHINE_COLORS = ['rgba(255,255,255,0)', 'rgba(255,255,255,0.30)', 'rgba(255,255,255,0)'] as const;
-const GOLD_GRADIENT = [palette.goldLight, palette.gold] as const;
 const UNAVAILABLE_GRADIENT = ['#64748B', '#334155'] as const;
 /** Fallback mark shown inside a stamp when the merchant has no logo. */
 const STAMP_LOGO = require('@/assets/images/jitpluslogo-app.png');
@@ -43,12 +39,13 @@ interface Props {
   height: number;
   t: (scope: string, options?: Record<string, unknown>) => string;
   locale: string;
+  /** Still passed by the carousel; the pass no longer animates on focus. */
   isActive: boolean;
   reduceMotion: boolean;
 }
 
 /** Full-bleed loyalty "pass" shown in the wallet carousel. */
-export default memo(function WalletCard({ card, width, height, t, locale, isActive, reduceMotion }: Props) {
+export default memo(function WalletCard({ card, width, height, t, locale }: Props) {
   const merchant = card.merchant;
   const isUnavailable = !merchant?.id || !merchant?.nomBoutique;
   const { goal, earned, remaining, isComplete } = getCardProgress(card);
@@ -95,19 +92,6 @@ export default memo(function WalletCard({ card, width, height, t, locale, isActi
   const dotGap = Math.max(4, Math.round(width * 0.018));
   const dotSize = Math.min(ms(26), Math.floor((innerW - dotGap * (firstRow - 1)) / firstRow));
 
-  // ── Light sweep across the pass when it becomes the focused card ──
-  const shine = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!isActive || reduceMotion) return;
-    shine.setValue(0);
-    const anim = Animated.timing(shine, {
-      toValue: 1, duration: 1100, delay: 120, easing: Easing.out(Easing.cubic), useNativeDriver: true,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [isActive, reduceMotion, shine]);
-  const shineX = shine.interpolate({ inputRange: [0, 1], outputRange: [-width * 0.9, width * 1.2] });
-
   const lastVisit = timeAgo(card.updatedAt || card.createdAt, locale);
   const categoryLabel = merchant?.categorie ? t(`categories.${merchant.categorie}`, { defaultValue: '' }) : '';
   const fontBold = getFontFamily(locale, 'bold');
@@ -115,7 +99,7 @@ export default memo(function WalletCard({ card, width, height, t, locale, isActi
   const fontMedium = getFontFamily(locale, 'medium');
 
   return (
-    <View style={[styles.shadow, { width, height, backgroundColor: gradient[1], shadowColor: shade(gradient[1], -0.4) }]}>
+    <View style={[styles.shadow, { width, height, backgroundColor: gradient[1] }]}>
       <View style={[styles.card, isComplete && !isUnavailable && styles.cardReward]}>
         <LinearGradient colors={gradient} start={DIAG_START} end={DIAG_END} style={StyleSheet.absoluteFill} />
         {cardBgUrl && !isUnavailable ? (
@@ -130,12 +114,7 @@ export default memo(function WalletCard({ card, width, height, t, locale, isActi
             />
             <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: c.overlay }]} />
           </>
-        ) : (
-          <>
-            <View pointerEvents="none" style={[styles.orb, styles.orbA, { width: height * 1.1, height: height * 1.1 }]} />
-            <View pointerEvents="none" style={[styles.orb, styles.orbB, { width: height * 0.7, height: height * 0.7 }]} />
-          </>
-        )}
+        ) : null}
 
         <View style={[styles.content, { padding: pad, direction: I18nManager.isRTL ? 'rtl' : 'ltr' }]}>
           {/* Header */}
@@ -155,12 +134,12 @@ export default memo(function WalletCard({ card, width, height, t, locale, isActi
             </View>
             {!isUnavailable && (
               isComplete ? (
-                <LinearGradient colors={GOLD_GRADIENT} start={H_START} end={H_END} style={styles.rewardPill}>
+                <View style={styles.rewardPill}>
                   <Gift size={ms(13)} color="#fff" strokeWidth={2.4} />
                   <Text style={[styles.rewardPillText, { fontFamily: fontBold }]} numberOfLines={1}>
                     {t('home.rewardReadyShort')}
                   </Text>
-                </LinearGradient>
+                </View>
               ) : (
                 <Text style={[styles.count, { color: c.text, fontFamily: fontBold }]}>
                   {earned}
@@ -236,15 +215,6 @@ export default memo(function WalletCard({ card, width, height, t, locale, isActi
             )}
           </View>
         </View>
-
-        {!reduceMotion && (
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.shine, { width: width * 0.45, height: height * 2, top: -height / 2, transform: [{ translateX: shineX }, { rotate: '18deg' }] }]}
-          >
-            <LinearGradient colors={SHINE_COLORS} start={H_START} end={H_END} style={StyleSheet.absoluteFill} />
-          </Animated.View>
-        )}
       </View>
     </View>
   );
@@ -253,13 +223,10 @@ export default memo(function WalletCard({ card, width, height, t, locale, isActi
 const styles = StyleSheet.create({
   shadow: {
     borderRadius: radius['2xl'],
-    shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.35, shadowRadius: 22, elevation: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 2,
   },
   card: { flex: 1, borderRadius: radius['2xl'], overflow: 'hidden' },
   cardReward: { borderWidth: 2, borderColor: palette.goldLight },
-  orb: { position: 'absolute', borderRadius: 999 },
-  orbA: { top: '-45%', right: '-20%', backgroundColor: 'rgba(255,255,255,0.09)' },
-  orbB: { bottom: '-35%', left: '-12%', backgroundColor: 'rgba(255,255,255,0.06)' },
   content: { flex: 1, justifyContent: 'space-between' },
 
   header: { flexDirection: 'row', alignItems: 'center' },
@@ -276,6 +243,7 @@ const styles = StyleSheet.create({
   rewardPill: {
     flexDirection: 'row', alignItems: 'center', gap: wp(5),
     paddingHorizontal: wp(8), paddingVertical: hp(4), borderRadius: 999, maxWidth: '46%',
+    backgroundColor: palette.goldDark,
   },
   rewardPillText: { color: '#fff', fontSize: fontSize.xs, flexShrink: 1 },
 
@@ -296,6 +264,4 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: wp(10) },
   footerProgress: { fontSize: ms(11), flexShrink: 1 },
   footerValue: { fontSize: ms(11) },
-
-  shine: { position: 'absolute', left: 0 },
 });

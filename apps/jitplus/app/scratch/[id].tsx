@@ -101,7 +101,6 @@ export default function ScratchScreen() {
         {scratching && <ScratchIntro expiresAt={card.expiresAt} locale={locale} fonts={fonts} t={t} />}
 
         <Animated.View style={[styles.cardWrap, cardStyle]}>
-          <View pointerEvents="none" style={[styles.cardGlow, { width: cardW * 0.85, height: cardH * 0.7, backgroundColor: design.gradient[0] }]} />
           <View style={[styles.cardShadow, { width: cardW, height: cardH }]}>
             <ScratchCardFace
               designId={card.campaign.designId}
@@ -224,22 +223,13 @@ const styles = StyleSheet.create({
   scroll: { alignItems: 'center', paddingTop: hp(10), paddingHorizontal: wp(20) },
 
   cardWrap: { alignItems: 'center', justifyContent: 'center' },
-  cardGlow: {
-    position: 'absolute',
-    borderRadius: 999,
-    opacity: 0.45,
-    shadowColor: palette.violetVivid,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 50,
-  },
   cardShadow: {
     borderRadius: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.45,
-    shadowRadius: 22,
-    elevation: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
 
   scratchHelp: { alignItems: 'center', gap: hp(12), marginTop: hp(18) },

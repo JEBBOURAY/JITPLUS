@@ -2,7 +2,6 @@ import { moneyFormatter } from '@jitplus/shared/src/currency';
 import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { CalendarClock, Check, QrCode, RefreshCw, Store } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
@@ -12,7 +11,7 @@ import { describeCouponConditions } from '@jitplus/shared/src/scratch';
 import type { CouponDto } from '@jitplus/shared/src/scratch';
 import { scratchSharedStyles as shared } from './scratchStyles';
 
-interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
+import type { AppFonts } from '@/utils/fonts';
 
 interface Props {
   coupon: CouponDto | null;
@@ -66,7 +65,7 @@ export default React.memo(function ScratchResultPanel({
   const expiryLine = coupon.expiresAt ? conditionLines.length - 2 : -1;
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : FadeInDown.delay(scratchable ? 250 : 0).springify().damping(16)}
+      entering={reduceMotion ? undefined : FadeInDown.delay(scratchable ? 250 : 0).duration(220)}
       style={styles.panel}
       accessibilityLiveRegion="polite"
     >
@@ -120,14 +119,9 @@ export default React.memo(function ScratchResultPanel({
       )}
 
       <TouchableOpacity onPress={onDone} activeOpacity={0.85} style={styles.primaryWrap} accessibilityRole="button">
-        <LinearGradient
-          colors={[palette.goldSoft, palette.goldLight, palette.goldDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={styles.primary}
-        >
+        <View style={[styles.primary, { backgroundColor: palette.goldLight }]}>
           <Text style={[styles.primaryText, { fontFamily: fonts.bold }]}>{t('scratch.screen.done')}</Text>
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
       {active && (
         <TouchableOpacity onPress={onOpenMyCard} activeOpacity={0.7} style={styles.secondary} accessibilityRole="button">
@@ -152,7 +146,7 @@ const styles = StyleSheet.create({
   },
   revealingRow: { flexDirection: 'row', alignItems: 'center', gap: ms(10), paddingVertical: hp(6) },
   panelText: { color: 'rgba(255,255,255,0.8)', fontSize: FS.sm, textAlign: 'center' },
-  kicker: { color: palette.goldLight, fontSize: FS.xs, textTransform: 'uppercase', letterSpacing: 1.2 },
+  kicker: { color: palette.goldLight, fontSize: FS.xs },
   rewardTitle: { color: '#fff', fontSize: FS['2xl'], textAlign: 'center', letterSpacing: -0.4, marginTop: hp(2) },
   rewardDetail: { color: 'rgba(255,255,255,0.7)', fontSize: FS.sm, textAlign: 'center' },
 
@@ -181,8 +175,6 @@ const styles = StyleSheet.create({
   conditionsTitle: {
     color: 'rgba(255,255,255,0.55)',
     fontSize: FS.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
     marginBottom: hp(2),
   },
   conditionRow: { flexDirection: 'row', alignItems: 'center', gap: ms(8) },
@@ -202,11 +194,6 @@ const styles = StyleSheet.create({
     marginTop: hp(18),
     borderRadius: radius.lg,
     overflow: 'hidden',
-    shadowColor: palette.gold,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    elevation: 6,
   },
   primary: { height: ms(52), alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg },
   primaryText: { color: '#3B1D06', fontSize: FS.md },

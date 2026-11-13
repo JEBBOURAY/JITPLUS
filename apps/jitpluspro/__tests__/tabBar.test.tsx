@@ -12,10 +12,20 @@ jest.mock('@/contexts/ThemeContext', () => ({
 jest.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (key: string) => key }),
 }));
-jest.mock('@/components/GuidedTour', () => ({ useTourTarget: () => null }));
 jest.mock('@/components/WhatsAppLogo', () => () => null);
+const mockPush = jest.fn();
+let mockPremium = true;
+jest.mock('@/stores/authStore', () => ({ useAuthStore: (sel: (s: { merchant: null }) => unknown) => sel({ merchant: null }) }));
+jest.mock('@/hooks/usePlanStatus', () => ({ usePlanStatus: () => ({ isPremium: mockPremium }) }));
+jest.mock('@/components/PremiumLockModal', () => {
+  const { Text } = jest.requireActual('react-native');
+  return function MockPremiumLockModal({ visible, titleKey }: { visible: boolean; titleKey: string }) {
+    return visible ? <Text>{titleKey}</Text> : null;
+  };
+});
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
-const routes = ['index', 'clients', 'scan', 'messages', 'team'].map((name) => ({ name, key: name }));
+const routes = ['index', 'clients', 'transactions'].map((name) => ({ name, key: name }));
 const makeProps = (index = 0) => ({
   state: { index, routes },
   emitter: { emit: jest.fn(() => ({ defaultPrevented: false })) },
@@ -23,21 +33,37 @@ const makeProps = (index = 0) => ({
 } as unknown as BottomTabBarProps);
 
 describe('tab navigation', () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+    mockPremium = true;
+  });
+
   it('keeps clients and scanning reachable after removing animated decoration', () => {
     const props = makeProps();
     const { getByRole } = render(<CustomTabBar {...props} />);
     fireEvent.press(getByRole('button', { name: 'tabs.clients' }));
     expect(props.navigateToTab).toHaveBeenCalledWith('clients');
     fireEvent.press(getByRole('button', { name: 'tabs.scan' }));
-    expect(props.navigateToTab).toHaveBeenCalledWith('scan');
+    expect(mockPush).toHaveBeenCalledWith('/scan-qr');
   });
 
-  it('exposes the team tab in place of help', () => {
+  it('switches to transactions as a tab and opens the dashboard as a full screen', () => {
     const props = makeProps();
-    const { getByRole, queryByRole } = render(<CustomTabBar {...props} />);
-    fireEvent.press(getByRole('button', { name: 'tabs.team' }));
-    expect(props.emitter.emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'tabPress', target: 'team' }));
-    expect(queryByRole('button', { name: 'tabs.support' })).toBeNull();
+    const { getByRole } = render(<CustomTabBar {...props} />);
+    fireEvent.press(getByRole('button', { name: 'tabs.transactions' }));
+    expect(props.navigateToTab).toHaveBeenCalledWith('transactions');
+    expect(mockPush).not.toHaveBeenCalledWith('/transactions');
+    fireEvent.press(getByRole('button', { name: 'tabs.dashboard' }));
+    expect(mockPush).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('shows the upgrade sheet instead of the statistics on a free account', () => {
+    mockPremium = false;
+    const { getByRole, getByText, queryByText } = render(<CustomTabBar {...makeProps()} />);
+    expect(queryByText('account.dashboardLockedTitle')).toBeNull();
+    fireEvent.press(getByRole('button', { name: 'tabs.dashboard' }));
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(getByText('account.dashboardLockedTitle')).toBeTruthy();
   });
 
   it('shows the WhatsApp support button on Accueil only', () => {

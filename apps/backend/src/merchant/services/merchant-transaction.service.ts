@@ -275,7 +275,6 @@ export class MerchantTransactionService {
       clientLanguage: client.language,
       type,
       stamps,
-      rewardId,
       rewardTitle,
       result,
     });
@@ -573,11 +572,10 @@ export class MerchantTransactionService {
     clientLanguage?: string | null;
     type: MerchantTransactionType;
     stamps: number;
-    rewardId?: string;
     rewardTitle?: string;
     result: AppliedTransaction;
   }): void {
-    const { clientId, merchantId, merchant, type, stamps, rewardId, rewardTitle, result } = p;
+    const { clientId, merchantId, merchant, type, stamps, rewardTitle, result } = p;
     const shownStamps = type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps;
 
     // ── Real-time: emit WebSocket events IMMEDIATELY (sub-100ms) ──
@@ -615,7 +613,6 @@ export class MerchantTransactionService {
         shownStamps,
         result.newStamps,
         p.clientLanguage,
-        rewardId,
         rewardTitle,
       ).catch((err) => this.logger.warn(`Transaction notification failed: ${errMsg(err)}`));
     }
@@ -628,7 +625,7 @@ export class MerchantTransactionService {
         clientId,
         t.luckyWheelTicketTitle(result.luckyWheelTicketsAwarded),
         t.luckyWheelTicketBody(result.luckyWheelTicketsAwarded, merchant.nom),
-        { event: 'lucky_wheel_ticket', merchantId, tickets: String(result.luckyWheelTicketsAwarded) },
+        { event: 'lucky_wheel_ticket', action: 'open_wheel', merchantId, tickets: String(result.luckyWheelTicketsAwarded) },
       ).catch((err) => this.logger.warn(`Lucky-wheel ticket notification failed: ${errMsg(err)}`));
     }
   }
@@ -696,7 +693,6 @@ export class MerchantTransactionService {
     stamps: number,
     newStamps: number,
     clientLanguage?: string | null,
-    rewardId?: string,
     rewardTitle?: string,
   ): Promise<void> {
     const t = getNotifTranslations(clientLanguage);

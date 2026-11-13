@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/AppText';
-import { Sparkles } from 'lucide-react-native';
+import { UserRound } from 'lucide-react-native';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
@@ -26,13 +26,13 @@ function ProfileCompletionCard({ percent, missingLabels, onPress }: ProfileCompl
       accessibilityLabel={`${t('home.completeProfileTitle')}, ${percent}%`}
       style={({ pressed }) => [
         styles.card,
-        { backgroundColor: theme.bgCard, borderColor: `${palette.gold}40` },
+        { backgroundColor: theme.bgCard, borderColor: theme.border },
         pressed && { opacity: 0.85 },
       ]}
     >
       <View style={styles.header}>
-        <View style={[styles.badge, { backgroundColor: `${palette.gold}1F` }]}>
-          <Sparkles size={ms(16)} color={palette.goldDark} strokeWidth={2} />
+        <View style={[styles.badge, { backgroundColor: theme.primaryBg }]}>
+          <UserRound size={ms(16)} color={theme.primary} strokeWidth={1.75} />
         </View>
         <View style={styles.texts}>
           <Text style={[styles.title, { color: theme.text, fontFamily: fonts.semibold }]} numberOfLines={1}>
@@ -42,15 +42,15 @@ function ProfileCompletionCard({ percent, missingLabels, onPress }: ProfileCompl
             {t('home.completeProfileHint', { fields: missingLabels.join(', ') })}
           </Text>
         </View>
-        <View style={[styles.cta, { backgroundColor: palette.gold }]}>
+        <View style={[styles.cta, { backgroundColor: palette.violet }]}>
           <Text style={[styles.ctaText, { fontFamily: fonts.semibold }]}>{t('profile.completeCta')}</Text>
         </View>
       </View>
       <View style={styles.progressRow}>
         <View style={[styles.track, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : palette.gray100 }]}>
-          <View style={[styles.fill, { width: `${percent}%`, backgroundColor: palette.gold }]} />
+          <View style={[styles.fill, { width: `${percent}%`, backgroundColor: theme.primary }]} />
         </View>
-        <Text style={[styles.percent, { color: palette.goldDark, fontFamily: fonts.bold }]}>{percent}%</Text>
+        <Text style={[styles.percent, { color: theme.textSecondary, fontFamily: fonts.semibold }]}>{percent}%</Text>
       </View>
     </Pressable>
   );

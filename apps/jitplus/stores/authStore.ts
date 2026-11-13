@@ -22,7 +22,6 @@ export interface AuthState {
 
   // ── Actions ──
   setClient: (client: Client | null) => void;
-  updateClient: (data: Partial<Client>) => void;
   setLoading: (loading: boolean) => void;
   setNeedsPasswordSetup: (needs: boolean) => void;
   setGuest: (isGuest: boolean) => void;
@@ -49,32 +48,6 @@ export const useAuthStore = create<AuthState>()((set) => ({
     set((s) => {
       if (client && s.isGuest) persistGuestMode(false);
       return { client, isGuest: client ? false : s.isGuest };
-    }),
-  updateClient: (data) =>
-    set((s) => {
-      if (!s.client) return { client: s.client };
-      // Shallow + one-level nested merge so updating one nested field
-      // (e.g. settings.foo) doesn't erase sibling fields.
-      const current = s.client as unknown as Record<string, unknown>;
-      const patch = data as unknown as Record<string, unknown>;
-      const merged: Record<string, unknown> = { ...current };
-      for (const key of Object.keys(patch)) {
-        const nextVal = patch[key];
-        const prevVal = current[key];
-        if (
-          nextVal &&
-          typeof nextVal === 'object' &&
-          !Array.isArray(nextVal) &&
-          prevVal &&
-          typeof prevVal === 'object' &&
-          !Array.isArray(prevVal)
-        ) {
-          merged[key] = { ...(prevVal as object), ...(nextVal as object) };
-        } else {
-          merged[key] = nextVal;
-        }
-      }
-      return { client: merged as unknown as Client };
     }),
   setLoading: (loading) => set({ loading }),
   setNeedsPasswordSetup: (needsPasswordSetup) => set({ needsPasswordSetup }),

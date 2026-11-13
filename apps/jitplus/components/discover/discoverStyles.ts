@@ -2,10 +2,10 @@ import { StyleSheet } from 'react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 
-// ── Premium shadow tokens ──
+// ── Shadow tokens (neutral, low) ──
 const SHADOW_PREMIUM = {
-  shadowColor: palette.violet, shadowOpacity: 0.10,
-  shadowOffset: { width: 0, height: hp(3) }, shadowRadius: 16, elevation: 4,
+  shadowColor: '#000', shadowOpacity: 0.08,
+  shadowOffset: { width: 0, height: hp(2) }, shadowRadius: 10, elevation: 2,
 };
 const SHADOW_LIGHT = {
   shadowColor: '#000', shadowOpacity: 0.04,
@@ -20,13 +20,13 @@ export const discoverStyles = StyleSheet.create({
   topButtons: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   floatingBtn: {
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_PREMIUM,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...SHADOW_PREMIUM,
   },
   counterBadge: {
     flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    borderRadius: ms(24), borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_PREMIUM,
+    borderRadius: ms(24), borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...SHADOW_PREMIUM,
   },
-  counterText: { fontWeight: '700' },
+  counterText: { fontWeight: '600' },
   filterDot: {
     position: 'absolute', top: ms(8), right: ms(8),
     width: ms(8), height: ms(8), borderRadius: ms(4),
@@ -37,7 +37,7 @@ export const discoverStyles = StyleSheet.create({
   searchBarExpanded: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: ms(28), gap: wp(10),
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.08)', ...SHADOW_PREMIUM,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...SHADOW_PREMIUM,
   },
   searchInput: { flex: 1, paddingVertical: 0 },
   closePill: { alignItems: 'center', justifyContent: 'center' },
@@ -57,7 +57,7 @@ export const discoverStyles = StyleSheet.create({
   // Locate
   locateBtn: {
     position: 'absolute', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_PREMIUM, zIndex: 10,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...SHADOW_PREMIUM, zIndex: 10,
   },
 
   // Callout
@@ -67,7 +67,7 @@ export const discoverStyles = StyleSheet.create({
   calloutCard: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: ms(22), padding: wp(14),
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.08)',
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
     overflow: 'hidden', ...SHADOW_PREMIUM,
   },
   calloutAccent: {
@@ -80,7 +80,7 @@ export const discoverStyles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginRight: wp(12), overflow: 'hidden',
   },
   calloutInfo: { flex: 1 },
-  calloutName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3 },
+  calloutName: { fontSize: FS.lg, fontWeight: '600', letterSpacing: -0.3 },
   calloutActions: { alignItems: 'center', gap: hp(8), marginStart: wp(8) },
   calloutDistRow: {
     flexDirection: 'row', alignItems: 'center', gap: wp(3), marginTop: hp(4),
@@ -88,7 +88,7 @@ export const discoverStyles = StyleSheet.create({
     paddingHorizontal: wp(8), paddingVertical: hp(2), borderRadius: ms(8),
   },
   calloutDist: {
-    fontSize: FS.xs, fontWeight: '700', color: palette.violet, letterSpacing: 0.2,
+    fontSize: FS.xs, fontWeight: '600', color: palette.violet, letterSpacing: 0.2,
   },
   navBtn: {
     width: ms(42), height: ms(42), borderRadius: ms(14),
@@ -105,10 +105,10 @@ export const discoverStyles = StyleSheet.create({
   emptyCard: {
     alignItems: 'center',
     padding: wp(28), borderRadius: radius['2xl'], marginHorizontal: wp(40),
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_PREMIUM,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...SHADOW_PREMIUM,
   },
   emptyState: { alignItems: 'center', paddingTop: hp(60) },
-  emptyTitle: { fontSize: FS.lg, fontWeight: '700', marginTop: hp(12) },
+  emptyTitle: { fontSize: FS.lg, fontWeight: '600', marginTop: hp(12) },
   emptyText: { fontSize: FS.sm, textAlign: 'center', marginTop: hp(6), lineHeight: ms(20) },
 
   // Fallback
@@ -116,13 +116,13 @@ export const discoverStyles = StyleSheet.create({
   fallbackCard: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: ms(18), padding: wp(14), marginBottom: hp(10),
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_LIGHT,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...SHADOW_LIGHT,
   },
   fallbackAvatar: {
     width: ms(50), height: ms(50), borderRadius: ms(16),
     alignItems: 'center', justifyContent: 'center', marginRight: wp(12), overflow: 'hidden',
   },
-  fallbackName: { fontSize: FS.md, fontWeight: '700', marginBottom: hp(2) },
+  fallbackName: { fontSize: FS.md, fontWeight: '600', marginBottom: hp(2) },
   fallbackAddr: { fontSize: FS.xs },
   fallbackNavBtn: {
     width: ms(40), height: ms(40), borderRadius: ms(14),

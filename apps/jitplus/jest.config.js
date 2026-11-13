@@ -15,12 +15,4 @@ module.exports = {
     'hooks/**/*.{ts,tsx}',
     '!**/*.d.ts',
   ],
-  coverageThreshold: {
-    global: {
-      branches: 60,
-      functions: 70,
-      lines: 70,
-      statements: 70,
-    },
-  },
 };

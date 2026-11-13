@@ -8,6 +8,10 @@ const MERCHANTS_PAGE_SIZE = 100;
 /** Safety cap: 2000 merchants. Past that the map needs a viewport-based endpoint. */
 const MAX_MERCHANT_PAGES = 20;
 const PAGE_FETCH_CONCURRENCY = 3;
+/** Server-side maximum for the wallet (WalletPaginationQueryDto). */
+const WALLET_PAGE_SIZE = 100;
+/** Safety cap: 1000 cards. */
+const MAX_WALLET_PAGES = 10;
 
 export function createMerchantMethods(http: AxiosInstance) {
   async function fetchMerchantsPage(page = 1, limit = MERCHANTS_PAGE_SIZE): Promise<{ merchants: Merchant[]; totalPages: number }> {
@@ -24,9 +28,29 @@ export function createMerchantMethods(http: AxiosInstance) {
   }
 
   return {
+    /**
+     * The whole wallet. The endpoint is paginated (100 cards a page at most):
+     * reading one page with no `limit` showed only the 20 most recent cards.
+     */
     async getStampsOverview(): Promise<StampsOverview> {
-      const { data } = await http.get('/client/stamps');
-      return data;
+      const fetchPage = async (page: number) =>
+        (await http.get('/client/stamps', { params: { page, limit: WALLET_PAGE_SIZE } })).data as
+          StampsOverview & { pagination?: { totalPages?: number } };
+      const first = await fetchPage(1);
+      const totalPages = Math.min(Number(first.pagination?.totalPages) || 1, MAX_WALLET_PAGES);
+      if (totalPages <= 1 || !Array.isArray(first.cards)) return first;
+      const cards = [...first.cards];
+      let totalStamps = first.totalStamps;
+      for (let page = 2; page <= totalPages; page++) {
+        const next = await fetchPage(page);
+        if (!Array.isArray(next.cards) || next.cards.length === 0) break;
+        cards.push(...next.cards);
+        totalStamps += next.totalStamps;
+      }
+      // A card that moved between two page reads must not appear twice.
+      const seen = new Set<string>();
+      const unique = cards.filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
+      return { ...first, totalStamps, cards: unique };
     },
     /**
      * Every merchant point (one per merchant + one per extra store). The API caps

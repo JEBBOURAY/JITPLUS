@@ -1,3 +1,4 @@
+import { notificationLink } from '../notifications/notification-link';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IPushProvider, PUSH_PROVIDER } from '../common/interfaces';
@@ -106,6 +107,7 @@ export class ScratchPushService {
           failureCount,
           key,
           options.inAppRows,
+          data,
         );
       }
     }
@@ -145,6 +147,7 @@ export class ScratchPushService {
     failureCount: number,
     key: string,
     rows?: Map<string, string>,
+    data?: Record<string, string>,
   ): Promise<void> {
     try {
       const existingId = rows?.get(key);
@@ -169,6 +172,7 @@ export class ScratchPushService {
               failureCount,
               isBroadcast: false,
               channel: 'PUSH',
+              data: notificationLink(data),
             },
           });
       rows?.set(key, notification.id);

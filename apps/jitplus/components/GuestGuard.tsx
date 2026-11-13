@@ -1,9 +1,8 @@
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { LogIn } from 'lucide-react-native';
-import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { useAppFonts } from '@/utils/fonts';
@@ -21,8 +20,8 @@ export default function GuestGuard() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.iconCircle, { backgroundColor: `${palette.gold}15` }]}>
-        <LogIn size={ms(36)} color={palette.gold} strokeWidth={1.5} />
+      <View style={[styles.iconCircle, { backgroundColor: theme.primaryBg }]}>
+        <LogIn size={ms(36)} color={palette.violet} strokeWidth={1.5} />
       </View>
 
       <View style={styles.brand}>
@@ -43,14 +42,9 @@ export default function GuestGuard() {
         accessibilityRole="button"
         accessibilityLabel={t('welcome.login')}
       >
-        <LinearGradient
-          colors={[brandGradient[0], brandGradient[1]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.gradient}
-        >
+        <View style={styles.gradient}>
           <Text style={[styles.btnText, { fontFamily: fonts.semibold }]}>{t('welcome.login')}</Text>
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -102,6 +96,7 @@ const styles = StyleSheet.create({
   gradient: {
     paddingVertical: hp(15),
     borderRadius: radius.xl,
+    backgroundColor: palette.violet,
     alignItems: 'center',
   },
   btnText: {

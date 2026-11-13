@@ -1,10 +1,6 @@
 import { render, fireEvent } from '@testing-library/react-native';
 import JitPlusGuideSheet from '@/components/home/JitPlusGuideSheet';
-import {
-  computeGuideProgress,
-  useGuideProgress,
-  type GuideDoneState,
-} from '@/components/home/useGuideProgress';
+import { computeGuideProgress, type GuideDoneState } from '@/components/home/useGuideProgress';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -22,14 +18,10 @@ jest.mock('@/contexts/LanguageContext', () => ({
 jest.mock('@/contexts/ThemeContext', () => ({
   useTheme: () => ({
     mode: 'light', bg: '#fff', bgCard: '#fff', text: '#0f172a', textSecondary: '#334155',
-    textMuted: '#64748b', primary: '#7c3aed', border: '#e2e8f0',
+    textMuted: '#64748b', primary: '#7c3aed', primaryBg: '#f5f3ff', success: '#10b981', border: '#e2e8f0',
   }),
   palette: { gold: '#FCD34D', violet: '#7C3AED' },
 }));
-jest.mock('@/components/home/useGuideProgress', () => {
-  const actual = jest.requireActual('@/components/home/useGuideProgress');
-  return { ...actual, useGuideProgress: jest.fn() };
-});
 
 const none: GuideDoneState = {
   program: false,
@@ -78,36 +70,52 @@ describe('computeGuideProgress', () => {
 });
 
 describe('JitPlusGuideSheet', () => {
-  const props = { visible: true, onClose: jest.fn(), onStepAction: jest.fn(), onStartTour: jest.fn() };
+  const props = { visible: true, onClose: jest.fn(), onStepAction: jest.fn(), onOpenDemos: jest.fn() };
 
   beforeEach(() => jest.clearAllMocks());
 
   it('shows the progress and sends the footer to the next step', () => {
-    jest.mocked(useGuideProgress).mockReturnValue(state({ ...none, program: true, logo: true, shop: true }, false));
-    const { getByText, getByLabelText } = render(<JitPlusGuideSheet {...props} />);
+    const { getByText, getByLabelText } = render(<JitPlusGuideSheet {...props} progress={state({ ...none, program: true, logo: true, shop: true }, false)} />);
     expect(getByText('home.guideProgress(3,7)')).toBeTruthy();
     fireEvent.press(getByLabelText('home.guideNextCta(home.guideStepInviteCta)'));
     expect(props.onStepAction).toHaveBeenCalledWith('invite');
   });
 
-  it('runs a step action from its card', () => {
-    jest.mocked(useGuideProgress).mockReturnValue(state(none, false));
-    const { getByLabelText } = render(<JitPlusGuideSheet {...props} />);
+  it('unfolds only the next step to do, then the one the merchant picks', () => {
+    const { getByLabelText, queryByLabelText, queryByText } = render(<JitPlusGuideSheet {...props} progress={state(none, false)} />);
+    expect(queryByText('home.guideStepProgramText')).toBeTruthy();
+    expect(queryByText('home.guideStepMessageText')).toBeNull();
+    expect(queryByLabelText('home.guideStepMessageCta')).toBeNull();
+
+    fireEvent.press(getByLabelText('home.guideStepMessageTitle'));
+    expect(queryByText('home.guideStepMessageText')).toBeTruthy();
+    expect(queryByText('home.guideStepProgramText')).toBeNull();
     fireEvent.press(getByLabelText('home.guideStepMessageCta'));
     expect(props.onStepAction).toHaveBeenCalledWith('message');
   });
 
-  it('offers the guided tour once everything is done', () => {
-    jest.mocked(useGuideProgress).mockReturnValue(state(all, false));
-    const { getByText, getByLabelText } = render(<JitPlusGuideSheet {...props} />);
+  it('folds the open step when it is tapped again', () => {
+    const { getByLabelText, queryByText } = render(<JitPlusGuideSheet {...props} progress={state(none, false)} />);
+    fireEvent.press(getByLabelText('home.guideStepProgramTitle'));
+    expect(queryByText('home.guideStepProgramText')).toBeNull();
+  });
+
+  it('lets a done step be reviewed once unfolded', () => {
+    const { getByLabelText } = render(<JitPlusGuideSheet {...props} progress={state({ ...none, program: true }, false)} />);
+    fireEvent.press(getByLabelText('home.guideStepProgramTitle'));
+    fireEvent.press(getByLabelText('home.guideRedo : home.guideStepProgramCta'));
+    expect(props.onStepAction).toHaveBeenCalledWith('program');
+  });
+
+  it('offers the demo videos once everything is done', () => {
+    const { getByText, getByLabelText } = render(<JitPlusGuideSheet {...props} progress={state(all, false)} />);
     expect(getByText('home.guideAllDone')).toBeTruthy();
-    fireEvent.press(getByLabelText('home.guideTourCta'));
-    expect(props.onStartTour).toHaveBeenCalledTimes(1);
+    fireEvent.press(getByLabelText('home.guideDemosCta'));
+    expect(props.onOpenDemos).toHaveBeenCalledTimes(1);
   });
 
   it('hides actions of owner-only steps for a team member', () => {
-    jest.mocked(useGuideProgress).mockReturnValue(state(none, true));
-    const { queryByLabelText, getAllByText } = render(<JitPlusGuideSheet {...props} />);
+    const { queryByLabelText, getAllByText } = render(<JitPlusGuideSheet {...props} progress={state(none, true)} />);
     expect(queryByLabelText('home.guideStepProgramCta')).toBeNull();
     expect(queryByLabelText('home.guideStepLogoCta')).toBeNull();
     expect(queryByLabelText('home.guideStepShopCta')).toBeNull();

@@ -11,7 +11,6 @@ import {
 const WELCOME_FLAG_KEY = 'showWelcome';
 /** Value of the welcome flag for a just-created account (any other '1' means a returning user). */
 export const WELCOME_FLAG_NEW = 'new';
-const REFERRAL_POPUP_TS_KEY = '@jitplus_referral_ts';
 
 export function useHomeBanners(
   notifData: { pages: { notifications?: ClientNotification[] }[] } | undefined,
@@ -20,9 +19,6 @@ export function useHomeBanners(
   // ── Welcome banner ──
   const [welcomeKind, setWelcomeKind] = useState<'back' | 'new' | null>(null);
   const welcomeAnim = useRef(new Animated.Value(0)).current;
-
-  // ── Referral popup ──
-  const [showReferral, setShowReferral] = useState(false);
 
   // ── LuckyWheel modal ──
   const [showLuckyWheel, setShowLuckyWheel] = useState(false);
@@ -35,26 +31,16 @@ export function useHomeBanners(
   const rewardBannerAnim = useRef(new Animated.Value(0)).current;
   const shownRewardIdsRef = useRef(new Set<string>());
 
-  // ── LuckyWheel FAB: periodic spin when tickets are available ──
-  // Rotation runs for 1 turn then pauses ~4s to save battery on long idle sessions.
+  // ── LuckyWheel FAB: one turn when tickets become available ──
+  // A single spin says "a ticket is waiting"; an endless loop would read as decoration.
   useEffect(() => {
-    if (luckyWheelTickets.length > 0) {
-      const spin = Animated.loop(
-        Animated.sequence([
-          Animated.timing(luckyWheelSpinAnim, {
-            toValue: 1, duration: 1400, easing: Easing.inOut(Easing.cubic), useNativeDriver: true,
-          }),
-          Animated.timing(luckyWheelSpinAnim, {
-            toValue: 0, duration: 0, useNativeDriver: true,
-          }),
-          Animated.delay(4000),
-        ]),
-      );
-      spin.start();
-      return () => { spin.stop(); };
-    } else {
-      luckyWheelSpinAnim.setValue(0);
-    }
+    luckyWheelSpinAnim.setValue(0);
+    if (luckyWheelTickets.length === 0) return;
+    const spin = Animated.timing(luckyWheelSpinAnim, {
+      toValue: 1, duration: 1400, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    });
+    spin.start();
+    return () => { spin.stop(); };
   }, [luckyWheelTickets.length, luckyWheelSpinAnim]);
 
   // ── Welcome banner on focus ──
@@ -72,25 +58,6 @@ export function useHomeBanners(
         ]).start(() => setWelcomeKind(null));
       }).catch(() => {});
     }, [welcomeAnim])
-  );
-
-  // ── Referral popup — show once every 3 days ──
-  useFocusEffect(
-    useCallback(() => {
-      let timer: ReturnType<typeof setTimeout>;
-      (async () => {
-        const lastShown = await AsyncStorage.getItem(REFERRAL_POPUP_TS_KEY);
-        const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
-        if (lastShown && Date.now() - Number(lastShown) < THREE_DAYS) return;
-        timer = setTimeout(() => {
-          setShowReferral(true);
-          // Stamped when shown, not when closed: leaving the screen or killing
-          // the app while it is open must not bring it back on the next visit.
-          AsyncStorage.setItem(REFERRAL_POPUP_TS_KEY, String(Date.now())).catch(() => {});
-        }, 4000);
-      })();
-      return () => { if (timer) clearTimeout(timer); };
-    }, [])
   );
 
   // ── Reward notification banner on focus ──
@@ -116,20 +83,14 @@ export function useHomeBanners(
     }, [notifData, rewardBannerAnim])
   );
 
-  const dismissReferral = useCallback(() => {
-    setShowReferral(false);
-  }, []);
-
   return {
     welcomeKind,
     welcomeAnim,
-    showReferral,
     showLuckyWheel,
     setShowLuckyWheel,
     luckyWheelSpinAnim,
     rewardBannerNotif,
     setRewardBannerNotif,
     rewardBannerAnim,
-    dismissReferral,
   };
 }

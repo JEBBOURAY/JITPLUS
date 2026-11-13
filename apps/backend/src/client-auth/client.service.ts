@@ -117,6 +117,10 @@ export class ClientService {
         notifWhatsapp: true,
         language: true,
         dateNaissance: true,
+        // The app replaces its whole client with this payload on cold start:
+        // without the flag a social sign-up that never accepted the terms
+        // looked complete after a relaunch.
+        termsAccepted: true,
         pushToken: true,
         password: true,
         createdAt: true,
@@ -1020,6 +1024,8 @@ export class ClientService {
             body: true,
             createdAt: true,
             audience: true,
+            data: true,
+            isBroadcast: true,
             merchant: { select: { id: true, nom: true, categorie: true, logoUrl: true } },
             clientStatuses: {
               where: { clientId },
@@ -1044,12 +1050,23 @@ export class ClientService {
           merchantName: n.merchant?.nom ?? null,
           merchantCategory: n.merchant?.categorie ?? null,
           merchantLogoUrl: n.merchant?.logoUrl || EMAIL_LOGO_JITPLUS,
+          link: n.data ?? this.legacyNotificationLink(n),
           isRead: status?.isRead ?? false,
           readAt: status?.readAt ?? null,
           createdAt: n.createdAt,
         };
       }),
       pagination: buildPagination(total, page, limit),
+    };
+  }
+
+  /** Deep link of notifications stored before `data` existed: their merchant. */
+  private legacyNotificationLink(n: { isBroadcast: boolean; merchant?: { id: string } | null }): Record<string, string> | null {
+    if (!n.merchant) return null;
+    return {
+      ...(n.isBroadcast ? { event: 'notification_new' } : {}),
+      action: 'open_card',
+      merchantId: n.merchant.id,
     };
   }
 

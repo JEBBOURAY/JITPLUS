@@ -12,7 +12,7 @@ import {
   Animated,
   Image,
   ScrollView,
-  Keyboard,
+  Keyboard, I18nManager,
 } from 'react-native';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
 import { router } from 'expo-router';
@@ -34,7 +34,11 @@ import FormError from '@/components/FormError';
 import StarLoader from '@/components/StarLoader';
 import { GoogleLogo } from '@/components/GoogleLogo';
 import { AppleLogo } from '@/components/AppleLogo';
+import { SPRING_SMOOTH, rnSpring } from '@/utils/motion';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
+const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 const SHOW_WELCOME_KEY = 'showWelcome';
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -67,8 +71,8 @@ export default function LoginScreen() {
 
   useEffect(() => {
     const anim = Animated.stagger(150, [
-      Animated.spring(logoAnim, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 6 }),
-      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, speed: 10, bounciness: 4 }),
+      Animated.spring(logoAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
+      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
       Animated.timing(footerAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
     ]);
     anim.start();
@@ -93,7 +97,7 @@ export default function LoginScreen() {
   const handleBack = useCallback(() => {
     setError('');
     setMethod('select');
-    Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, speed: 10, bounciness: 4 }).start();
+    Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }).start();
   }, [cardAnim]);
 
   // Google auth — shared hook (no stale closures, no setTimeout)
@@ -110,7 +114,7 @@ export default function LoginScreen() {
     setError('');
     cardAnim.setValue(0);
     setMethod(m);
-    Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 4 }).start();
+    Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }).start();
   };
 
   // ── Email + Password flow ──
@@ -244,7 +248,7 @@ export default function LoginScreen() {
             style={[styles.noAccountBtn, { backgroundColor: palette.violet }]}
           >
             <Text style={styles.noAccountBtnText}>{t('googleAuth.goToRegister')}</Text>
-            <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} />
+            <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} style={DIR_FLIP} />
           </TouchableOpacity>
         </View>
       )}
@@ -272,7 +276,7 @@ export default function LoginScreen() {
             style={[styles.noAccountBtn, { backgroundColor: palette.violet }]}
           >
             <Text style={styles.noAccountBtnText}>{t('appleAuth.goToRegister')}</Text>
-            <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} />
+            <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} style={DIR_FLIP} />
           </TouchableOpacity>
         </View>
       )}
@@ -305,7 +309,7 @@ export default function LoginScreen() {
       transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
     }]}>
       <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('common.back')}>
-        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} />
+        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} style={DIR_FLIP} />
       </TouchableOpacity>
 
       <View style={{ marginBottom: hp(24) }}>
@@ -386,7 +390,7 @@ export default function LoginScreen() {
         {isLoading ? <ActivityIndicator color="#fff" /> : (
           <>
             <Text style={[styles.buttonText, { opacity: emailValid && password.length > 0 ? 1 : 0.5, fontFamily: fonts.semibold }]}>{t('login.loginButton')}</Text>
-            <ArrowRight size={ms(18)} color={emailValid && password.length > 0 ? '#fff' : 'rgba(255,255,255,0.5)'} />
+            <ArrowRight size={ms(18)} color={emailValid && password.length > 0 ? '#fff' : 'rgba(255,255,255,0.5)'} style={DIR_FLIP} />
           </>
         )}
       </TouchableOpacity>
@@ -406,7 +410,7 @@ export default function LoginScreen() {
         accessibilityRole="button"
         accessibilityLabel={t('common.back')}
       >
-        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} />
+        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} style={DIR_FLIP} />
       </TouchableOpacity>
 
       <View style={[styles.formHeader, { alignItems: 'center' }]}>
@@ -422,7 +426,7 @@ export default function LoginScreen() {
         ) : google.isSuccess ? (
           <View style={{ alignItems: 'center', gap: hp(10), marginTop: hp(16) }}>
             <CheckCircle size={ms(52)} color="#34A853" strokeWidth={2} />
-            <Text style={{ color: '#34A853', fontWeight: '700', fontSize: fontSize.md }}>{t('googleAuth.success')}</Text>
+            <Text style={{ color: '#34A853', fontWeight: '600', fontSize: fontSize.md }}>{t('googleAuth.success')}</Text>
           </View>
         ) : error ? (
           <>
@@ -441,7 +445,7 @@ export default function LoginScreen() {
   );
 
   return (
-    <View style={[styles.gradient, { backgroundColor: '#fff' }]}>
+    <View style={[styles.gradient, { backgroundColor: theme.bg }]}>
       <SafeAreaView style={styles.container}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -525,10 +529,10 @@ const styles = StyleSheet.create({
   methodSection: {
     paddingHorizontal: wp(4),
   },
-  cardTitle: { fontSize: fontSize['2xl'], fontWeight: '700', marginBottom: hp(6), letterSpacing: -0.3 },
+  cardTitle: { fontSize: fontSize['2xl'], fontWeight: '600', marginBottom: hp(6), letterSpacing: -0.3 },
   cardSubtitle: { fontSize: fontSize.sm, lineHeight: ms(22), marginBottom: hp(20) },
   registerTitle: {
-    fontSize: ms(26), fontWeight: '700', letterSpacing: -0.3,
+    fontSize: ms(26), fontWeight: '600', letterSpacing: -0.3,
     marginBottom: hp(8),
   },
   registerSubtitle: {
@@ -563,8 +567,8 @@ const styles = StyleSheet.create({
   },
   noAccountTitle: {
     fontSize: fontSize.md,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   noAccountMsg: {
     fontSize: fontSize.sm,
@@ -593,7 +597,7 @@ const styles = StyleSheet.create({
     paddingTop: hp(12), paddingBottom: hp(32),
   },
   footerText: { fontSize: fontSize.sm, color: palette.gray400 },
-  footerLink: { fontSize: fontSize.sm, color: palette.violet, fontWeight: '700' },
+  footerLink: { fontSize: fontSize.sm, color: palette.violet, fontWeight: '600' },
 
   // Form common
   backBtn: {
@@ -627,7 +631,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg, height: hp(56), gap: wp(8),
     paddingHorizontal: wp(20),
   },
-  buttonText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '700', letterSpacing: 0.5 },
+  buttonText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '600' },
   errorText: { fontSize: fontSize.sm, fontWeight: '500', textAlign: 'center' as const },
 
 });

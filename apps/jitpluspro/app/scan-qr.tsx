@@ -21,6 +21,8 @@ import { CameraView, useCameraPermissions, type BarcodeSettings } from 'expo-cam
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { safeImpact, safeNotification } from '@/utils/haptics';
+import { EASE_OUT } from '@/utils/motion';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import {
   X,
   Flashlight,
@@ -51,6 +53,7 @@ import { COUNTRIES } from '@/constants/Countries';
 import { useDetectedCountry } from '@/hooks/useDetectedCountry';
 import FirstScanGuide from '@/components/FirstScanGuide';
 import { ActionButton } from '@/components/ui/ActionButton';
+import BottomSheet from '@/components/ui/BottomSheet';
 import { AnimatedSearchBar, MIN_PHONE_SEARCH_LENGTH } from '@/components/scan/AnimatedSearchBar';
 import { ScanLine } from '@/components/scan/ScanLine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -150,24 +153,26 @@ const HowItWorksBanner = React.memo(function HowItWorksBanner({
   const theme = useTheme();
   const dir = useDir();
   const [shouldRender, setShouldRender] = useState(visible);
+  const reduceMotion = useReduceMotion() === true;
   const [collapse] = useState(() => new Animated.Value(visible ? 1 : 0));
   if (visible && !shouldRender) setShouldRender(true);
 
+  // The banner is absolutely positioned: nothing reflows, so opacity and
+  // transform are enough and the whole animation runs on the native driver.
   useEffect(() => {
     if (visible) {
-      Animated.timing(collapse, { toValue: 1, duration: 220, useNativeDriver: false }).start();
+      Animated.timing(collapse, { toValue: 1, duration: 220, easing: EASE_OUT, useNativeDriver: true }).start();
       return;
     }
-    Animated.timing(collapse, { toValue: 0, duration: 220, useNativeDriver: false }).start(({ finished }) => {
+    Animated.timing(collapse, { toValue: 0, duration: 160, easing: EASE_OUT, useNativeDriver: true }).start(({ finished }) => {
       if (finished) setShouldRender(false);
     });
   }, [collapse, visible]);
 
   const animatedStyle = useMemo(() => ({
     opacity: collapse,
-    maxHeight: collapse.interpolate({ inputRange: [0, 1], outputRange: [0, 140] }),
-    transform: [{ translateY: collapse.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }],
-  }), [collapse]);
+    transform: [{ translateY: collapse.interpolate({ inputRange: [0, 1], outputRange: [reduceMotion ? 0 : -10, 0] }) }],
+  }), [collapse, reduceMotion]);
 
   if (!shouldRender) return null;
 
@@ -249,14 +254,12 @@ function scanReducer(state: ScanState, action: ScanAction): ScanState {
 const CameraOverlay = React.memo(function CameraOverlay({
   screenHeight,
   scanSize,
-  pulseStyle,
   overlayState,
   isScanning,
   onRetry,
 }: {
   screenHeight: number;
   scanSize: number;
-  pulseStyle: Record<string, unknown>;
   overlayState: ScanOverlayState;
   isScanning: boolean;
   onRetry?: () => void;
@@ -266,14 +269,14 @@ const CameraOverlay = React.memo(function CameraOverlay({
       <View style={[styles.overlayTop, { height: Math.max((screenHeight - scanSize) / 2 - 40, 100) }]} />
       <View style={[styles.overlayMiddle, { height: scanSize }]}>
         <View style={styles.overlaySide} />
-        <Animated.View style={[styles.scanArea, { width: scanSize, height: scanSize }, pulseStyle]}>
+        <View style={[styles.scanArea, { width: scanSize, height: scanSize }]}>
           <ViewfinderCorner position="tl" />
           <ViewfinderCorner position="tr" />
           <ViewfinderCorner position="bl" />
           <ViewfinderCorner position="br" />
           <ScanLine scanSize={scanSize} active={isScanning} />
           <DetectedOverlay overlayState={overlayState} onRetry={onRetry} />
-        </Animated.View>
+        </View>
         <View style={styles.overlaySide} />
       </View>
       <View style={styles.overlayBottom} />
@@ -449,37 +452,6 @@ export default function ScanQRScreen() {
     };
   }, []);
 
-  // Animations — only run when actively scanning to save CPU/battery
-  const [pulseScale] = useState(() => new Animated.Value(1));
-  const [pulseOpacity] = useState(() => new Animated.Value(1));
-
-  useEffect(() => {
-    if (!isScanning) {
-      pulseScale.setValue(1);
-      pulseOpacity.setValue(1);
-      return;
-    }
-    const anim = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(pulseScale, { toValue: 1.01, duration: 1800, useNativeDriver: true }),
-          Animated.timing(pulseScale, { toValue: 1, duration: 1800, useNativeDriver: true }),
-        ]),
-        Animated.sequence([
-          Animated.timing(pulseOpacity, { toValue: 0.95, duration: 1800, useNativeDriver: true }),
-          Animated.timing(pulseOpacity, { toValue: 1, duration: 1800, useNativeDriver: true }),
-        ]),
-      ]),
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [isScanning, pulseOpacity, pulseScale]);
-
-  const pulseStyle = useMemo(() => ({
-    transform: [{ scale: pulseScale }],
-    opacity: pulseOpacity,
-  }), [pulseOpacity, pulseScale]);
-
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain) {
       requestPermission();
@@ -566,6 +538,8 @@ export default function ScanQRScreen() {
       phase: 'found',
       message: clientName ? t('scan.clientFound', { name: clientName }) : t('scan.clientFoundFallback'),
     });
+    // Success only once the server has confirmed the client, with the green card.
+    safeNotification(Haptics.NotificationFeedbackType.Success);
     prefetchClientStatus(queryClient, clientId, scanTicket).catch(() => {});
     if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
     navTimeoutRef.current = setTimeout(() => {
@@ -595,8 +569,8 @@ export default function ScanQRScreen() {
         setOverlayState({ phase: 'verifying', message: t('scan.verifying') });
       }, VERIFYING_OVERLAY_DELAY_MS);
 
-      // Haptic feedback
-      safeNotification(Haptics.NotificationFeedbackType.Success);
+      // "Code read" tick: whether it is valid is only known after verification.
+      safeImpact(Haptics.ImpactFeedbackStyle.Light);
 
       const showScanError = (message: string) => {
         if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
@@ -683,10 +657,9 @@ export default function ScanQRScreen() {
       });
       const clients: MatchedClient[] = res.data;
 
-      safeImpact(Haptics.ImpactFeedbackStyle.Medium);
-
       if (clients.length === 1) {
         // Exactly one match → go to transaction
+        safeNotification(Haptics.NotificationFeedbackType.Success);
         if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
         isNavigatingRef.current = true;
         prefetchClientStatus(queryClient, clients[0].id, clients[0].scanTicket).catch(() => {});
@@ -699,6 +672,7 @@ export default function ScanQRScreen() {
         }, NAVIGATION_DELAY_MS);
       } else if (clients.length > 1) {
         // Multiple matches → show picker for disambiguation
+        safeImpact(Haptics.ImpactFeedbackStyle.Light);
         set({ matchedClients: clients });
       } else {
         // No match — propose Quick-Add (anonymous client + WhatsApp claim link)
@@ -727,6 +701,7 @@ export default function ScanQRScreen() {
       }
     } catch (err) {
       logError('ScanQR', 'Phone search error:', err);
+      safeNotification(Haptics.NotificationFeedbackType.Error);
       Alert.alert(t('common.error'), t('scan.phoneSearchError'));
     } finally {
       searchInFlightRef.current = false;
@@ -835,7 +810,6 @@ export default function ScanQRScreen() {
       <CameraOverlay
         screenHeight={SCREEN_H}
         scanSize={SCAN_SIZE}
-        pulseStyle={pulseStyle}
         overlayState={overlayState}
         isScanning={isScanning}
         onRetry={handleRetryScan}
@@ -900,36 +874,36 @@ export default function ScanQRScreen() {
         </View>
       </Modal>
 
-      <Modal visible={showCountrySheet} animationType="slide" transparent onRequestClose={closeCountrySheet}>
-        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={closeCountrySheet}>
-          <View style={[styles.sheetCard, { backgroundColor: theme.bgCard, maxHeight: SCREEN_H * 0.7 }]}>
-            <View style={[styles.sheetHandle, { backgroundColor: `${theme.textMuted}30` }]} />
-            <Text style={[styles.sheetTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('scan.countryPickerTitle')}</Text>
-            <FlatList
-              data={COUNTRIES}
-              keyExtractor={(item) => item.code}
-              contentContainerStyle={styles.countryList}
-              renderItem={({ item, index }) => (
-                <TouchableOpacity
-                  style={[styles.countryRow, { flexDirection: dir.row }, countryIndex === index && { backgroundColor: `${theme.primary}16` }]}
-                  onPress={() => {
-                    countryPickedRef.current = true;
-                    set({ countryIndex: index });
-                    setShowCountrySheet(false);
-                  }}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: countryIndex === index }}
-                >
-                  <Text style={styles.countryRowFlag}>{item.flag}</Text>
-                  <Text style={[styles.countryRowText, { color: theme.text, textAlign: dir.textAlign }]}>{item.name} · {item.dial}</Text>
-                  {countryIndex === index ? <Check size={18} color={theme.primary} strokeWidth={iconTokens.stroke} /> : null}
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <BottomSheet
+        visible={showCountrySheet}
+        onClose={closeCountrySheet}
+        scrollable
+        style={{ maxHeight: SCREEN_H * 0.7 }}
+        header={<Text style={[styles.sheetTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('scan.countryPickerTitle')}</Text>}
+      >
+        <FlatList
+          data={COUNTRIES}
+          keyExtractor={(item) => item.code}
+          contentContainerStyle={styles.countryList}
+          renderItem={({ item, index }) => (
+            <TouchableOpacity
+              style={[styles.countryRow, { flexDirection: dir.row }, countryIndex === index && { backgroundColor: `${theme.primary}16` }]}
+              onPress={() => {
+                countryPickedRef.current = true;
+                set({ countryIndex: index });
+                setShowCountrySheet(false);
+              }}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: countryIndex === index }}
+            >
+              <Text style={styles.countryRowFlag}>{item.flag}</Text>
+              <Text style={[styles.countryRowText, { color: theme.text, textAlign: dir.textAlign }]}>{item.name} · {item.dial}</Text>
+              {countryIndex === index ? <Check size={18} color={theme.primary} strokeWidth={iconTokens.stroke} /> : null}
+            </TouchableOpacity>
+          )}
+        />
+      </BottomSheet>
 
       <FirstScanGuide visible={showGuide} onClose={dismissGuide} />
     </View>
@@ -1121,28 +1095,9 @@ const styles = StyleSheet.create({
     padding: 2,
   },
 
-  sheetOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: OVERLAY_COLOR,
-  },
-  sheetCard: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  sheetHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 999,
-    alignSelf: 'center',
-    marginBottom: 14,
-  },
   sheetTitle: {
     fontSize: 20,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     marginBottom: 6,
   },
   countryList: {
@@ -1190,7 +1145,7 @@ const styles = StyleSheet.create({
   permissionTitle: {
     fontSize: 28,
     marginBottom: 10,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     letterSpacing: -0.5,
     textAlign: 'center',
   },
@@ -1225,7 +1180,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  cpTitle: { flex: 1, fontSize: 22, fontFamily: font.bold, letterSpacing: -0.3 },
+  cpTitle: { flex: 1, fontSize: 22, fontFamily: font.semibold, letterSpacing: -0.3 },
   cpRow: {
     alignItems: 'center',
     paddingVertical: 14,

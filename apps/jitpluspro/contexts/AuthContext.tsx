@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useCallback, useMemo, Reac
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { loadNotifications } from '@/utils/expoNotifications';
+import { loadNotifications } from '@jitplus/shared/src/expoNotifications';
 import { getAppLanguage } from '@/utils/appLanguage';
 import * as Device from 'expo-device';
 import { randomUUID } from '@/utils/crypto';

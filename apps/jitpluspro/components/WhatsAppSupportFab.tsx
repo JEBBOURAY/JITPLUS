@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { TouchableOpacity, StyleSheet, Linking, Alert } from 'react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTourTarget } from '@/components/GuidedTour';
 import WhatsAppLogo from '@/components/WhatsAppLogo';
 
 const SUPPORT_WHATSAPP = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212755073325';
@@ -10,7 +9,6 @@ const WHATSAPP_COLOR = '#25D366';
 /** Round WhatsApp button that opens a support chat. */
 export default function WhatsAppSupportFab() {
   const { t } = useLanguage();
-  const tourRef = useTourTarget('support');
 
   const openWhatsApp = useCallback(async () => {
     // wa.me opens the app if installed, otherwise falls back to WhatsApp Web —
@@ -25,7 +23,6 @@ export default function WhatsAppSupportFab() {
 
   return (
     <TouchableOpacity
-      ref={tourRef}
       style={styles.fab}
       onPress={openWhatsApp}
       activeOpacity={0.85}

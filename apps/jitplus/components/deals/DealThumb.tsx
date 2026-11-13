@@ -6,7 +6,8 @@ import { Text } from '@/components/AppText';
 import { getMerchantAccent } from '@/utils/merchantAccent';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { useAppFonts } from '@/utils/fonts';
-import { getCategoryEmoji } from '@/utils/categories';
+import { Store } from 'lucide-react-native';
+import { CATEGORIES } from '@/utils/categories';
 
 function darken(hex: string, amount: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -30,7 +31,7 @@ interface DealThumbProps {
 /**
  * Deal visual, same rules as the preview in JitPlus Pro: the photo, else the
  * merchant cover darkened with the badge on top, else a gradient of the
- * merchant color with the category emoji.
+ * merchant color with the category icon.
  */
 function DealThumb({ imageUrl, coverUrl, themeColor, category, badge, width, height = width, radius = 12 }: DealThumbProps) {
   const fonts = useAppFonts();
@@ -41,7 +42,7 @@ function DealThumb({ imageUrl, coverUrl, themeColor, category, badge, width, hei
     lineHeight: Math.max(14, Math.round(scale * 0.22)),
     fontFamily: fonts.bold,
   };
-  const emoji = getCategoryEmoji(category ?? undefined);
+  const CategoryIcon = CATEGORIES.find((c) => c.id !== 'all' && c.id === category?.toUpperCase())?.icon ?? Store;
 
   if (imageUrl) {
     return (
@@ -69,7 +70,7 @@ function DealThumb({ imageUrl, coverUrl, themeColor, category, badge, width, hei
         <ExpoImage source={{ uri: resolveImageUrl(coverUrl) }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
         <View style={[StyleSheet.absoluteFill, styles.dim]} />
         <View style={styles.center}>
-          {badgeText ?? <Text style={{ fontSize: Math.round(scale * 0.36) }} maxFontSizeMultiplier={1}>{emoji}</Text>}
+          {badgeText ?? <CategoryIcon size={Math.round(scale * 0.36)} color="#FFFFFF" strokeWidth={1.8} />}
         </View>
       </View>
     );
@@ -79,7 +80,7 @@ function DealThumb({ imageUrl, coverUrl, themeColor, category, badge, width, hei
   return (
     <LinearGradient colors={[accent, darken(accent, 0.45)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.base, box]}>
       <View style={styles.center}>
-        <Text style={{ fontSize: Math.round(scale * (badgeText ? 0.26 : 0.36)) }} maxFontSizeMultiplier={1}>{emoji}</Text>
+        <CategoryIcon size={Math.round(scale * (badgeText ? 0.26 : 0.36))} color="#FFFFFF" strokeWidth={1.8} />
         {badgeText}
       </View>
     </LinearGradient>

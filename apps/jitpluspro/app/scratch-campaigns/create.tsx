@@ -131,6 +131,12 @@ export default function ScratchCampaignWizard() {
   const dateOptions = useMoreOptions(form.durationDays == null);
   const [previewSide, setPreviewSide] = useState<PreviewSide>('after');
   const [previewRewardKey, setPreviewRewardKey] = useState<string | null>(null);
+  // Current time for the send slots, refreshed while the wizard stays open.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const {
     data: existing,
@@ -374,7 +380,6 @@ export default function ScratchCampaignWizard() {
   }
 
   const previewWidth = Math.min(width - 96, 360);
-  const nowMs = Date.now();
   const sendYmd = sendYmdOf(form, today);
   const message = form.message.trim();
   const campaignName = form.name.trim();

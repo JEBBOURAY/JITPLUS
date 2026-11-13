@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Animated, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ArrowRight, ChevronDown, Search, X } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
@@ -48,23 +48,12 @@ export const AnimatedSearchBar = React.memo(function AnimatedSearchBar({
 }: Props) {
   const { t } = useLanguage();
   const dir = useDir();
-  const [barScale] = useState(() => new Animated.Value(1));
   const country = COUNTRIES[countryIndex];
 
-  const animatedBar = useMemo(() => ({ transform: [{ scale: barScale }] }), [barScale]);
-
-  const handleFocus = () => {
-    Animated.spring(barScale, { toValue: 1.02, useNativeDriver: true, speed: 25, bounciness: 4 }).start();
-    onFocus();
-  };
-
-  const handleBlur = () => {
-    Animated.spring(barScale, { toValue: 1, useNativeDriver: true, speed: 25, bounciness: 4 }).start();
-    onBlur();
-  };
-
+  // Focus shows through the border and tint (searchBarFocused): scaling a
+  // text input blurs its text and caret while the keyboard rises.
   return (
-    <Animated.View style={[styles.searchContainer, { top: insetTop + 12 }, animatedBar]}>
+    <View style={[styles.searchContainer, { top: insetTop + 12 }]}>
       <View
         style={[
           styles.searchBar,
@@ -88,8 +77,8 @@ export const AnimatedSearchBar = React.memo(function AnimatedSearchBar({
           value={value}
           onChangeText={onChangeText}
           onSubmitEditing={onSubmit}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
+          onFocus={onFocus}
+          onBlur={onBlur}
           placeholder={t('scan.phonePlaceholder')}
           placeholderTextColor={ON_GLASS_PLACEHOLDER}
           keyboardType="phone-pad"
@@ -125,7 +114,7 @@ export const AnimatedSearchBar = React.memo(function AnimatedSearchBar({
           </TouchableOpacity>
         )}
       </View>
-    </Animated.View>
+    </View>
   );
 });
 
@@ -147,12 +136,12 @@ const styles = StyleSheet.create({
     gap: 8,
     ...Platform.select({
       ios: {
-        shadowColor: '#1F2937',
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 6,
       },
-      android: { elevation: 3 },
+      android: { elevation: 2 },
     }),
   },
   searchBarFocused: {
@@ -186,7 +175,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#1F2937',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.08,
     shadowRadius: 4,

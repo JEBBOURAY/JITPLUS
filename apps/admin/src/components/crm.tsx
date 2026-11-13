@@ -2,15 +2,30 @@ import React, { useEffect, useState } from 'react';
 import { getErrorMessage } from '@jitplus/shared';
 import { activatePremium, addFollowUpNote, recordMerchantPayment } from '../api';
 import type { FollowUpKind, FollowUpStatus, PlanKind, PremiumGrant, SubscriptionPaymentMethod } from '../types';
+import { Link } from 'react-router-dom';
 import { C, S } from '../theme';
+import { CATEGORY_LABELS } from '../utils/format';
 import {
   FOLLOW_UP_ORDER, FOLLOW_UP_STATUS, NOTE_KIND, NOTE_KIND_ORDER, PAYMENT_METHOD, PLAN_KIND,
   dateInput, dateInputToIso, daysUntil, waLink,
 } from '../utils/crm';
 
+// ── Merchant cell (name link + category · city · phone) ──────────────────────
+
+export function MerchantCell({ m }: { m: { id: string; nom: string; categorie: string; ville?: string | null; phone?: string | null } }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <Link to={`/merchants/${m.id}`} onClick={(e) => e.stopPropagation()} style={{ color: C.text, fontWeight: 500, textDecoration: 'none' }}>{m.nom}</Link>
+      <div style={{ fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>
+        {[CATEGORY_LABELS[m.categorie] ?? m.categorie, m.ville, m.phone].filter(Boolean).join(' · ')}
+      </div>
+    </div>
+  );
+}
+
 // ── Modal ────────────────────────────────────────────────────────────────────
 
-export function Modal({ open, title, subtitle, onClose, children, footer, width = 480 }: {
+function Modal({ open, title, subtitle, onClose, children, footer, width = 480 }: {
   open: boolean;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -52,7 +67,7 @@ export function Modal({ open, title, subtitle, onClose, children, footer, width 
   );
 }
 
-export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <label style={{ display: 'block', marginBottom: 12 }}>
       <span style={S.label}>{label}</span>
@@ -126,7 +141,7 @@ const iconPaths = {
   note: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.41-9.41a2 2 0 112.83 2.83L11.83 15H9v-2.83l8.59-8.58z',
 };
 
-export function Icon({ name, size = 15 }: { name: keyof typeof iconPaths; size?: number }) {
+function Icon({ name, size = 15 }: { name: keyof typeof iconPaths; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d={iconPaths[name]} />

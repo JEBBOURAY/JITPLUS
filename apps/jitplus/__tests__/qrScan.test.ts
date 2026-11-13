@@ -4,7 +4,7 @@ import {
 import type { LoyaltyCard } from '@/types';
 
 const card = (merchantId: string, balance: number): LoyaltyCard => ({
-  id: `card-${merchantId}`, merchantId, clientId: 'client-1', balance, createdAt: '2026-01-01',
+  id: `card-${merchantId}`, merchantId, balance, createdAt: '2026-01-01',
   merchant: { nomBoutique: `Shop ${merchantId}` } as LoyaltyCard['merchant'],
 });
 
@@ -46,7 +46,7 @@ describe('detectBalanceScan', () => {
     const previous = toBalanceMap([card('a', 3), card('b', 1)]);
     const ev = detectBalanceScan(previous, [card('a', 3), card('b', 3)], 42);
     expect(ev).toEqual({
-      clientId: 'client-1', merchantId: 'b', merchantName: 'Shop b',
+      clientId: '', merchantId: 'b', merchantName: 'Shop b',
       stamps: 2, newBalance: 3, type: 'EARN_STAMPS', receivedAt: 42,
     });
   });

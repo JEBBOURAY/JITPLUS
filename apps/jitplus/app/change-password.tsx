@@ -2,21 +2,25 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
-  ScrollView, Keyboard,
+  ScrollView, Keyboard, I18nManager,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { router } from 'expo-router';
-import { Lock, Eye, EyeOff, ArrowLeft, CheckCircle2 } from 'lucide-react-native';
+import { Lock, ArrowLeft, CheckCircle2 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api } from '@/services/api';
 import { extractErrorMessage } from '@/utils/errorMessage';
 import FormError from '@/components/FormError';
+import { PasswordField, PasswordStrengthBar } from '@/components/PasswordField';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
-import { getPasswordStrength, isValidPassword as checkPassword, MAX_PASSWORD_LENGTH } from '@/utils/passwordStrength';
+import { getPasswordStrength, isValidPassword as checkPassword } from '@/utils/passwordStrength';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
+const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 export default function ChangePasswordScreen() {
   const theme = useTheme();
@@ -26,9 +30,6 @@ export default function ChangePasswordScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -41,7 +42,11 @@ export default function ChangePasswordScreen() {
   const confirmRef = useRef<TextInput>(null);
 
   const strength = getPasswordStrength(newPassword, t);
-  const clearError = useCallback(() => setError(''), []);
+  const onCurrentChange = useCallback((text: string) => { setCurrentPassword(text); setError(''); }, []);
+  const onNewChange = useCallback((text: string) => { setNewPassword(text); setError(''); }, []);
+  const onConfirmChange = useCallback((text: string) => { setConfirmPassword(text); setError(''); }, []);
+  const focusNew = useCallback(() => newRef.current?.focus(), []);
+  const focusConfirm = useCallback(() => confirmRef.current?.focus(), []);
 
   const requiresCurrent = !!client?.hasPassword;
   const isValidPassword = checkPassword(newPassword);
@@ -72,7 +77,7 @@ export default function ChangePasswordScreen() {
       await refreshProfile().catch(() => {});
       Keyboard.dismiss();
       Alert.alert(t('changePassword.success'), '', [
-        { text: 'OK', onPress: () => router.back() },
+        { text: t('common.ok'), onPress: () => router.back() },
       ]);
     } catch (err: unknown) {
       setError(extractErrorMessage(err) || t('changePassword.errorGeneric'));
@@ -92,7 +97,7 @@ export default function ChangePasswordScreen() {
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} hitSlop={12} disabled={isLoading}>
-              <ArrowLeft size={ms(24)} color={isLoading ? theme.textMuted : theme.text} />
+              <ArrowLeft size={ms(24)} color={isLoading ? theme.textMuted : theme.text} style={DIR_FLIP} />
             </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: theme.text }]}>{t('changePassword.title')}</Text>
             <View style={{ width: ms(24) }} />
@@ -107,117 +112,45 @@ export default function ChangePasswordScreen() {
               {t('changePassword.subtitle')}
             </Text>
 
-            {/* Current Password */}
             {requiresCurrent && (
-              <View style={styles.inputContainer}>
-                <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>
-                  {t('changePassword.currentPassword')}
-                </Text>
-                <View style={[styles.inputWrapper, {
-                  backgroundColor: theme.inputBg,
-                  borderColor: theme.inputBorder,
-                  borderWidth: 1.5,
-                }]}>
-                  <Lock size={ms(18)} color={theme.inputPlaceholder} strokeWidth={2} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    placeholder={t('changePassword.currentPasswordPlaceholder')}
-                    placeholderTextColor={theme.inputPlaceholder}
-                    value={currentPassword}
-                    onChangeText={(text) => { setCurrentPassword(text); clearError(); }}
-                    secureTextEntry={!showCurrent}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoFocus
-                    returnKeyType="next"
-                    maxLength={MAX_PASSWORD_LENGTH}
-                    onSubmitEditing={() => newRef.current?.focus()}
-                  />
-                  <TouchableOpacity onPress={() => setShowCurrent(!showCurrent)} hitSlop={8}>
-                    {showCurrent
-                      ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
-                      : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <PasswordField
+                icon={Lock}
+                label={t('changePassword.currentPassword')}
+                value={currentPassword}
+                onChangeText={onCurrentChange}
+                placeholder={t('changePassword.currentPasswordPlaceholder')}
+                autoFocus
+                returnKeyType="next"
+                onSubmitEditing={focusNew}
+              />
             )}
 
-            {/* New Password */}
-            <View style={styles.inputContainer}>
-              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>
-                {t('changePassword.newPassword')}
-              </Text>
-              <View style={[styles.inputWrapper, {
-                backgroundColor: theme.inputBg,
-                borderColor: isValidPassword ? palette.violet : theme.inputBorder,
-                borderWidth: isValidPassword ? 2 : 1.5,
-              }]}>
-                <Lock size={ms(18)} color={isValidPassword ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
-                <TextInput
-                  ref={newRef}
-                  style={[styles.input, { color: theme.text }]}
-                  placeholder={t('changePassword.newPasswordPlaceholder')}
-                  placeholderTextColor={theme.inputPlaceholder}
-                  value={newPassword}
-                  onChangeText={(text) => { setNewPassword(text); clearError(); }}
-                  secureTextEntry={!showNew}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoFocus={!requiresCurrent}
-                  returnKeyType="next"
-                  maxLength={MAX_PASSWORD_LENGTH}
-                  onSubmitEditing={() => confirmRef.current?.focus()}
-                />
-                <TouchableOpacity onPress={() => setShowNew(!showNew)} hitSlop={8}>
-                  {showNew
-                    ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
-                    : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
-                </TouchableOpacity>
-              </View>
-            </View>
+            <PasswordField
+              inputRef={newRef}
+              icon={Lock}
+              label={t('changePassword.newPassword')}
+              value={newPassword}
+              onChangeText={onNewChange}
+              placeholder={t('changePassword.newPasswordPlaceholder')}
+              valid={isValidPassword}
+              autoFocus={!requiresCurrent}
+              returnKeyType="next"
+              onSubmitEditing={focusConfirm}
+            />
 
-            {/* Password Strength */}
-            {newPassword.length > 0 && (
-              <View style={styles.strengthContainer}>
-                <View style={styles.strengthBarTrack}>
-                  <View style={[styles.strengthBarFill, { width: `${strength.pct * 100}%`, backgroundColor: strength.color }]} />
-                </View>
-                <Text style={[styles.strengthLabel, { color: strength.color }]}>{strength.label}</Text>
-              </View>
-            )}
+            {newPassword.length > 0 && <PasswordStrengthBar strength={strength} />}
 
-            {/* Confirm Password */}
-            <View style={styles.inputContainer}>
-              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>
-                {t('changePassword.confirmPassword')}
-              </Text>
-              <View style={[styles.inputWrapper, {
-                backgroundColor: theme.inputBg,
-                borderColor: passwordsMatch ? palette.violet : theme.inputBorder,
-                borderWidth: passwordsMatch ? 2 : 1.5,
-              }]}>
-                <CheckCircle2 size={ms(18)} color={passwordsMatch ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
-                <TextInput
-                  ref={confirmRef}
-                  style={[styles.input, { color: theme.text }]}
-                  placeholder={t('changePassword.confirmPasswordPlaceholder')}
-                  placeholderTextColor={theme.inputPlaceholder}
-                  value={confirmPassword}
-                  onChangeText={(text) => { setConfirmPassword(text); clearError(); }}
-                  secureTextEntry={!showConfirm}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  maxLength={MAX_PASSWORD_LENGTH}
-                  onSubmitEditing={canSubmit ? handleSubmit : undefined}
-                />
-                <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} hitSlop={8}>
-                  {showConfirm
-                    ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
-                    : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
-                </TouchableOpacity>
-              </View>
-            </View>
+            <PasswordField
+              inputRef={confirmRef}
+              icon={CheckCircle2}
+              label={t('changePassword.confirmPassword')}
+              value={confirmPassword}
+              onChangeText={onConfirmChange}
+              placeholder={t('changePassword.confirmPasswordPlaceholder')}
+              valid={passwordsMatch}
+              returnKeyType="done"
+              onSubmitEditing={canSubmit ? handleSubmit : undefined}
+            />
 
             <FormError message={error} />
 
@@ -252,7 +185,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: ms(18),
-    fontWeight: '700',
+    fontWeight: '600',
   },
   scrollContent: {
     flexGrow: 1,
@@ -264,43 +197,6 @@ const styles = StyleSheet.create({
     lineHeight: ms(22),
     marginBottom: hp(24),
   },
-  fieldLabel: {
-    fontSize: fontSize.xs,
-    fontWeight: '600',
-    marginBottom: hp(6),
-    marginLeft: wp(4),
-  },
-  inputContainer: { marginBottom: hp(16) },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    paddingHorizontal: wp(14),
-    height: hp(58),
-  },
-  input: {
-    flex: 1,
-    fontSize: fontSize.md,
-    fontWeight: '500',
-    marginLeft: wp(10),
-  },
-  strengthContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(10),
-    marginTop: -hp(8),
-    marginBottom: hp(16),
-    paddingHorizontal: wp(4),
-  },
-  strengthBarTrack: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
-  strengthBarFill: { height: 4, borderRadius: 2 },
-  strengthLabel: { fontSize: fontSize.xs, fontWeight: '700', width: wp(48) },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,7 +208,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: fontSize.lg,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontWeight: '600',
   },
 });

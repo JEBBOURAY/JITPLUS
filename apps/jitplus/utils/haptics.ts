@@ -27,3 +27,10 @@ export function hapticSuccess(): void {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }
 }
+
+/** Error notification haptic (wrong code, failed redeem…) — no-op on web. */
+export function hapticError(): void {
+  if (Platform.OS !== 'web') {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+  }
+}

@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Modal, Pressable, StyleSheet, Animated, Easing } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, Modal, Pressable, StyleSheet, Animated } from 'react-native';
 import { Check } from 'lucide-react-native';
-import { brandGradientFull, useTheme } from '@/contexts/ThemeContext';
+import { palette, useTheme } from '@/contexts/ThemeContext';
 import { font, icon } from '@/constants/design';
 import { ms, radius } from '@/utils/responsive';
+import { EASE_OUT } from '@/utils/motion';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
+
+const CARD_FROM = 0.96;
+const CHECK_FROM = 0.85;
 
 interface Props {
   visible: boolean;
@@ -16,23 +20,27 @@ interface Props {
 
 export function TransactionSuccessModal({ visible, title, lines, hint, onClose }: Props) {
   const theme = useTheme();
-  const [scale] = useState(() => new Animated.Value(0.94));
-  const [opacity] = useState(() => new Animated.Value(0));
-  const [checkScale] = useState(() => new Animated.Value(0.4));
+  const reduceMotion = useReduceMotion() === true;
+  const [scale] = useState(() => new Animated.Value(CARD_FROM));
+  const [checkScale] = useState(() => new Animated.Value(CHECK_FROM));
 
+  // The Modal already fades in: only a small scale on top, no second fade.
   useEffect(() => {
     if (!visible) {
-      scale.setValue(0.94);
-      opacity.setValue(0);
-      checkScale.setValue(0.4);
+      scale.setValue(CARD_FROM);
+      checkScale.setValue(CHECK_FROM);
+      return;
+    }
+    if (reduceMotion) {
+      scale.setValue(1);
+      checkScale.setValue(1);
       return;
     }
     Animated.parallel([
-      Animated.timing(scale, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.timing(checkScale, { toValue: 1, duration: 250, easing: Easing.out(Easing.back(1.6)), useNativeDriver: true }),
+      Animated.timing(scale, { toValue: 1, duration: 180, easing: EASE_OUT, useNativeDriver: true }),
+      Animated.timing(checkScale, { toValue: 1, duration: 200, easing: EASE_OUT, useNativeDriver: true }),
     ]).start();
-  }, [visible, scale, opacity, checkScale]);
+  }, [visible, reduceMotion, scale, checkScale]);
 
   const [main, ...details] = lines;
 
@@ -42,13 +50,13 @@ export function TransactionSuccessModal({ visible, title, lines, hint, onClose }
         <Animated.View
           style={[
             styles.content,
-            { backgroundColor: theme.bgCard, borderColor: theme.border, opacity, transform: [{ scale }] },
+            { backgroundColor: theme.bgCard, borderColor: theme.border, transform: [{ scale }] },
           ]}
         >
           <Animated.View style={[styles.badge, { transform: [{ scale: checkScale }] }]}>
-            <LinearGradient colors={[...brandGradientFull]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.badgeGradient}>
+            <View style={styles.badgeGradient}>
               <Check size={ms(32)} color="#fff" strokeWidth={icon.stroke} />
-            </LinearGradient>
+            </View>
           </Animated.View>
 
           <Text style={[styles.title, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
@@ -91,9 +99,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 10,
   },
-  badgeGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: ms(20), textAlign: 'center', fontFamily: font.bold, letterSpacing: -0.3 },
-  main: { fontSize: ms(17), textAlign: 'center', fontFamily: font.bold },
+  badgeGradient: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.violet },
+  title: { fontSize: ms(20), textAlign: 'center', fontFamily: font.semibold, letterSpacing: -0.3 },
+  main: { fontSize: ms(17), textAlign: 'center', fontFamily: font.semibold },
   details: { alignSelf: 'stretch', borderRadius: radius.md, paddingVertical: 10, paddingHorizontal: 14, gap: 4, marginTop: 6 },
   detail: { fontSize: ms(14), textAlign: 'center', lineHeight: ms(20), fontFamily: font.medium },
   hint: { fontSize: ms(12), textAlign: 'center', marginTop: 10, fontFamily: font.regular },

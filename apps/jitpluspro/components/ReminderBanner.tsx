@@ -1,7 +1,6 @@
 import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, I18nManager } from 'react-native';
 import { X, ChevronRight } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { usePersistedFlag } from '@/hooks/usePersistedFlag';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -57,12 +56,6 @@ export const ReminderBanner = React.memo(function ReminderBanner({
         },
       ]}
     >
-      <LinearGradient
-        colors={['rgba(124,58,237,0.08)', 'transparent']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
       <TouchableOpacity
         style={styles.closeBtn}
         onPress={handleDismiss}
@@ -116,7 +109,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 12,
     ...Platform.select({
-      ios: { shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
       android: { elevation: 1 },
     }),
   },

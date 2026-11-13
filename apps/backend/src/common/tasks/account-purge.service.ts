@@ -17,7 +17,7 @@ export const PURGE_ROW_CHUNK = 2000;
 const PURGE_TX_OPTIONS: TransactionRunOptions = { maxWait: 10_000, timeout: 60_000 };
 
 /** campaign_sent_trackers rows kept this long (dedup window of the periodic campaigns). */
-export const CAMPAIGN_TRACKER_RETENTION_DAYS = 120;
+const CAMPAIGN_TRACKER_RETENTION_DAYS = 120;
 /** Tracker rows scanned per retention statement. */
 export const CAMPAIGN_TRACKER_PURGE_BATCH = 5000;
 

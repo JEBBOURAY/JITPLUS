@@ -1,22 +1,11 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  BadgeInfo,
-  Share2,
-  Clock,
-  Award,
-  Palette,
-  Eye,
-  Check,
-  ChevronRight,
-  type LucideIcon,
-} from 'lucide-react-native';
-import { JitPin } from '@/components/icons';
+import { Check, ChevronRight, type LucideIcon } from 'lucide-react-native';
+import { JitClock, JitEye, JitPhone, JitPin, JitRoller, JitStar, JitStore } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -26,12 +15,13 @@ import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useStores, queryKeys } from '@/hooks/useQueryHooks';
 import FichePreviewModal from '@/components/FichePreviewModal';
 import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
+import { SummaryCard } from '@/components/ui/SummaryCard';
 import MerchantCategoryIcon from '@/components/MerchantCategoryIcon';
 import { getCategoryLabel } from '@/constants/categories';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import type { Merchant, Store } from '@/types';
 import {
-  ScreenHeader, OwnerOnlyNotice, Toast, useToast, useQueuedToast, usePressGuard, surfaceShadow, fieldFill, ui,
+  ScreenHeader, OwnerOnlyNotice, Toast, useToast, useQueuedToast, usePressGuard, fieldFill, ui,
 } from '@/components/stores/StoreUi';
 import { formatDaySlots } from '@jitplus/shared';
 import {
@@ -41,13 +31,14 @@ import {
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string;
 
+// JitPlus icons only, drawn plain: no tinted tile behind them.
 const SECTION_UI: Record<StoreSection, { Icon: LucideIcon; titleKey: string }> = {
-  identity: { Icon: BadgeInfo, titleKey: 'storesHub.identityTitle' },
+  identity: { Icon: JitStore, titleKey: 'storesHub.identityTitle' },
   locations: { Icon: JitPin, titleKey: 'storesHub.locationsTitle' },
-  contact: { Icon: Share2, titleKey: 'storesHub.contactTitle' },
-  hours: { Icon: Clock, titleKey: 'storesHub.hoursTitle' },
-  services: { Icon: Award, titleKey: 'storesHub.servicesTitle' },
-  appearance: { Icon: Palette, titleKey: 'storesHub.appearanceTitle' },
+  contact: { Icon: JitPhone, titleKey: 'storesHub.contactTitle' },
+  hours: { Icon: JitClock, titleKey: 'storesHub.hoursTitle' },
+  services: { Icon: JitStar, titleKey: 'storesHub.servicesTitle' },
+  appearance: { Icon: JitRoller, titleKey: 'storesHub.appearanceTitle' },
 };
 
 /** One-line state of a section, shown under its title. */
@@ -101,18 +92,14 @@ const SectionRow = React.memo(function SectionRow({ section, summary, done, acce
       accessibilityLabel={`${title}, ${summary}`}
       accessibilityHint={done ? undefined : t('storesHub.toComplete')}
     >
-      <View style={[styles.rowIcon, { backgroundColor: theme.primaryBg }]}>
-        <Icon size={18} color={theme.primary} strokeWidth={icon.stroke} />
-      </View>
+      <Icon size={22} color={theme.text} strokeWidth={icon.stroke} />
       <View style={styles.rowText}>
         <Text style={[styles.rowTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{title}</Text>
         <Text style={[ui.caption, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{summary}</Text>
       </View>
       {section === 'appearance' ? <View style={[styles.swatch, { backgroundColor: accent }]} /> : null}
       {done ? (
-        <View style={[styles.doneDot, { backgroundColor: theme.success + '1F' }]}>
-          <Check size={12} color={theme.success} strokeWidth={icon.strokeSmall} />
-        </View>
+        <Check size={16} color={theme.success} strokeWidth={icon.strokeSmall} />
       ) : (
         <View style={[styles.todoDot, { backgroundColor: theme.warning }]} />
       )}
@@ -123,7 +110,7 @@ const SectionRow = React.memo(function SectionRow({ section, summary, done, acce
 
 /**
  * "Ma boutique" hub: brand header, completeness gauge and one row per
- * section. Each row opens `/store-section?section=…`. `preview=1` opens the
+ * section, in the same bordered cards as the "Mes outils" cards of Accueil. Each row opens `/store-section?section=…`. `preview=1` opens the
  * client preview straight away.
  */
 export default function StoresScreen() {
@@ -135,6 +122,8 @@ export default function StoresScreen() {
   const { t } = useLanguage();
   const dir = useDir();
   const { merchant, isTeamMember, loadProfile } = useAuth();
+  // A logo URL that 404s falls back to the category icon instead of a blank ring.
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
   const { data: stores = [] } = useStores();
   const toast = useToast();
   useQueuedToast(toast.show);
@@ -173,23 +162,28 @@ export default function StoresScreen() {
   if (isTeamMember) return <OwnerOnlyNotice />;
 
   const accent = brandColor(merchant.themeColor);
-  const shadow = surfaceShadow(theme);
+  const card = { backgroundColor: theme.bgCard, borderColor: theme.border };
   const complete = status.next === null;
+  const progressTitle = complete ? t('storesHub.completeTitle') : t('storesHub.progressTitle', { percent: status.percent });
+  const progressHint = status.next
+    ? t('storesHub.nextStep', { section: t(SECTION_UI[status.next].titleKey) })
+    : t('storesHub.completeCaption');
 
   return (
     <View style={[ui.flex, { backgroundColor: theme.bg }]}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary]} />}
       >
         <ScreenHeader
           title={t('stores.title')}
           caption={t('storesHub.caption')}
+          back={false}
           right={<DemoVideoButton id="boutique" variant="header" />}
         />
 
-        <View style={[styles.brandCard, { backgroundColor: theme.bgCard }, shadow]}>
+        <View style={[styles.brandCard, card]}>
           <TouchableOpacity
             onPress={() => openSection('identity')}
             activeOpacity={0.85}
@@ -200,12 +194,18 @@ export default function StoresScreen() {
               {merchant.coverUrl ? (
                 <ExpoImage source={resolveImageUrl(merchant.coverUrl)} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
               ) : (
-                <LinearGradient colors={[`${accent}55`, `${accent}14`]} style={StyleSheet.absoluteFill} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: `${accent}26` }]} />
               )}
             </View>
             <View style={[styles.logoRing, dir.isRTL ? styles.logoRingRtl : styles.logoRingLtr, { backgroundColor: theme.bgCard }]}>
-              {merchant.logoUrl ? (
-                <ExpoImage source={resolveImageUrl(merchant.logoUrl)} style={styles.logo} contentFit="cover" cachePolicy="memory-disk" />
+              {merchant.logoUrl && merchant.logoUrl !== failedLogoUrl ? (
+                <ExpoImage
+                  source={resolveImageUrl(merchant.logoUrl)}
+                  style={styles.logo}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  onError={() => setFailedLogoUrl(merchant.logoUrl ?? null)}
+                />
               ) : (
                 <View style={[styles.logo, styles.logoEmpty, { backgroundColor: `${accent}1A` }]}>
                   <MerchantCategoryIcon category={merchant.categorie} size={30} />
@@ -227,7 +227,7 @@ export default function StoresScreen() {
             style={[styles.previewBtn, { flexDirection: dir.row, backgroundColor: fieldFill(theme) }]}
             accessibilityRole="button"
           >
-            <Eye size={16} color={theme.primary} strokeWidth={icon.stroke} />
+            <JitEye size={18} color={theme.primary} strokeWidth={icon.stroke} />
             <Text style={[styles.previewText, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>{t('storesHub.previewCta')}</Text>
           </TouchableOpacity>
         </View>
@@ -236,32 +236,20 @@ export default function StoresScreen() {
           disabled={complete}
           onPress={() => status.next && openSection(status.next)}
           activeOpacity={0.8}
-          style={[styles.progressCard, { backgroundColor: theme.bgCard }, shadow]}
+          style={styles.progress}
           accessibilityRole={complete ? 'text' : 'button'}
+          accessibilityLabel={`${progressTitle}, ${status.done.length}/${STORE_SECTIONS.length}, ${progressHint}`}
         >
-          <View style={[styles.progressHead, { flexDirection: dir.row }]}>
-            <Text style={[styles.progressTitle, { color: theme.text, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
-              {complete ? t('storesHub.completeTitle') : t('storesHub.progressTitle', { percent: status.percent })}
-            </Text>
-            <Text style={[styles.progressCount, { color: theme.textSecondary }]}>
-              {status.done.length}/{STORE_SECTIONS.length}
-            </Text>
-          </View>
-          <View
-            style={[styles.track, { alignItems: dir.alignStart, backgroundColor: fieldFill(theme) }]}
-            accessibilityRole="progressbar"
-            accessibilityValue={{ min: 0, max: 100, now: status.percent }}
-          >
-            <View style={[styles.fill, { width: `${status.percent}%`, backgroundColor: complete ? theme.success : theme.primary }]} />
-          </View>
-          <Text style={[ui.caption, styles.progressHint, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
-            {status.next
-              ? t('storesHub.nextStep', { section: t(SECTION_UI[status.next].titleKey) })
-              : t('storesHub.completeCaption')}
-          </Text>
+          <SummaryCard
+            label={progressTitle}
+            value={status.done.length}
+            max={STORE_SECTIONS.length}
+            progress={status.percent / 100}
+            hint={progressHint}
+          />
         </TouchableOpacity>
 
-        <View style={[styles.list, { backgroundColor: theme.bgCard }, shadow]}>
+        <View style={[styles.list, card]}>
           {STORE_SECTIONS.map((section, i) => (
             <SectionRow
               key={section}
@@ -290,7 +278,7 @@ export default function StoresScreen() {
 }
 
 const styles = StyleSheet.create({
-  brandCard: { marginHorizontal: 16, marginTop: 8, borderRadius: 16, overflow: 'hidden' },
+  brandCard: { marginHorizontal: 16, marginTop: 8, borderRadius: 18, borderWidth: 1, overflow: 'hidden' },
   cover: { height: 112 },
   logoRing: { position: 'absolute', top: 72, width: 76, height: 76, borderRadius: 38, padding: 3 },
   logoRingLtr: { left: 16 },
@@ -304,20 +292,12 @@ const styles = StyleSheet.create({
   previewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, margin: 16, marginTop: 14, minHeight: 44, paddingVertical: 12, borderRadius: 12 },
   previewText: { fontSize: 14, fontFamily: font.semibold },
 
-  progressCard: { marginHorizontal: 16, marginTop: 16, borderRadius: 16, padding: 16 },
-  progressHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  progressTitle: { flex: 1, fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
-  progressCount: { fontSize: 13, fontFamily: font.semibold },
-  track: { height: 8, borderRadius: 4, marginTop: 12, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 4 },
-  progressHint: { marginTop: 10 },
+  progress: { marginHorizontal: 16, marginTop: 12 },
 
-  list: { marginHorizontal: 16, marginTop: 16, borderRadius: 16, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16 },
-  rowIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  list: { marginHorizontal: 16, marginTop: 12, borderRadius: 18, borderWidth: 1, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 15, paddingHorizontal: 16 },
   rowText: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
+  rowTitle: { fontSize: 16, fontFamily: font.semibold, letterSpacing: -0.2 },
   swatch: { width: 16, height: 16, borderRadius: 8 },
-  doneDot: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  todoDot: { width: 8, height: 8, borderRadius: 4, marginHorizontal: 7 },
+  todoDot: { width: 8, height: 8, borderRadius: 4, marginHorizontal: 4 },
 });

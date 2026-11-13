@@ -88,7 +88,7 @@ export function ReferralField({ referral, disabled }: Props) {
 }
 
 const styles = StyleSheet.create({
-  toggle: { alignItems: 'center', gap: wp(8), paddingVertical: hp(10), marginBottom: hp(4) },
+  toggle: { alignItems: 'center', gap: wp(8), paddingVertical: hp(6), marginBottom: hp(2) },
   toggleText: { flex: 1, fontSize: fontSize.sm, fontFamily: font.medium },
   feedback: { fontSize: fontSize.xs, marginTop: hp(6), fontFamily: font.medium },
   rotated: { transform: [{ rotate: '180deg' }] },

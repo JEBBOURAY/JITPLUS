@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: fontSize.xl,
-    fontFamily: font.bold,
+    fontFamily: font.semibold,
     textAlign: 'center',
     marginBottom: hp(8),
   },

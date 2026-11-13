@@ -6,7 +6,6 @@ import {
 } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import {
   Share2, X, ShieldCheck, Sun, WifiOff, RotateCcw, QrCode, ScanLine, Stamp, TriangleAlert,
@@ -40,9 +39,6 @@ import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const QR_SIZE = Math.min(SCREEN.width - wp(120), wp(250));
-const GRADIENT_CARD = [palette.violetDeep, palette.violetDark, palette.violet] as const;
-const GRADIENT_START = { x: 0, y: 0 } as const;
-const GRADIENT_END = { x: 1, y: 1 } as const;
 const SCROLLED_THRESHOLD = 4;
 
 export default function QRScreen() {
@@ -186,9 +182,8 @@ export default function QRScreen() {
   };
 
   const card = (
-    <LinearGradient colors={GRADIENT_CARD} start={GRADIENT_START} end={GRADIENT_END} style={styles.card} onLayout={handleCardLayout}>
+    <View style={styles.card} onLayout={handleCardLayout}>
       {cardSize && <QrCardPattern width={cardSize.width} height={cardSize.height} />}
-      <View style={[styles.orb, styles.orbB]} />
 
       <View style={styles.cardTop}>
         <View style={styles.cardLogoWrap}>
@@ -226,12 +221,12 @@ export default function QRScreen() {
           <QrRefreshBar
             durationMs={refreshDelayMs}
             cycleKey={qrValue}
-            color={palette.goldLight}
+            color="rgba(255,255,255,0.85)"
             trackColor="rgba(255,255,255,0.16)"
           />
         </View>
       )}
-    </LinearGradient>
+    </View>
   );
 
   const steps = [
@@ -292,9 +287,9 @@ export default function QRScreen() {
 
         {brightnessBoosted && !!qrValue && (
           <FadeInView delay={200} duration={300} distance={hp(6)}>
-            <View style={[styles.infoPill, { backgroundColor: isDark ? '#2A2113' : palette.goldUltraLight }]}>
-              <Sun size={ms(13)} color={palette.goldDark} strokeWidth={2.2} />
-              <Text style={[styles.infoPillText, { color: isDark ? palette.goldLight : palette.goldDark, fontFamily: fonts.semibold }]} numberOfLines={1}>
+            <View style={[styles.infoPill, { backgroundColor: theme.bgInput }]}>
+              <Sun size={ms(13)} color={theme.textSecondary} strokeWidth={2.2} />
+              <Text style={[styles.infoPillText, { color: theme.textSecondary, fontFamily: fonts.semibold }]} numberOfLines={1}>
                 {t('qr.brightness')}
               </Text>
             </View>
@@ -371,7 +366,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 10,
   },
   headerShadow: {
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: wp(8), minHeight: ms(46) },
   titleBlock: { flex: 1 },
@@ -388,11 +383,9 @@ const styles = StyleSheet.create({
   // Loyalty card
   cardShadow: {
     borderRadius: radius['2xl'],
-    shadowColor: palette.violetDark, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.3, shadowRadius: 24, elevation: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 2,
   },
-  card: { borderRadius: radius['2xl'], padding: wp(18), overflow: 'hidden', alignItems: 'center' },
-  orb: { position: 'absolute', borderRadius: 999 },
-  orbB: { width: ms(160), height: ms(160), bottom: -ms(70), left: -ms(50), backgroundColor: 'rgba(251,191,36,0.14)' },
+  card: { borderRadius: radius['2xl'], padding: wp(18), overflow: 'hidden', alignItems: 'center', backgroundColor: palette.violetDark },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: wp(12), alignSelf: 'stretch', marginBottom: hp(18) },
   cardLogoWrap: {
     width: ms(44), height: ms(44), borderRadius: ms(14), backgroundColor: '#FFFFFF',
@@ -400,7 +393,7 @@ const styles = StyleSheet.create({
   },
   cardLogo: { width: ms(34), height: ms(34) },
   cardIdentity: { flex: 1, minWidth: 0 },
-  cardLabel: { color: 'rgba(255,255,255,0.72)', fontSize: ms(11), letterSpacing: 0.8, textTransform: 'uppercase' },
+  cardLabel: { color: 'rgba(255,255,255,0.72)', fontSize: ms(11) },
   cardName: { color: '#FFFFFF', fontSize: fontSize.lg, marginTop: hp(2), letterSpacing: -0.2 },
   offlinePill: {
     flexDirection: 'row', alignItems: 'center', gap: wp(4),

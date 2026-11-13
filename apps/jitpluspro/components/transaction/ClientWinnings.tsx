@@ -2,7 +2,6 @@ import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { JitGames, JitGift, JitLock, JitTicket } from '@/components/icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { randomUUID } from '@/utils/crypto';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -204,9 +203,9 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
       >
-        <LinearGradient colors={[palette.gold, theme.warning]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.headerIcon}>
+        <View style={[styles.headerIcon, { backgroundColor: palette.gold }]}>
           <JitGift size={ms(20)} color={palette.charbonDark} strokeWidth={icon.stroke} />
-        </LinearGradient>
+        </View>
         <View style={styles.info}>
           <Text style={[styles.title, { color: theme.text, textAlign }]}>
             {loading && count === 0 ? t('stampScreen.winningsLoading') : t(count === 1 ? 'stampScreen.winningsTitle_one' : 'stampScreen.winningsTitle_other', { count })}
@@ -443,7 +442,7 @@ const styles = StyleSheet.create({
   receipt: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 6 },
   previewRow: { alignItems: 'center', justifyContent: 'space-between' },
   previewLabel: { fontSize: ms(14), fontFamily: font.medium },
-  previewValue: { fontSize: ms(15), fontFamily: font.bold },
+  previewValue: { fontSize: ms(15), fontFamily: font.semibold },
   previewTotal: { fontSize: ms(18) },
   stampChips: { flexWrap: 'wrap', gap: 6 },
   stampChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },

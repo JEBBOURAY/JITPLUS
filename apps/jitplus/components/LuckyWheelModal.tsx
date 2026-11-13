@@ -1,4 +1,5 @@
 import React from 'react';
+import { intlLocaleTag } from '@jitplus/shared/src/currency';
 import {
   View, StyleSheet, Animated, Modal, ScrollView, StatusBar, useWindowDimensions,
 } from 'react-native';
@@ -19,21 +20,22 @@ import WheelMerchantRow from './luckyWheel/WheelMerchantRow';
 import WheelLegalNotice from './luckyWheel/WheelLegalNotice';
 import { useLuckyWheel } from './luckyWheel/useLuckyWheel';
 
-const LOCALE_TAGS: Record<string, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
 const BG_GRADIENT = ['#24104A', '#150830', '#0B0418'] as const;
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /** Merchant whose tickets are shown first. */
+  merchantId?: string;
 }
 
-export default React.memo(function LuckyWheelModal({ visible, onClose }: Props) {
+export default React.memo(function LuckyWheelModal({ visible, onClose, merchantId }: Props) {
   const theme = useTheme();
   const { t, locale, isRTL } = useLanguage();
   const fonts = useAppFonts();
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
-  const localeTag = LOCALE_TAGS[locale] ?? 'fr-FR';
+  const localeTag = intlLocaleTag(locale);
 
   const {
     isLoading, isError, refetch, historyData, historyLoading, phase, spinning, result, groups,
@@ -41,7 +43,7 @@ export default React.memo(function LuckyWheelModal({ visible, onClose }: Props) 
     spinRotation, contentTranslate, canSpin, spinsLeft, setSelectedCampaignId, handleClose,
     dismissResult, handleSpin, handleReplay, handleViewPrizes, handleRequestClose, openRules,
     showWheel, showHistory,
-  } = useLuckyWheel(visible, onClose);
+  } = useLuckyWheel(visible, onClose, merchantId);
 
   const wheelSize = Math.round(Math.min(wp(300), screenW - ms(72), screenH * 0.4));
   const merchantName = campaign?.merchant?.nom || campaign?.name || '';
@@ -141,22 +143,18 @@ export default React.memo(function LuckyWheelModal({ visible, onClose }: Props) 
           )}
         </Animated.View>
 
-        {result && (
-          <WheelResultSheet
-            result={result.data}
-            merchantName={result.merchantName}
-            remainingTickets={result.remaining}
-            localeTag={localeTag}
-            bottomInset={insets.bottom}
-            theme={theme}
-            fonts={fonts}
-            t={t}
-            onReplay={handleReplay}
-            onClose={handleClose}
-            onViewPrizes={handleViewPrizes}
-            onDismiss={dismissResult}
-          />
-        )}
+        <WheelResultSheet
+          shown={result}
+          localeTag={localeTag}
+          bottomInset={insets.bottom}
+          theme={theme}
+          fonts={fonts}
+          t={t}
+          onReplay={handleReplay}
+          onClose={handleClose}
+          onViewPrizes={handleViewPrizes}
+          onDismiss={dismissResult}
+        />
       </LinearGradient>
     </Modal>
   );

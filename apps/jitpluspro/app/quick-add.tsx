@@ -31,6 +31,7 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { font, icon } from '@/constants/design';
 import { getErrorMessage } from '@/utils/error';
+import { hapticError, hapticSuccess } from '@/utils/haptics';
 import { logPerf } from '@jitplus/shared/src/devLogger';
 import { normalizePhone } from '@/utils/normalizePhone';
 import { COUNTRIES } from '@/constants/Countries';
@@ -130,11 +131,13 @@ export default function QuickAddScreen() {
     const country = COUNTRIES[countryIndex];
     const normalizedPhone = normalizePhone(phone, country.dial);
     if (!normalizedPhone || normalizedPhone.length > MAX_PHONE_LEN + 4) {
+      hapticError();
       Alert.alert(t('common.error'), t('quickAdd.phoneInvalid'));
       return;
     }
     const amountNum = parseFloat(amount.replace(',', '.')) || 0;
     if (!isPerVisit && amountNum <= 0) {
+      hapticError();
       Alert.alert(t('common.error'), t('quickAdd.amountInvalid'));
       return;
     }
@@ -165,9 +168,11 @@ export default function QuickAddScreen() {
       // This replaces a 350ms setTimeout that used to add fixed latency.
       pendingShareRef.current = data;
       setResult(data);
+      hapticSuccess();
       logPerf('QuickAdd', `submit:modal-set ${Date.now() - tSubmit}ms`);
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } } | null)?.response?.status;
+      hapticError();
       if (status === 409) {
         Alert.alert(t('common.error'), t('quickAdd.alreadyRegistered'));
       } else {
@@ -478,7 +483,7 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: 'center',
   },
-  previewText: { fontSize: 16, fontFamily: font.bold },
+  previewText: { fontSize: 16, fontFamily: font.semibold },
   previewCapText: { fontSize: 12, marginTop: 4, textAlign: 'center', fontFamily: font.regular },
   submitBtn: { marginTop: 24 },
   modalBackdrop: {
@@ -495,7 +500,7 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
   },
-  modalTitle: { fontSize: 20, fontFamily: font.bold, marginTop: 12, textAlign: 'center' },
+  modalTitle: { fontSize: 20, fontFamily: font.semibold, marginTop: 12, textAlign: 'center' },
   modalBody: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 8, fontFamily: font.regular },
   modalActions: { flexWrap: 'wrap', gap: 10, marginTop: 20, justifyContent: 'center' },
 });

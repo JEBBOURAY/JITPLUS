@@ -12,7 +12,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { randomUUID } from '@/utils/crypto';
-import { hapticSuccess, safeSelection } from '@/utils/haptics';
+import { hapticError, hapticSuccess, safeSelection } from '@/utils/haptics';
 import { markNotifPromptWin } from '@/utils/notifPrompt';
 import { AlertTriangle } from 'lucide-react-native';
 
@@ -274,6 +274,7 @@ export default function TransactionAmountScreen() {
       });
       closeTimerRef.current = setTimeout(leave, SUCCESS_DISPLAY_MS);
     } catch (err: unknown) {
+      hapticError();
       // Drop what already went through so a retry only sends the rest.
       if (done.has('earn')) {
         setAmount('');

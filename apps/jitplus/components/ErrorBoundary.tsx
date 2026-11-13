@@ -6,7 +6,7 @@ import i18n from '@/i18n';
 // ── PII scrubber for Sentry ────────────────────────────────────────
 const PII_KEYS = /email|phone|tel|password|token|secret|api_?key|auth|credit|card|ssn|birth|address/i;
 const PII_PATTERNS = [
-  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, // emails
+  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, // emails
   /\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b/g, // phone numbers
 ];
 

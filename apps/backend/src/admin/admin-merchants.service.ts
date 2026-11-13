@@ -10,7 +10,10 @@ import {
 } from '../common/repositories';
 import { evictSessionCache } from '../common/utils/session-cache';
 import { invalidateMerchantListCache } from '../common/utils/merchant-list-cache';
-import { MS_PER_DAY } from '../common/constants';
+import { BCRYPT_SALT_ROUNDS, MS_PER_DAY } from '../common/constants';
+import { softDeleteMerchantInTx } from '../merchant/merchant-soft-delete';
+import * as bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import { maskEmail } from '../common/utils/pii-mask';
 import { AdminDetailsService } from './admin-details.service';
 import { MerchantNotifierService, NOTIFY_TARGET_SELECT } from '../merchant-inbox/merchant-notifier.service';
@@ -423,75 +426,15 @@ export class AdminMerchantService {
     const liveSessions = await this.deviceSessionRepo.findMany({ where: { merchantId }, select: { tokenId: true } });
     const now = new Date();
 
-    await this.txRunner.run(async (tx) => {
-      // 1. Soft-delete merchant: anonymise ALL PII so email/phone/social IDs can be reused
-      await tx.merchant.update({
-        where: { id: merchantId },
-        data: {
-          deletedAt: now,
-          nom: 'Compte supprimé',
-          email: `deleted_${merchantId}`,
-          password: '',
-          googleId: null,
-          appleId: null,
-          pushToken: null,
-          phoneNumber: null,
-          description: null,
-          ville: null,
-          quartier: null,
-          adresse: null,
-          latitude: null,
-          longitude: null,
-          logoUrl: null,
-          coverUrl: null,
-          socialLinks: Prisma.DbNull,
-          referralCode: null,
-          isActive: false,
-        },
-      });
-
-      // 2. Deactivate all team members + clear credentials
-      await tx.teamMember.updateMany({
-        where: { merchantId },
-        data: { isActive: false, password: '' },
-      });
-
-      // 3. Deactivate all stores so they disappear from search/discovery
-      await tx.store.updateMany({
-        where: { merchantId },
-        data: { isActive: false },
-      });
-
-      // 4. Deactivate all loyalty cards so clients see them as expired
-      await tx.loyaltyCard.updateMany({
-        where: { merchantId, deactivatedAt: null },
-        data: { deactivatedAt: now },
-      });
-
-      // 5. Revoke all active sessions (access + refresh tokens invalidated)
-      await tx.deviceSession.deleteMany({
-        where: { merchantId },
-      });
-
-      // 6. Clean up notification data so recreated accounts start fresh
-      await tx.merchantNotificationRead.deleteMany({
-        where: { merchantId },
-      });
-      await tx.merchantInboxNotification.deleteMany({
-        where: { merchantId },
-      });
-      await tx.notification.deleteMany({
-        where: { merchantId },
-      });
-
-      // 7. Delete orphan-prone related data
-      await tx.reward.deleteMany({ where: { merchantId } });
-      await tx.profileView.deleteMany({ where: { merchantId } });
-      await tx.clientReferral.deleteMany({ where: { merchantId } });
-    });
+    // Random hash rather than '' so team rows never hold an empty credential.
+    const teamMemberPlaceholder = await bcrypt.hash(randomUUID(), BCRYPT_SALT_ROUNDS);
+    await this.txRunner.run((tx) => softDeleteMerchantInTx(tx, merchantId, now, teamMemberPlaceholder));
     await evictSessionCache(this.cache, liveSessions.map((r) => r.tokenId));
-
-    await invalidateMerchantListCache(this.cache);
+    await Promise.allSettled([
+      this.cache.del(`merchant:profile:${merchantId}`),
+      this.cache.del(`merchant:detail:${merchantId}`),
+      invalidateMerchantListCache(this.cache),
+    ]);
     this.logger.warn(`Merchant ${merchantId} (${maskEmail(merchant.email)}) soft-deleted by admin`);
     return { nom: merchant.nom, email: merchant.email };
   }

@@ -568,6 +568,6 @@ export default function LuckyWheelWizard() {
 const styles = StyleSheet.create({
   padded: { padding: 16 },
   gap: { gap: 12 },
-  bigValue: { fontSize: ms(22), fontFamily: font.bold, textAlign: 'center' },
+  bigValue: { fontSize: ms(22), fontFamily: font.semibold, textAlign: 'center' },
   timeline: { fontSize: ms(13), lineHeight: ms(20), fontFamily: font.medium },
 });
