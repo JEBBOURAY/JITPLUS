@@ -1,54 +1,34 @@
 import { moneyFormatter } from '@jitplus/shared/src/currency';
 import { useCallback, useMemo } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import Animated from 'react-native-reanimated';
 import { Text } from '@/components/AppText';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import QRCode from 'react-native-qrcode-svg';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { ArrowLeft, AlertCircle, Copy, Check, Ban, CircleCheck, Clock } from 'lucide-react-native';
+import { ArrowLeft, Ban, CircleCheck, Clock, QrCode, Store } from 'lucide-react-native';
 
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { wp, hp, ms } from '@/utils/responsive';
 import { formatDate } from '@/utils/date';
-import { haptic } from '@/utils/haptics';
+import { DIR_FLIP } from '@/utils/rtl';
+import RetryState from '@/components/RetryState';
 import Skeleton from '@/components/Skeleton';
 import { useClientCoupon } from '@/hooks/useScratchHooks';
-import { useBrightnessBoost } from '@/hooks/useBrightnessBoost';
-import { useTransientFlag } from '@/hooks/useTransientFlag';
-import {
-  COUPON_QR_PREFIX, describeCouponConditions, formatCouponCode, formatRewardValue,
-} from '@jitplus/shared/src/scratch';
-import * as Clipboard from 'expo-clipboard';
+import { describeCouponConditions, formatRewardValue } from '@jitplus/shared/src/scratch';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
-
-const KEEP_AWAKE_TAG = 'jitplus-coupon';
-// Copy feedback crossfades in place: no icon snap, no layout jump.
-const FADE = { transitionProperty: 'opacity', transitionDuration: 150, transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)' } as const;
 
 export default function CouponDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const { t, isRTL, locale } = useLanguage();
+  const { t, locale } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const query = useClientCoupon(id);
   const coupon = query.data ?? null;
-  const [copied, flashCopied] = useTransientFlag();
 
   const isActive = !!coupon && coupon.status === 'ACTIVE' && new Date(coupon.expiresAt).getTime() > Date.now();
-  const qrShown = isActive && !!coupon?.qrToken;
-
-  // Keep the screen awake and boost brightness while the QR is shown (same
-  // pattern as the loyalty QR screen) so the cashier can scan first try.
-  useBrightnessBoost(qrShown);
-  useFocusEffect(useCallback(() => {
-    if (!qrShown) return undefined;
-    activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {});
-    return () => { deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => {}); };
-  }, [qrShown]));
+  // No code to show: the cashier sees the gift by scanning the client's JitPlus card.
+  const openMyCard = useCallback(() => { router.dismissTo('/(tabs)/qr'); }, [router]);
 
   const reward = coupon
     ? formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t, moneyFormatter(coupon.merchant?.currency, locale))
@@ -58,15 +38,6 @@ export default function CouponDetailScreen() {
     if (!coupon) return [];
     return describeCouponConditions(coupon, t, (iso) => formatDate(iso, locale), moneyFormatter(coupon.merchant?.currency, locale));
   }, [coupon, t, locale]);
-
-  const copyCode = useCallback(async () => {
-    if (!coupon) return;
-    haptic();
-    try {
-      await Clipboard.setStringAsync(coupon.code);
-      flashCopied();
-    } catch { /* non-fatal */ }
-  }, [coupon, flashCopied]);
 
   const renderBody = () => {
     if (query.isLoading) {
@@ -80,13 +51,7 @@ export default function CouponDetailScreen() {
     }
     if (query.isError || !coupon) {
       return (
-        <View style={styles.body}>
-          <AlertCircle size={ms(44)} color={theme.danger} />
-          <Text style={[styles.stateText, { color: theme.textMuted }]}>{t('scratch.coupons.error')}</Text>
-          <TouchableOpacity style={[styles.retryBtn, { borderColor: theme.border }]} onPress={() => query.refetch()} accessibilityRole="button">
-            <Text style={[styles.retryText, { color: theme.text }]}>{t('common.retry')}</Text>
-          </TouchableOpacity>
-        </View>
+        <RetryState withIcon message={t('scratch.coupons.error')} onRetry={() => { void query.refetch(); }} style={styles.body} />
       );
     }
 
@@ -101,6 +66,9 @@ export default function CouponDetailScreen() {
 
     return (
       <ScrollView contentContainerStyle={[styles.body, styles.scrollBody]} showsVerticalScrollIndicator={false}>
+        {coupon.source === 'COLLECTION' && (
+          <Text style={[styles.sourceTag, { color: theme.textMuted }]}>{t('home.passCollectionTag')}</Text>
+        )}
         <Text style={[styles.reward, { color: theme.text }]} numberOfLines={3}>{reward}</Text>
         {!!coupon.merchant?.nom && (
           <Text style={[styles.merchant, { color: theme.textSecondary }]}>{coupon.merchant.nom}</Text>
@@ -114,38 +82,31 @@ export default function CouponDetailScreen() {
           </Text>
         </View>
 
-        {/* A cancelled coupon never shows QR nor code (study §5.3) */}
         {isActive ? (
           <>
-            <View style={[styles.qrBox, { backgroundColor: '#FFFFFF' }]}>
-              {coupon.qrToken ? (
-                <QRCode
-                  value={`${COUPON_QR_PREFIX}${coupon.qrToken}`}
-                  size={wp(210)}
-                  color="#111827"
-                  backgroundColor="#FFFFFF"
-                  ecl="M"
-                />
-              ) : (
-                <Skeleton width={wp(210)} height={wp(210)} borderRadius={8} />
-              )}
-            </View>
-            <TouchableOpacity style={styles.codeRow} onPress={copyCode} accessibilityRole="button" accessibilityLabel={t('scratch.coupons.copyCode')}>
-              <Text style={[styles.codeLabel, { color: theme.textMuted }]}>{t('scratch.coupon.code')}</Text>
-              <Text style={[styles.codeValue, { color: theme.text }]}>{formatCouponCode(coupon.code)}</Text>
-              <View style={styles.copyIcon}>
-                <Animated.View style={[StyleSheet.absoluteFill, FADE, { opacity: copied ? 0 : 1 }]}>
-                  <Copy size={ms(16)} color={theme.textMuted} />
-                </Animated.View>
-                <Animated.View style={[StyleSheet.absoluteFill, FADE, { opacity: copied ? 1 : 0 }]}>
-                  <Check size={ms(16)} color={theme.success} />
-                </Animated.View>
+            <View style={[styles.howBox, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+              <Text style={[styles.howTitle, { color: theme.text }]}>{t('home.passHowTitle')}</Text>
+              <View style={styles.howRow}>
+                <Store size={ms(18)} color={theme.primary} />
+                <Text style={[styles.howText, { color: theme.textSecondary }]}>
+                  {t('scratch.screen.stepVisit', { merchant: coupon.merchant?.nom || t('common.shop') })}
+                </Text>
               </View>
+              <View style={styles.howRow}>
+                <QrCode size={ms(18)} color={theme.primary} />
+                <Text style={[styles.howText, { color: theme.textSecondary }]}>{t('scratch.screen.stepShowCard')}</Text>
+              </View>
+              <Text style={[styles.howNote, { color: theme.textMuted }]}>{t('scratch.screen.noCouponNeeded')}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.cardBtn, { backgroundColor: theme.primary }]}
+              onPress={openMyCard}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+            >
+              <QrCode size={ms(18)} color="#fff" />
+              <Text style={styles.cardBtnText}>{t('scratch.screen.openMyCard')}</Text>
             </TouchableOpacity>
-            <Animated.View style={[FADE, { opacity: copied ? 1 : 0 }]} accessibilityLiveRegion="polite">
-              <Text style={[styles.copiedText, { color: theme.success }]}>{copied ? t('scratch.coupons.copied') : ' '}</Text>
-            </Animated.View>
-            <Text style={[styles.showHint, { color: theme.textMuted }]}>{t('scratch.coupon.showAtCheckout')}</Text>
           </>
         ) : (
           <View style={[styles.inactiveBox, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
@@ -180,7 +141,7 @@ export default function CouponDetailScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top + hp(8) }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('common.back')}>
-          <ArrowLeft size={ms(24)} color={theme.text} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
+          <ArrowLeft size={ms(24)} color={theme.text} style={DIR_FLIP} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>{t('scratch.coupons.title')}</Text>
         <View style={{ width: ms(24) }} />
@@ -195,24 +156,25 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(10) },
   headerTitle: { fontSize: ms(19), fontWeight: '600' },
   body: { flex: 1, alignItems: 'center', gap: hp(12), paddingBottom: hp(30) },
+  sourceTag: { fontSize: ms(13), fontWeight: '600', marginBottom: -hp(6) },
   reward: { fontSize: ms(26), fontWeight: '600', textAlign: 'center' },
   merchant: { fontSize: ms(15), fontWeight: '600', marginTop: -hp(6) },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: wp(14), paddingVertical: hp(6), borderRadius: 999 },
   statusText: { fontSize: ms(13), fontWeight: '600' },
-  qrBox: { padding: wp(16), borderRadius: 20, marginTop: hp(4) },
-  codeRow: { flexDirection: 'row', alignItems: 'center', gap: wp(10), marginTop: hp(2) },
-  codeLabel: { fontSize: ms(12), fontWeight: '600' },
-  codeValue: { fontSize: ms(28), fontWeight: '600', letterSpacing: 3, fontVariant: ['tabular-nums'] },
   scrollBody: { flex: 0, flexGrow: 1 },
-  copyIcon: { width: ms(16), height: ms(16) },
-  copiedText: { fontSize: ms(12), fontWeight: '600', marginTop: -hp(6) },
-  showHint: { fontSize: ms(12), textAlign: 'center', paddingHorizontal: wp(24) },
+  howBox: { width: '100%', borderRadius: 16, borderWidth: 1, padding: wp(16), gap: hp(10), marginTop: hp(4) },
+  howTitle: { fontSize: ms(15), fontWeight: '600' },
+  howRow: { flexDirection: 'row', alignItems: 'center', gap: wp(10) },
+  howText: { flex: 1, fontSize: ms(14), lineHeight: ms(20) },
+  howNote: { fontSize: ms(12), lineHeight: ms(18) },
+  cardBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(8),
+    alignSelf: 'stretch', minHeight: ms(50), borderRadius: 14,
+  },
+  cardBtnText: { color: '#fff', fontSize: ms(15), fontWeight: '600' },
   inactiveBox: { width: '100%', borderRadius: 16, borderWidth: 1, padding: wp(18), alignItems: 'center' },
   inactiveText: { fontSize: ms(14), fontWeight: '600', textAlign: 'center' },
   conditionsBox: { width: '100%', borderRadius: 14, borderWidth: 1, padding: wp(14), gap: 4, marginTop: hp(4) },
   conditionsTitle: { fontSize: ms(11), fontWeight: '600', marginBottom: 4 },
   conditionLine: { fontSize: ms(13), lineHeight: ms(19) },
-  stateText: { fontSize: ms(15), fontWeight: '600', textAlign: 'center' },
-  retryBtn: { marginTop: hp(4), paddingHorizontal: wp(24), paddingVertical: hp(10), borderRadius: 12, borderWidth: 1 },
-  retryText: { fontWeight: '600', fontSize: ms(14) },
 });

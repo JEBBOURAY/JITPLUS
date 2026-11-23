@@ -1,6 +1,7 @@
-import { buildClientSearchFilter } from '../../common/utils';
+import { buildClientSearchFilter, mapClientResponse } from '../../common/utils';
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
 import { MerchantClientService } from './merchant-client.service';
 import { ScanTicketService } from './scan-ticket.service';
 import {
@@ -8,8 +9,9 @@ import {
   LOYALTY_CARD_REPOSITORY,
   TRANSACTION_REPOSITORY,
   MERCHANT_REPOSITORY,
+  RAW_QUERY_RUNNER,
 } from '../../common/repositories';
-import { INACTIVE_CLIENT_DAYS, MS_PER_DAY } from '../../common/constants';
+import { INACTIVE_CLIENT_DAYS, NEW_CLIENT_DAYS, MS_PER_DAY } from '../../common/constants';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -33,6 +35,7 @@ const mockClientRepo = { findMany: jest.fn(), count: jest.fn() };
 const mockLoyaltyCardRepo = { findMany: jest.fn(), count: jest.fn() };
 const mockTransactionRepo = { groupBy: jest.fn() };
 const mockMerchantRepo = { findUnique: jest.fn() };
+const mockRawQuery = { queryRaw: jest.fn(), executeRaw: jest.fn() };
 
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
@@ -54,6 +57,7 @@ describe('MerchantClientService.getClients', () => {
         { provide: TRANSACTION_REPOSITORY, useValue: mockTransactionRepo },
         { provide: MERCHANT_REPOSITORY, useValue: mockMerchantRepo },
         { provide: ScanTicketService, useValue: {} },
+        { provide: RAW_QUERY_RUNNER, useValue: mockRawQuery },
       ],
     }).compile();
 
@@ -160,6 +164,76 @@ describe('MerchantClientService.getClients', () => {
     expect(where.lastVisitAt).toBeUndefined();
     expect(orderBy).toEqual([{ stamps: 'desc' }, { id: 'asc' }]);
   });
+
+  it('"almost" view keeps cards 1 or 2 stamps short of the cheapest reward', async () => {
+    mockLoyaltyCardRepo.findMany.mockResolvedValue([]);
+    mockLoyaltyCardRepo.count.mockResolvedValue(0);
+
+    await service.getClients(MERCHANT_ID, undefined, 1, 20, 'almost');
+
+    const { where, orderBy } = mockLoyaltyCardRepo.findMany.mock.calls[0][0];
+    expect(where.stamps).toEqual({ gte: 6, lt: 8 });
+    expect(orderBy).toEqual([{ stamps: 'desc' }, { id: 'asc' }]);
+  });
+
+  it('"almost" view is empty when one stamp is enough for a reward', async () => {
+    mockMerchantRepo.findUnique.mockResolvedValue({ stampsForReward: 10, rewards: [{ cout: 1 }] });
+    mockLoyaltyCardRepo.findMany.mockResolvedValue([]);
+    mockLoyaltyCardRepo.count.mockResolvedValue(0);
+
+    const res = await service.getClients(MERCHANT_ID, undefined, 1, 20, 'almost');
+
+    const { where } = mockLoyaltyCardRepo.findMany.mock.calls[0][0];
+    // At least 1 stamp and below a threshold of 1: no card can match.
+    expect(where.stamps).toEqual({ gte: 1, lt: 1 });
+    expect(res.clients).toEqual([]);
+  });
+
+  it('"new" view keeps cards opened in the last days, newest card first', async () => {
+    mockLoyaltyCardRepo.findMany.mockResolvedValue([]);
+    mockLoyaltyCardRepo.count.mockResolvedValue(0);
+    const before = Date.now();
+
+    await service.getClients(MERCHANT_ID, undefined, 1, 20, 'new');
+
+    const { where, orderBy } = mockLoyaltyCardRepo.findMany.mock.calls[0][0];
+    const cutoff = (where.createdAt.gte as Date).getTime();
+    expect(cutoff).toBeLessThanOrEqual(before - NEW_CLIENT_DAYS * MS_PER_DAY + 1000);
+    expect(cutoff).toBeGreaterThanOrEqual(before - NEW_CLIENT_DAYS * MS_PER_DAY - 1000);
+    expect(orderBy).toEqual([{ createdAt: 'desc' }, { id: 'asc' }]);
+  });
+
+  it('an explicit sort overrides the view order, with the id tie-breaker kept', async () => {
+    mockLoyaltyCardRepo.findMany.mockResolvedValue([]);
+    mockLoyaltyCardRepo.count.mockResolvedValue(0);
+
+    await service.getClients(MERCHANT_ID, undefined, 1, 20, 'inactive', 'name');
+    await service.getClients(MERCHANT_ID, 'sara', 1, 20, undefined, 'lastVisit');
+
+    const first = mockLoyaltyCardRepo.findMany.mock.calls[0][0];
+    expect(first.where.lastVisitAt).toBeDefined();
+    expect(first.orderBy).toEqual([
+      { client: { prenom: { sort: 'asc', nulls: 'last' } } },
+      { client: { nom: 'asc' } },
+      { id: 'asc' },
+    ]);
+    expect(mockLoyaltyCardRepo.findMany.mock.calls[1][0].orderBy).toEqual([{ lastVisitAt: 'desc' }, { id: 'asc' }]);
+  });
+
+  it('segments count every chip in one merchant-scoped query', async () => {
+    mockRawQuery.queryRaw.mockResolvedValueOnce([{ all: 120, reward: 6, almost: 9, fresh: 12, inactive: 30 }]);
+
+    const res = await service.getClientSegments(MERCHANT_ID);
+
+    expect(res).toEqual({ all: 120, reward: 6, almost: 9, new: 12, inactive: 30 });
+    expect(mockRawQuery.queryRaw).toHaveBeenCalledTimes(1);
+    const sql = mockRawQuery.queryRaw.mock.calls[0][0] as Prisma.Sql;
+    expect(sql.sql).toContain('lc.deactivated_at IS NULL');
+    expect(sql.sql).toContain('c.deleted_at IS NULL');
+    // threshold 8: reward >= 8, almost in [6, 8)
+    expect(sql.values).toEqual(expect.arrayContaining([MERCHANT_ID, 8, 6]));
+    expect(mockLoyaltyCardRepo.count).not.toHaveBeenCalled();
+  });
 });
 
 describe('MerchantClientService scan lookup and status', () => {
@@ -184,6 +258,7 @@ describe('MerchantClientService scan lookup and status', () => {
         { provide: TRANSACTION_REPOSITORY, useValue: transactionRepo },
         { provide: MERCHANT_REPOSITORY, useValue: merchantRepo },
         { provide: ScanTicketService, useValue: scanTickets },
+        { provide: RAW_QUERY_RUNNER, useValue: mockRawQuery },
       ],
     }).compile();
     service = module.get(MerchantClientService);
@@ -241,7 +316,7 @@ describe('MerchantClientService scan lookup and status', () => {
 
   describe('getClientStatus', () => {
     const fullClient = {
-      id: 'c1', nom: 'Alaoui', email: 'c1@mail.com', telephone: '+212600000000',
+      id: 'c1', prenom: 'Sara', nom: 'Alaoui', email: 'c1@mail.com', telephone: '+212600000000',
       shareInfoMerchants: true, dateNaissance: null, deletedAt: null,
     };
 
@@ -251,7 +326,7 @@ describe('MerchantClientService scan lookup and status', () => {
 
       const res = await service.getClientStatus('c1', MERCHANT_ID);
 
-      expect(res).toMatchObject({ id: 'c1', nom: 'Alaoui', email: 'c1@mail.com', stamps: 4 });
+      expect(res).toMatchObject({ id: 'c1', prenom: 'Sara', nom: 'Alaoui', email: 'c1@mail.com', stamps: 4 });
       expect(loyaltyCardRepo.create).not.toHaveBeenCalled();
       expect(loyaltyCardRepo.update).not.toHaveBeenCalled();
     });
@@ -280,7 +355,7 @@ describe('MerchantClientService scan lookup and status', () => {
 
       const res = await service.getClientStatus('c1', MERCHANT_ID, 'ticket-1');
 
-      expect(res).toMatchObject({ id: 'c1', nom: 'A.', email: null, telephone: null, stamps: 0 });
+      expect(res).toMatchObject({ id: 'c1', prenom: 'S.', nom: 'A.', email: null, telephone: null, stamps: 0 });
       expect(loyaltyCardRepo.create).not.toHaveBeenCalled();
     });
 
@@ -290,5 +365,59 @@ describe('MerchantClientService scan lookup and status', () => {
 
       await expect(service.getClientStatus('c1', MERCHANT_ID)).rejects.toThrow(NotFoundException);
     });
+  });
+});
+
+// Security audit 2026-11-21: a merchant who only knows a phone number must not
+// obtain the client's name, email and phone by opening a card for them.
+describe('MerchantClientService masks cards opened from a typed phone number', () => {
+  const clientRepo = { findUnique: jest.fn() };
+  const loyaltyCardRepo = { findUnique: jest.fn() };
+  const transactionRepo = { findMany: jest.fn().mockResolvedValue([]) };
+  const merchantRepo = { findUnique: jest.fn().mockResolvedValue({ stampsForReward: 10, rewards: [] }) };
+  const fullClient = {
+    id: 'c1', prenom: 'Sara', nom: 'Alaoui', email: 'c1@mail.com', telephone: '+212600000000',
+    shareInfoMerchants: true, termsAccepted: true, isAnonymous: false, dateNaissance: null, deletedAt: null, createdAt: JOINED,
+  };
+  let service: MerchantClientService;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    clientRepo.findUnique.mockResolvedValue(fullClient);
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        MerchantClientService,
+        { provide: CLIENT_REPOSITORY, useValue: clientRepo },
+        { provide: LOYALTY_CARD_REPOSITORY, useValue: loyaltyCardRepo },
+        { provide: TRANSACTION_REPOSITORY, useValue: transactionRepo },
+        { provide: MERCHANT_REPOSITORY, useValue: merchantRepo },
+        { provide: ScanTicketService, useValue: { verify: jest.fn(() => false) } },
+        { provide: RAW_QUERY_RUNNER, useValue: mockRawQuery },
+      ],
+    }).compile();
+    service = module.get(MerchantClientService);
+  });
+
+  it('getClientDetail hides name, email and phone while consent is pending', async () => {
+    loyaltyCardRepo.findUnique.mockResolvedValue({ stamps: 1, createdAt: JOINED, deactivatedAt: null, consentPending: true });
+    const res = await service.getClientDetail('c1', MERCHANT_ID);
+    expect(res).toMatchObject({ nom: 'A.', email: null, telephone: null });
+  });
+
+  it('getClientDetail reveals shared details once the client confirmed', async () => {
+    loyaltyCardRepo.findUnique.mockResolvedValue({ stamps: 1, createdAt: JOINED, deactivatedAt: null, consentPending: false });
+    const res = await service.getClientDetail('c1', MERCHANT_ID);
+    expect(res).toMatchObject({ nom: 'Alaoui', email: 'c1@mail.com', telephone: '+212600000000' });
+  });
+
+  it('getClientStatus hides details while consent is pending', async () => {
+    loyaltyCardRepo.findUnique.mockResolvedValue({ id: 'lc1', stamps: 1, createdAt: JOINED, deactivatedAt: null, consentPending: true });
+    const res = await service.getClientStatus('c1', MERCHANT_ID);
+    expect(res).toMatchObject({ nom: 'A.', email: null, telephone: null });
+  });
+
+  it('the client list (mapClientResponse) hides details while consent is pending', () => {
+    const row = mapClientResponse(fullClient, { stamps: 1, createdAt: JOINED, consentPending: true }, undefined);
+    expect(row).toMatchObject({ prenom: 'S.', nom: 'A.', email: null, telephone: null });
   });
 });

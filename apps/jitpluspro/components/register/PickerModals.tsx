@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check } from 'lucide-react-native';
 import MerchantCategoryIcon from '@/components/MerchantCategoryIcon';
 import { getCategoryOptions } from '@/constants/categories';

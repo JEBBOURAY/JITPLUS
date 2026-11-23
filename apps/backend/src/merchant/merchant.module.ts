@@ -22,11 +22,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { MerchantPlanModule } from './merchant-plan.module';
 import { EventsModule } from '../events/events.module';
 
+import { BookingModule } from '../booking/booking.module';
 @Module({
   imports: [
     NotificationsModule,
     MerchantPlanModule,
     EventsModule,
+    BookingModule,
   ],
   controllers: [
     MerchantController,

@@ -13,7 +13,7 @@ const BUTTON_SIZE = ms(40);
 const PAD_TOP = hp(4);
 const PAD_BOTTOM = hp(8);
 
-/** Height of the solid bar, where pinned content must stop. */
+/** Height of the solid bar, where the pinned tab bar must stop. */
 export function getStickyHeaderHeight(insetTop: number): number {
   return insetTop + PAD_TOP + BUTTON_SIZE + PAD_BOTTOM;
 }

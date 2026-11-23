@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { Text } from '@/components/AppText';
 import * as Clipboard from 'expo-clipboard';
 import { Copy, Check } from 'lucide-react-native';
 import { JitGift } from '@/components/icons';

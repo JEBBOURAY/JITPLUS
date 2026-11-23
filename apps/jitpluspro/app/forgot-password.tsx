@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -12,6 +10,7 @@ import {
   Keyboard,
   Animated,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { getErrorMessage } from '@/utils/error';
@@ -165,7 +164,7 @@ export default function ForgotPasswordScreen() {
       Alert.alert(
         t('forgotPassword.successTitle'),
         t('forgotPassword.successMessage'),
-        [{ text: 'OK', onPress: () => router.back() }],
+        [{ text: t('common.ok'), onPress: () => router.back() }],
       );
     } catch (err: unknown) {
       setError(getErrorMessage(err, t('common.genericError')));
@@ -278,6 +277,8 @@ export default function ForgotPasswordScreen() {
                         value={code}
                         onChangeText={(v) => { setCode(v.replace(/\D/g, '').slice(0, OTP_LENGTH)); setError(''); }}
                         keyboardType="number-pad"
+                        textContentType="oneTimeCode"
+                        autoComplete="one-time-code"
                         maxLength={OTP_LENGTH}
                         returnKeyType="done"
                         onSubmitEditing={handleVerifyAndReset}

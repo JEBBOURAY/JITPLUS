@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl, useWindowDimensions } from 'react-native';
+import { toast } from '@/components/ui/Toast';
+import { View, StyleSheet, ScrollView, Alert, RefreshControl, useWindowDimensions } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Copy, Edit3, Pause, Play, Square, Trash2 } from 'lucide-react-native';
 import { JitBell } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -23,6 +25,8 @@ import { getErrorMessage } from '@/utils/error';
 import { ms } from '@/utils/responsive';
 import { font } from '@/constants/design';
 import { Button, MoreOptions, Notice, ScreenHeader, Section } from '@/components/scratch/ScratchUI';
+import { Kpi, KpiRow } from '@/components/games/Kpi';
+import { GameDetailMissing, GameScreenLoading, InfoLine, useBackTo } from '@/components/games/GameScreen';
 import { WheelPreview } from '@/components/luckyWheel/WheelPreview';
 import { WheelStatusPill, formatWheelPeriod } from '@/components/luckyWheel/WheelUI';
 import { FulfilledPrizeList, PendingPrizeList } from '@/components/luckyWheel/PendingPrizes';
@@ -86,19 +90,17 @@ export default function LuckyWheelDetail() {
     refetchFulfilled();
   }, [refetchCampaigns, refetchPending, refetchFulfilled]);
 
-  const fail = useCallback((e: unknown) => Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError'))), [t]);
+  const fail = useCallback((e: unknown) => toast.error(getErrorMessage(e, t('common.genericError'))), [t]);
+  const goBack = useBackTo('/lucky-wheel');
 
   const changeStatus = useCallback(async (c: WheelCampaign, status: Exclude<WheelStatus, 'DRAFT'>) => {
     try {
       await statusMutation.mutateAsync({ id: c.id, status });
       if (status === 'ACTIVE' && c.status === 'DRAFT') {
-        Alert.alert(t('luckyWheel.wizard.launchedTitle'), t('luckyWheel.wizard.launchedBody'), [
-          { text: t('luckyWheel.wizard.later'), style: 'cancel' },
-          { text: t('luckyWheel.wizard.notifyNow'), onPress: () => push.prompt(c) },
-        ]);
+        push.offer(c);
       }
     } catch (e) { fail(e); }
-  }, [statusMutation, push, t, fail]);
+  }, [statusMutation, push, fail]);
 
   const confirmEnd = useCallback((c: WheelCampaign) => {
     Alert.alert(t('luckyWheel.detail.endTitle'), t('luckyWheel.detail.endConfirm'), [
@@ -116,35 +118,17 @@ export default function LuckyWheelDetail() {
         onPress: async () => {
           try {
             await deleteMutation.mutateAsync(c.id);
-            if (router.canGoBack()) router.back();
-            else router.replace('/lucky-wheel');
+            goBack();
           } catch (e) { fail(e); }
         },
       },
     ]);
-  }, [deleteMutation, router, t, fail]);
+  }, [deleteMutation, goBack, t, fail]);
 
   if (shouldWait) return null;
 
-  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/lucky-wheel'));
-
-  if (campaignsQuery.isLoading) {
-    return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator color={theme.primary} />
-      </View>
-    );
-  }
-  if (!campaign) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={t('luckyWheel.list.title')} onBack={goBack} />
-        <View style={styles.content}>
-          <Notice tone="danger" text={campaignsQuery.isError ? t('luckyWheel.list.loadError') : t('luckyWheel.detail.notFound')} />
-        </View>
-      </View>
-    );
-  }
+  if (campaignsQuery.isLoading) return <GameScreenLoading />;
+  if (!campaign) return <GameDetailMissing title={t('luckyWheel.list.title')} onBack={goBack} ns="luckyWheel" query={campaignsQuery} />;
 
   const live = liveState(campaign);
   const actions = canManage ? availableActions(campaign.status) : [];
@@ -176,11 +160,11 @@ export default function LuckyWheelDetail() {
             drawResult={inStock.length ? drawResult : undefined}
             description={campaign.description}
           />
-          <View style={[styles.kpiRow, { flexDirection: row }]}>
+          <KpiRow>
             <Kpi label={t('luckyWheel.detail.spins')} value={spins.toLocaleString(getIntlLocale(locale))} />
             <Kpi label={t('luckyWheel.detail.won')} value={won.toLocaleString(getIntlLocale(locale))} />
             <Kpi label={t('luckyWheel.detail.toGive')} value={pending.length.toLocaleString(getIntlLocale(locale))} />
-          </View>
+          </KpiRow>
           <InfoLine text={t('luckyWheel.detail.period', { period: formatWheelPeriod(campaign, locale) })} />
           <InfoLine text={t('luckyWheel.wizard.winRateValue', { pct: winRate })} />
           <InfoLine text={ticketRule} />
@@ -266,37 +250,11 @@ export default function LuckyWheelDetail() {
   );
 }
 
-function InfoLine({ text }: { text: string }) {
-  const theme = useTheme();
-  const { textAlign } = useDir();
-  return (
-    <Text style={[styles.info, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
-      {text}
-    </Text>
-  );
-}
-
-function Kpi({ label, value }: { label: string; value: string }) {
-  const theme = useTheme();
-  return (
-    <View style={[styles.kpi, { backgroundColor: theme.primary + '08' }]}>
-      <Text style={[styles.kpiValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.2}>{value}</Text>
-      <Text style={[styles.kpiLabel, { color: theme.textMuted }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { alignItems: 'center', justifyContent: 'center' },
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 14 },
   actions: { gap: 10 },
-  info: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular },
   hint: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
-  kpiRow: { gap: 8 },
-  kpi: { flex: 1, borderRadius: 12, padding: 10, gap: 4 },
-  kpiValue: { fontSize: ms(17), fontFamily: font.semibold },
-  kpiLabel: { fontSize: ms(11), fontFamily: font.regular },
   prizeRow: { gap: 6, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   prizeTop: { alignItems: 'center', gap: 8 },
   dot: { width: 12, height: 12, borderRadius: 6 },

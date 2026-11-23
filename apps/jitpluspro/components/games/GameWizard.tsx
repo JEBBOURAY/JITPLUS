@@ -1,18 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   BackHandler,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Pencil } from 'lucide-react-native';
-import { usePreventRemove } from 'expo-router';
+import { useFocusEffect, usePreventRemove } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -35,7 +35,7 @@ export function useGameWizard<S extends string>({ steps, validate, dirty, onLeav
   validate: (step: S) => FormError | null;
   dirty: boolean;
   onLeave: () => void;
-  i18nPrefix: 'luckyWheel.wizard' | 'scratch.wizard' | 'deals.wizard';
+  i18nPrefix: 'luckyWheel.wizard' | 'scratch.wizard' | 'deals.wizard' | 'collection.wizard';
 }) {
   const { t } = useLanguage();
   const [index, setIndex] = useState(0);
@@ -48,7 +48,7 @@ export function useGameWizard<S extends string>({ steps, validate, dirty, onLeav
   // Also covers the iOS swipe-back, which removes the screen without going through `back`.
   const disablePrevention = usePreventRemove(dirty, ({ repeat }) => confirmDiscardRef.current(repeat));
 
-  const showError = useCallback((err: FormError) => Alert.alert(t('common.error'), t(err.key, err.params)), [t]);
+  const showError = useCallback((err: FormError) => toast.error(t(err.key, err.params)), [t]);
 
   const confirmDiscard = useCallback((discard: () => void) => {
     Alert.alert(t(`${i18nPrefix}.discardTitle`), t(`${i18nPrefix}.discardMessage`), [
@@ -84,13 +84,15 @@ export function useGameWizard<S extends string>({ steps, validate, dirty, onLeav
     confirmDiscard(onLeave);
   }, [index, dirty, onLeave, goTo, confirmDiscard]);
 
-  useEffect(() => {
+  // Only while the wizard is on screen: with a plain effect it kept handling
+  // Back under a pushed screen (e.g. /stores from the "where" step).
+  useFocusEffect(useCallback(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       back();
       return true;
     });
     return () => sub.remove();
-  }, [back]);
+  }, [back]));
 
   /** Lets the screen go without the discard prompt, e.g. to the saved campaign. */
   const allowLeave = disablePrevention;
@@ -127,18 +129,57 @@ export function useGameWizard<S extends string>({ steps, validate, dirty, onLeav
   };
 }
 
-/** Header, step progress, one question per screen and a fixed footer. */
-export function WizardShell({ title, onBack, stepLabels, index, heading, hint, scrollRef, footer, children }: {
+/**
+ * Starter template of a game wizard (prizes or rewards filled in for the merchant).
+ * Switching template replaces the list; once the merchant edited it, ask first.
+ * Call `markTouched` on every manual change of the list.
+ */
+export function useWizardTemplate<T extends string>({ initial, apply, i18nPrefix }: {
+  initial: T | null;
+  apply: (template: T) => void;
+  i18nPrefix: 'luckyWheel.wizard' | 'scratch.wizard';
+}) {
+  const { t } = useLanguage();
+  const [template, setTemplate] = useState<T | null>(initial);
+  const touchedRef = useRef(false);
+  const markTouched = useCallback(() => {
+    touchedRef.current = true;
+  }, []);
+
+  const choose = useCallback((next: T) => {
+    if (next === template) return;
+    const run = () => {
+      touchedRef.current = false;
+      setTemplate(next);
+      apply(next);
+    };
+    if (!touchedRef.current) return run();
+    Alert.alert(t(`${i18nPrefix}.templateReplaceTitle`), t(`${i18nPrefix}.templateReplaceBody`), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t(`${i18nPrefix}.templateReplaceConfirm`), onPress: run },
+    ]);
+  }, [template, apply, i18nPrefix, t]);
+
+  return { template, choose, markTouched };
+}
+
+/** What the shell reads from `useGameWizard`. */
+export type WizardNav = Pick<
+  ReturnType<typeof useGameWizard>,
+  'index' | 'isLast' | 'stepLabels' | 'heading' | 'hint' | 'nextLabel' | 'scrollRef' | 'next' | 'back'
+>;
+
+/**
+ * Header, step progress, one question per screen and a fixed footer:
+ * "Back" and "Next" on every step, `lastFooter` on the review step.
+ */
+export function WizardShell({ title, wizard, lastFooter, children }: {
   title: string;
-  onBack: () => void;
-  stepLabels: string[];
-  index: number;
-  heading: string;
-  hint: string;
-  scrollRef: React.RefObject<ScrollView | null>;
-  footer: React.ReactNode;
+  wizard: WizardNav;
+  lastFooter: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const { index, isLast, stepLabels, heading, hint, nextLabel, scrollRef, next, back } = wizard;
   const theme = useTheme();
   const { t } = useLanguage();
   const { row, textAlign } = useDir();
@@ -151,7 +192,7 @@ export function WizardShell({ title, onBack, stepLabels, index, heading, hint, s
       style={[styles.container, { backgroundColor: theme.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScreenHeader title={title} onBack={onBack} />
+      <ScreenHeader title={title} onBack={back} />
 
       <View
         style={styles.progress}
@@ -189,30 +230,11 @@ export function WizardShell({ title, onBack, stepLabels, index, heading, hint, s
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12, backgroundColor: theme.bg, borderTopColor: theme.borderLight }]}>
-        {footer}
+        {isLast ? lastFooter : (
+          <WizardFooter onBack={index > 0 ? back : undefined} primary={{ label: nextLabel, onPress: next }} />
+        )}
       </View>
     </KeyboardAvoidingView>
-  );
-}
-
-/** Full-screen spinner while the saved campaign loads. */
-export function WizardLoading() {
-  const theme = useTheme();
-  return (
-    <View style={[styles.container, styles.center, { backgroundColor: theme.bg }]}>
-      <ActivityIndicator color={theme.primary} />
-    </View>
-  );
-}
-
-/** Header and a message shown instead of the wizard (no access, load error, not editable). */
-export function WizardMessage({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
-  const theme = useTheme();
-  return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <ScreenHeader title={title} onBack={onBack} />
-      {children}
-    </View>
   );
 }
 
@@ -297,7 +319,6 @@ export function ReviewLine({ text, strong }: { text: string; strong?: boolean })
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   progress: { paddingHorizontal: 20, paddingBottom: 6, gap: 8 },
   bar: { gap: 4 },

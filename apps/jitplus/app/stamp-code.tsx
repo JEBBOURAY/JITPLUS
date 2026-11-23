@@ -8,14 +8,14 @@ import {
   RedeemConfirm, RedeemError, RedeemLayout, RedeemLoading, RedeemLoginPrompt, RedeemSuccessIcon,
   RedeemPrimaryButton, RedeemText, RedeemTitle, useRedeemFlow,
 } from '@/components/redeem/RedeemFlow';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/services/api';
 import type { StampCodeRedeemResult } from '@/services/api/stamp-codes';
-import { queryKeys } from '@/hooks/useQueryHooks';
+import { invalidateStamps } from '@/hooks/useQueryHooks';
 import { clearPendingStampCode, savePendingStampCode } from '@/services/pendingClaim';
 import { isStampCodeToken } from '@/utils/ids';
+import { getFullName } from '@/utils/profileCompletion';
 
 type ErrorKey = 'errorInvalid' | 'errorUsed' | 'errorRevoked' | 'errorMerchantFull' | 'errorLimit' | 'errorNetwork' | 'errorRetry';
 
@@ -50,7 +50,6 @@ function classifyError(err: unknown) {
  */
 export default function StampCodeScreen() {
   const router = useRouter();
-  const theme = useTheme();
   const { t, locale } = useLanguage();
   const client = useAuthStore((s) => s.client);
   const params = useLocalSearchParams<{ token?: string }>();
@@ -63,18 +62,16 @@ export default function StampCodeScreen() {
     clientId: client?.id,
     invalidKey: 'errorInvalid',
     redeem: (code) => api.redeemStampCode(code),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.stamps }); },
+    onSuccess: () => { invalidateStamps(queryClient); },
     classifyError,
     savePending: savePendingStampCode,
     clearPending: clearPendingStampCode,
   });
 
-  const accountName = client
-    ? `${client.prenom ?? ''} ${client.nom ?? ''}`.trim() || t('qr.client')
-    : '';
+  const accountName = client ? getFullName(client) || t('qr.client') : '';
 
   const goHome = useCallback(() => router.replace('/(tabs)'), [router]);
-  const goToLogin = useCallback(() => router.replace('/welcome'), [router]);
+  const goToLogin = useCallback(() => router.replace('/login'), [router]);
   const redeem = useCallback(() => { void run(); }, [run]);
 
   const renderBody = () => {
@@ -113,6 +110,9 @@ export default function StampCodeScreen() {
             <RedeemText>
               {t('stampCode.successBody', { merchant: result.merchant.nom, balance: result.newBalance })}
             </RedeemText>
+            {!!result.welcomeBonus && (
+              <RedeemText>{t(pluralKey('qr.successWelcomeBonus', result.welcomeBonus), { count: result.welcomeBonus })}</RedeemText>
+            )}
             <RedeemPrimaryButton
               label={t('stampCode.successCta')}
               onPress={() => router.replace({ pathname: '/merchant/[id]', params: { id: result.merchant.id } })}

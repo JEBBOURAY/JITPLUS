@@ -1,7 +1,9 @@
-import { Controller, Get, Param, Query, Res, Header } from '@nestjs/common';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Controller, Get, Header, Logger, Param, Query, Res } from '@nestjs/common';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import { THROTTLE_TTL } from '../common/constants';
 import type { Response } from 'express';
 import { STAMP_CODE_TOKEN_RE } from '../stamp-codes/stamp-code-token.service';
+import { DealsClientService, type DealSharePreview } from '../deals/deals-client.service';
 
 // ── App identifiers ─────────────────────────────────────────────────────────
 const ANDROID_PACKAGE = 'com.jitplus.client';
@@ -96,8 +98,9 @@ function escapeHtml(str: string): string {
  *
  * @param variant client or pro target app
  * @param appPath path portion of the deep link (no leading slash)
+ * @param preview what a shared deal shows in a chat preview (WhatsApp…) and on the page
  */
-function renderSmartRedirect(variant: AppVariant, appPath: string): string {
+function renderSmartRedirect(variant: AppVariant, appPath: string, preview?: DealSharePreview | null): string {
   const safePath = appPath.replace(/^\/+/, '');
   const deepLink = `${variant.scheme}://${safePath}`;
   const intentUri =
@@ -110,13 +113,29 @@ function renderSmartRedirect(variant: AppVariant, appPath: string): string {
   const safeTitle = escapeHtml(variant.title);
   const safePlayStore = escapeHtml(variant.playStore);
   const safeAppStore = escapeHtml(variant.appStore);
+  const safeHeading = preview ? escapeHtml(preview.title) : safeTitle;
+  const safeIntro = preview
+    ? `${escapeHtml(preview.merchant)} · Ouvrez ce bon plan dans l'application ${safeTitle}.`
+    : `Ouvrez ce lien dans l'application ${safeTitle}.`;
+  const imageTags = preview?.imageUrl
+    ? `
+<meta property="og:image" content="${escapeHtml(preview.imageUrl)}">
+<meta name="twitter:card" content="summary_large_image">`
+    : '';
+  const previewTags = preview
+    ? `
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${safeTitle}">
+<meta property="og:title" content="${safeHeading}">
+<meta property="og:description" content="${escapeHtml(preview.merchant)}">${imageTags}`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${safeTitle}</title>
+<title>${safeHeading}</title>${previewTags}
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8f9fa;color:#1a1a2e;text-align:center}
   .card{background:#fff;border-radius:16px;padding:32px 24px;max-width:360px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
@@ -146,8 +165,8 @@ function renderSmartRedirect(variant: AppVariant, appPath: string): string {
 </head>
 <body>
 <div class="card">
-  <h1>${safeTitle}</h1>
-  <p>Ouvrez ce lien dans l'application ${safeTitle}.</p>
+  <h1>${safeHeading}</h1>
+  <p>${safeIntro}</p>
   <a class="btn" href="${safeDeepLink}">Ouvrir dans l'app</a>
   <div class="stores">
     <p>Pas encore l'app ?</p>
@@ -171,6 +190,10 @@ interface AssetLinksEntry {
 @Controller()
 @SkipThrottle()
 export class DeeplinkController {
+  private readonly logger = new Logger(DeeplinkController.name);
+
+  constructor(private readonly deals: DealsClientService) {}
+
   /**
    * Smart redirect for shared merchant links — opens the client app.
    * - Android: Intent URI tries app first, falls back to Play Store
@@ -190,15 +213,25 @@ export class DeeplinkController {
   /**
    * Smart redirect for shared deal ("bon plan") links — opens the client app
    * on the deal screen. Deal ids share the merchant id format (Prisma uuid).
+   * A live deal also gets its title and picture as the link preview.
    */
   @Get('bp/:id')
+  // The only route here that reads the database: a generous per-IP cap
+  // (mobile carriers share IPs) stops a script hammering random ids.
+  @SkipThrottle({ default: false })
+  @Throttle({ default: { limit: 300, ttl: THROTTLE_TTL } })
   @Header('Cache-Control', 'no-store')
-  handleDealLink(@Param('id') id: string, @Res() res: Response): void {
+  async handleDealLink(@Param('id') id: string, @Res() res: Response): Promise<void> {
     if (!MERCHANT_ID_RE.test(id)) {
       res.status(400).send('Invalid link');
       return;
     }
-    res.type('html').send(renderSmartRedirect(VARIANT_CLIENT, `deal/${id}`));
+    // The preview is a nice-to-have: a DB or cache hiccup must still serve the redirect page.
+    const preview = await this.deals.sharePreview(id.toLowerCase()).catch((err: unknown) => {
+      this.logger.warn(`Deal share preview failed for ${id}: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    });
+    res.type('html').send(renderSmartRedirect(VARIANT_CLIENT, `deal/${id}`, preview));
   }
 
   /**

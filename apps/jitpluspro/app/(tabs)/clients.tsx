@@ -1,51 +1,59 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   RefreshControl,
-  ScrollView,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { Search, User, X, type LucideIcon } from 'lucide-react-native';
-import { JitClients, JitClock, JitGift, JitPersonAdd, JitStamp } from '@/components/icons';
-import * as Haptics from 'expo-haptics';
-import { safeImpact, safeSelection } from '@/utils/haptics';
+import { Text } from '@/components/AppText';
+import { ArrowDownUp, Search, User, type LucideIcon } from 'lucide-react-native';
+import { JitClients, JitClock, JitGift, JitPersonAdd, JitStamp, JitStar } from '@/components/icons';
+import { safeSelection } from '@/utils/haptics';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getIntlLocale } from '@/config/currency';
 import { useDir } from '@/hooks/useDir';
 import { ListSkeleton } from '@/components/Skeleton';
-import { useClientList } from '@/hooks/useQueryHooks';
+import { useClientList, useClientSegments } from '@/hooks/useQueryHooks';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SEARCH_DEBOUNCE_MS, INACTIVE_CLIENT_DAYS } from '@/constants/app';
+import { INACTIVE_CLIENT_DAYS, NEW_CLIENT_DAYS } from '@/constants/app';
 import { radius } from '@/utils/responsive';
 import { font, icon as iconTokens, TAB_BAR_CLEARANCE } from '@/constants/design';
-import { ActionButton } from '@/components/ui/ActionButton';
+import { StateMessage } from '@/components/ui/StateMessage';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { FilterChips, type FilterChipItem } from '@/components/ui/FilterChips';
+import { OptionSheet, type OptionSection } from '@/components/ui/OptionSheet';
 import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { timeAgo } from '@/utils/date';
 import { initialsOf } from '@/utils/initials';
-import type { ClientListItem, ClientListView } from '@/types';
+import { countForm } from '@/utils/countForm';
+import type { ClientListItem, ClientListSort, ClientListView } from '@/types';
 
-type Theme = ReturnType<typeof useTheme>;
-
-const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
 // Fixed row height keeps getItemLayout exact (text scaling is capped below).
 const ROW_HEIGHT = 72;
 const CARD_FONT_SCALE = 1.25;
 
 // JitPlus icons only, drawn plain (no tinted tile), here and in the empty states.
-const VIEWS: { key: ClientListView; labelKey: string; hintKey: string; Icon: LucideIcon }[] = [
-  { key: 'all', labelKey: 'clients.filterAll', hintKey: 'clients.hintAll', Icon: JitClients },
-  { key: 'reward', labelKey: 'clients.filterReward', hintKey: 'clients.hintReward', Icon: JitGift },
-  { key: 'loyal', labelKey: 'clients.filterLoyal', hintKey: 'clients.hintLoyal', Icon: JitStamp },
-  { key: 'inactive', labelKey: 'clients.filterInactive', hintKey: 'clients.hintInactive', Icon: JitClock },
+// `defaultSort` mirrors the order the backend gives each view when no sort is sent.
+const VIEWS: { key: ClientListView; labelKey: string; hintKey: string | null; Icon: LucideIcon; defaultSort: ClientListSort | null }[] = [
+  { key: 'all', labelKey: 'clients.filterAll', hintKey: null, Icon: JitClients, defaultSort: 'recent' },
+  { key: 'reward', labelKey: 'clients.filterReward', hintKey: 'clients.hintReward', Icon: JitGift, defaultSort: 'stamps' },
+  { key: 'almost', labelKey: 'clients.filterAlmost', hintKey: 'clients.hintAlmost', Icon: JitStamp, defaultSort: 'stamps' },
+  // Newest card first: not one of the menu's sorts.
+  { key: 'new', labelKey: 'clients.filterNew', hintKey: 'clients.hintNew', Icon: JitStar, defaultSort: null },
+  { key: 'inactive', labelKey: 'clients.filterInactive', hintKey: 'clients.hintInactive', Icon: JitClock, defaultSort: 'lastVisit' },
+];
+
+const SORTS: { key: ClientListSort; labelKey: string; hintKey: string }[] = [
+  { key: 'recent', labelKey: 'clients.sortRecent', hintKey: 'clients.sortHintRecent' },
+  { key: 'lastVisit', labelKey: 'clients.sortLastVisit', hintKey: 'clients.sortHintLastVisit' },
+  { key: 'stamps', labelKey: 'clients.sortStamps', hintKey: 'clients.sortHintStamps' },
+  { key: 'name', labelKey: 'clients.sortName', hintKey: 'clients.sortHintName' },
 ];
 
 function getInitials(item: ClientListItem) {
@@ -150,90 +158,13 @@ const ClientRow = React.memo(function ClientRow({
   );
 });
 
-const ViewChip = React.memo(function ViewChip({
-  view,
-  label,
-  Icon,
-  selected,
-  onSelect,
-}: {
-  view: ClientListView;
-  label: string;
-  Icon: LucideIcon;
-  selected: boolean;
-  onSelect: (view: ClientListView) => void;
-}) {
-  const theme = useTheme();
-  const dir = useDir();
-  const fg = selected ? theme.textInverse : theme.textSecondary;
-  return (
-    <TouchableOpacity
-      style={[
-        styles.chip,
-        { flexDirection: dir.row },
-        selected
-          ? { backgroundColor: theme.primary, borderColor: theme.primary }
-          : { backgroundColor: theme.bgCard, borderColor: theme.border },
-      ]}
-      onPress={() => onSelect(view)}
-      activeOpacity={0.75}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      accessibilityLabel={label}
-    >
-      <Icon size={15} color={fg} strokeWidth={iconTokens.stroke} />
-      <Text style={[styles.chipText, { color: fg }]} maxFontSizeMultiplier={1.4}>{label}</Text>
-    </TouchableOpacity>
-  );
-});
-
-function StateMessage({
-  theme,
-  Icon,
-  title,
-  hint,
-  actionLabel,
-  ActionIcon,
-  onAction,
-}: {
-  theme: Theme;
-  /** Drawn plain above the title. */
-  Icon?: LucideIcon;
-  title: string;
-  hint: string;
-  actionLabel?: string;
-  ActionIcon?: LucideIcon;
-  onAction?: () => void;
-}) {
-  return (
-    <View style={styles.stateContainer}>
-      {Icon ? <Icon size={36} color={theme.textMuted} strokeWidth={1.5} style={styles.stateIcon} /> : null}
-      <Text style={[styles.stateTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{title}</Text>
-      <Text style={[styles.stateText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>{hint}</Text>
-      {actionLabel && onAction && (
-        <ActionButton
-          label={actionLabel}
-          icon={ActionIcon}
-          style={styles.stateCta}
-          onPress={() => {
-            safeImpact(Haptics.ImpactFeedbackStyle.Light);
-            onAction();
-          }}
-        />
-      )}
-    </View>
-  );
-}
-
 const EmptyState = React.memo(function EmptyState({
   search,
   view,
-  theme,
   onScan,
 }: {
   search: string;
   view: ClientListView;
-  theme: Theme;
   onScan: () => void;
 }) {
   const { t } = useLanguage();
@@ -241,7 +172,6 @@ const EmptyState = React.memo(function EmptyState({
   if (search) {
     return (
       <StateMessage
-        theme={theme}
         Icon={Search}
         title={t('clients.noResults')}
         hint={t('clients.noResultsFor', { query: search })}
@@ -251,17 +181,33 @@ const EmptyState = React.memo(function EmptyState({
   if (view === 'reward') {
     return (
       <StateMessage
-        theme={theme}
         Icon={JitGift}
         title={t('clients.emptyRewardTitle')}
         hint={t('clients.emptyRewardHint')}
       />
     );
   }
+  if (view === 'almost') {
+    return (
+      <StateMessage
+        Icon={JitStamp}
+        title={t('clients.emptyAlmostTitle')}
+        hint={t('clients.emptyAlmostHint')}
+      />
+    );
+  }
+  if (view === 'new') {
+    return (
+      <StateMessage
+        Icon={JitStar}
+        title={t('clients.emptyNewTitle')}
+        hint={t('clients.emptyNewHint', { days: NEW_CLIENT_DAYS })}
+      />
+    );
+  }
   if (view === 'inactive') {
     return (
       <StateMessage
-        theme={theme}
         Icon={JitClock}
         title={t('clients.emptyInactiveTitle')}
         hint={t('clients.emptyInactiveHint', { days: INACTIVE_CLIENT_DAYS })}
@@ -270,7 +216,6 @@ const EmptyState = React.memo(function EmptyState({
   }
   return (
     <StateMessage
-      theme={theme}
       Icon={JitClients}
       title={t('clients.noClients')}
       hint={t('clients.noClientsHint')}
@@ -278,75 +223,6 @@ const EmptyState = React.memo(function EmptyState({
       ActionIcon={JitPersonAdd}
       onAction={onScan}
     />
-  );
-});
-
-/**
- * Owns the typed text so keystrokes re-render only this bar; the screen gets the
- * trimmed term once typing pauses (or right away when cleared).
- */
-const ClientSearchBar = React.memo(function ClientSearchBar({
-  searching,
-  onSearch,
-}: {
-  searching: boolean;
-  onSearch: (term: string) => void;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const dir = useDir();
-  const inputRef = useRef<TextInput>(null);
-  const [text, setText] = useState('');
-
-  useEffect(() => {
-    const term = text.trim();
-    if (!term) {
-      onSearch('');
-      return;
-    }
-    const timer = setTimeout(() => onSearch(term), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [text, onSearch]);
-
-  const clear = useCallback(() => {
-    setText('');
-    inputRef.current?.blur();
-  }, []);
-
-  return (
-    <View style={styles.searchContainer}>
-      <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.border, flexDirection: dir.row }]}>
-        {searching ? (
-          <ActivityIndicator size="small" color={theme.primary} style={styles.searchIcon} />
-        ) : (
-          <Search size={16} color={palette.charbon} strokeWidth={iconTokens.stroke} style={styles.searchIcon} />
-        )}
-        <TextInput
-          ref={inputRef}
-          style={[styles.searchInput, { color: theme.text, textAlign: dir.textAlign }]}
-          placeholder={t('clients.searchPlaceholder')}
-          placeholderTextColor={theme.textMuted}
-          value={text}
-          onChangeText={setText}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-          accessibilityLabel={t('clients.searchPlaceholder')}
-          maxFontSizeMultiplier={1.6}
-        />
-        {text.length > 0 && (
-          <TouchableOpacity
-            onPress={clear}
-            hitSlop={HIT_SLOP_LARGE}
-            style={styles.clearBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t('clients.clearSearch')}
-          >
-            <X size={18} color={theme.textMuted} strokeWidth={iconTokens.stroke} />
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
   );
 });
 
@@ -360,13 +236,16 @@ export default function ClientsScreen() {
   const insets = useSafeAreaInsets();
   const dir = useDir();
   const listRef = useRef<FlatList<ClientListItem>>(null);
-  const chipsRef = useRef<ScrollView>(null);
 
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [view, setView] = useState<ClientListView>('all');
+  /** null = the view's own order. Kept across views: a merchant who sorts by name expects it to stay. */
+  const [sort, setSort] = useState<ClientListSort | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
   const [pullRefreshing, setPullRefreshing] = useState(false);
 
-  const { query, reload, reloadIfStale } = useClientList(debouncedSearch, view);
+  const { query, reload, reloadIfStale } = useClientList(debouncedSearch, view, sort);
+  const { data: segments, refetch: refetchSegments } = useClientSegments();
   const {
     data,
     isPending,
@@ -403,11 +282,11 @@ export default function ClientsScreen() {
   const onRefresh = useCallback(async () => {
     setPullRefreshing(true);
     try {
-      await reload();
+      await Promise.all([reload(), refetchSegments()]);
     } finally {
       setPullRefreshing(false);
     }
-  }, [reload]);
+  }, [reload, refetchSegments]);
 
   const onEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError && !isPlaceholderData) {
@@ -419,11 +298,13 @@ export default function ClientsScreen() {
     fetchNextPage().catch(() => {});
   }, [fetchNextPage]);
 
+  const scrollToTop = useCallback(() => listRef.current?.scrollToOffset({ offset: 0, animated: false }), []);
+
   const selectView = useCallback((next: ClientListView) => {
     safeSelection();
     setView(next);
-    listRef.current?.scrollToOffset({ offset: 0, animated: false });
-  }, []);
+    scrollToTop();
+  }, [scrollToTop]);
 
   const openDetail = useCallback((clientId: string) => {
     router.push({ pathname: '/client-detail', params: { id: clientId } });
@@ -443,12 +324,49 @@ export default function ClientsScreen() {
   ), [openDetail, rewardThreshold, lastIndex]);
 
   const activeView = VIEWS.find((v) => v.key === view) ?? VIEWS[0];
-  // Darija counts 2 to 10 with the plural noun ("3 زبناء") and the singular from 11 ("15 زبون").
-  const countForm = total === 1 ? 'One' : total >= 2 && total <= 10 ? 'Few' : 'Other';
-  const countLabel = t(`clients.${debouncedSearch ? 'results' : 'count'}${countForm}`, { count: total.toLocaleString(getIntlLocale(locale)) });
-  const summary = debouncedSearch
-    ? countLabel
-    : `${countLabel} · ${t(activeView.hintKey, { days: INACTIVE_CLIENT_DAYS })}`;
+  const countLabel = t(`clients.${debouncedSearch ? 'results' : 'count'}${countForm(total)}`, { count: total.toLocaleString(getIntlLocale(locale)) });
+  // "6 clients · cadeau à remettre · par ordre alphabétique": what the view keeps, then the order
+  // when it is not the view's own (the view hint already implies it).
+  const effectiveSort = sort ?? activeView.defaultSort;
+  const sortHintKey = sort || view === 'all' ? SORTS.find((s) => s.key === effectiveSort)?.hintKey : undefined;
+  const summary = [
+    countLabel,
+    !debouncedSearch && activeView.hintKey
+      ? t(activeView.hintKey, { days: view === 'new' ? NEW_CLIENT_DAYS : INACTIVE_CLIENT_DAYS })
+      : null,
+    sortHintKey ? t(sortHintKey) : null,
+  ].filter(Boolean).join(' · ');
+
+  // Segment sizes are for the whole list: hidden during a search, where they would not match.
+  const viewChips = useMemo<FilterChipItem<ClientListView>[]>(
+    () => VIEWS.map((v) => ({
+      key: v.key,
+      label: t(v.labelKey),
+      Icon: v.Icon,
+      count: debouncedSearch || !segments ? undefined : segments[v.key],
+    })),
+    [t, segments, debouncedSearch],
+  );
+
+  const sortSections = useMemo<OptionSection[]>(() => [{
+    key: 'sort',
+    title: t('clients.sortTitle'),
+    options: SORTS.map((s) => ({ key: s.key, label: t(s.labelKey) })),
+    selected: effectiveSort ?? '',
+    onSelect: (key) => {
+      safeSelection();
+      // Picking the view's own order goes back to "no explicit sort".
+      setSort(key === activeView.defaultSort ? null : (key as ClientListSort));
+      scrollToTop();
+    },
+  }], [t, effectiveSort, activeView.defaultSort, scrollToTop]);
+
+  const sortAction = useMemo(() => ({
+    Icon: ArrowDownUp,
+    label: t('clients.sort'),
+    badge: sort ? 1 : 0,
+    onPress: () => setSortOpen(true),
+  }), [t, sort]);
   const searching = isFetching && isPlaceholderData;
   const listContentStyle = useMemo(
     () => [styles.list, { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE }],
@@ -489,7 +407,6 @@ export default function ClientsScreen() {
   if (isError && !data) {
     content = (
       <StateMessage
-        theme={theme}
         title={t('clients.loadErrorTitle')}
         hint={t('clients.loadErrorHint')}
         actionLabel={t('common.retry')}
@@ -529,7 +446,7 @@ export default function ClientsScreen() {
           />
         }
         ListFooterComponent={footer}
-        ListEmptyComponent={<EmptyState search={debouncedSearch} view={view} theme={theme} onScan={goToScan} />}
+        ListEmptyComponent={<EmptyState search={debouncedSearch} view={view} onScan={goToScan} />}
       />
     );
   }
@@ -543,30 +460,15 @@ export default function ClientsScreen() {
         <DemoVideoButton id="clients" variant="header" />
       </View>
 
-      <ClientSearchBar searching={searching} onSearch={setDebouncedSearch} />
+      <SearchBar
+        placeholder={t('clients.searchPlaceholder')}
+        clearLabel={t('clients.clearSearch')}
+        searching={searching}
+        onSearch={setDebouncedSearch}
+        action={sortAction}
+      />
 
-      <View>
-        <ScrollView
-          ref={chipsRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.chipsRow, { flexDirection: dir.row }]}
-          keyboardShouldPersistTaps="handled"
-          // Arabic reads from the right: start on the first filter when the row overflows.
-          onContentSizeChange={dir.isRTL ? () => chipsRef.current?.scrollToEnd({ animated: false }) : undefined}
-        >
-          {VIEWS.map((v) => (
-            <ViewChip
-              key={v.key}
-              view={v.key}
-              label={t(v.labelKey)}
-              Icon={v.Icon}
-              selected={v.key === view}
-              onSelect={selectView}
-            />
-          ))}
-        </ScrollView>
-      </View>
+      <FilterChips items={viewChips} selected={view} onSelect={selectView} />
 
       <View style={styles.summaryRow}>
         {data ? (
@@ -582,6 +484,15 @@ export default function ClientsScreen() {
       </View>
 
       <View style={styles.flex1}>{content}</View>
+
+      <OptionSheet
+        visible={sortOpen}
+        onClose={() => setSortOpen(false)}
+        title={t('clients.sortTitle')}
+        sections={sortSections}
+        doneLabel={t('common.close')}
+        closeOnSelect
+      />
     </View>
   );
 }
@@ -604,41 +515,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
-  searchContainer: { paddingHorizontal: 16, paddingTop: 8 },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 4,
-    borderWidth: 1,
-  },
-  searchIcon: { width: 18 },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    paddingVertical: Platform.OS === 'ios' ? 0 : 8,
-    fontFamily: font.medium,
-  },
-  clearBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    marginVertical: -12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  chipsRow: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 12, gap: 8 },
-  chip: {
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radius.full,
-    borderWidth: 1,
-  },
-  chipText: { fontSize: 13, fontFamily: font.semibold, letterSpacing: -0.1 },
   summaryRow: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 20 },
   summaryText: { fontSize: 13, fontFamily: font.medium },
 
@@ -700,26 +576,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   rewardBadgeText: { fontSize: 12, fontFamily: font.semibold },
-
-  stateContainer: { alignItems: 'center', paddingTop: 56, paddingHorizontal: 32 },
-  stateIcon: { marginBottom: 14 },
-  stateTitle: {
-    fontSize: 20,
-    fontFamily: font.semibold,
-    letterSpacing: -0.3,
-    textAlign: 'center',
-  },
-  stateText: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 22,
-    fontFamily: font.regular,
-  },
-  stateCta: {
-    marginTop: 24,
-    paddingHorizontal: 24,
-  },
 
   footer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 20, minHeight: 60 },
   footerEnd: { fontSize: 12, fontFamily: font.regular, opacity: 0.6 },

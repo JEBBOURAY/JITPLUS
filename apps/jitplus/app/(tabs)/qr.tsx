@@ -1,8 +1,7 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, TouchableOpacity, ScrollView, Image,
-  Animated,
-  type NativeSyntheticEvent, type NativeScrollEvent, type LayoutChangeEvent,
+  Animated, type LayoutChangeEvent,
 } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,19 +12,20 @@ import {
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenCapture from 'expo-screen-capture';
-import { useKeepAwake } from 'expo-keep-awake';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import FadeInView from '@/components/FadeInView';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import StarLoader from '@/components/StarLoader';
-import GuestGuard from '@/components/GuestGuard';
 import QrActionSheet from '@/components/qr/QrActionSheet';
 import QrCardPattern from '@/components/qr/QrCardPattern';
 import QrRefreshBar from '@/components/qr/QrRefreshBar';
 import QrSuccessOverlay from '@/components/qr/QrSuccessOverlay';
 import { useBrightnessBoost } from '@/hooks/useBrightnessBoost';
+import { useScrolledHeader } from '@/hooks/useScrolledHeader';
 import { useQrCardExport, ViewShot } from '@/hooks/useQrCardExport';
 import { useQrToken } from '@/hooks/useQrToken';
 import { useScanDetection } from '@/hooks/useScanDetection';
@@ -33,33 +33,38 @@ import type { StampsEvent } from '@/stores/wsStore';
 import type { LoyaltyCard } from '@/types';
 import { useAppFonts } from '@/utils/fonts';
 import { getCardProgress } from '@/utils/cardProgress';
+import { getFullName } from '@/utils/profileCompletion';
 import { preloadSounds } from '@/utils/sounds';
 import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
+import { SHOW_GUID_BADGE_KEY } from '@/constants';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const QR_SIZE = Math.min(SCREEN.width - wp(120), wp(250));
-const SCROLLED_THRESHOLD = 4;
 
 export default function QRScreen() {
   const theme = useTheme();
   const isDark = theme.mode === 'dark';
-  const { client, isGuest } = useAuth();
+  const { client } = useAuth();
   const { t } = useLanguage();
   const fonts = useAppFonts();
   const insets = useSafeAreaInsets();
 
   // iOS HIG + Material: keep screen on while a scannable code is visible.
-  // Auto-released on unmount — no cleanup needed.
-  useKeepAwake('jitplus-qr');
+  // Tied to focus, not mount: tab screens stay mounted, so useKeepAwake kept
+  // the whole app awake after a single visit to this tab.
+  useFocusEffect(useCallback(() => {
+    activateKeepAwakeAsync('jitplus-qr').catch(() => {});
+    return () => { deactivateKeepAwake('jitplus-qr').catch(() => {}); };
+  }, []));
 
   const { qrValue, qrLoading, qrExpiresAt, qrError, isOffline, refreshDelayMs, fetchQrToken, retry } = useQrToken(client?.id);
-  const brightnessBoosted = useBrightnessBoost(!isGuest);
+  const brightnessBoosted = useBrightnessBoost();
   const { viewShotRef: qrViewRef, share, saveToGallery } = useQrCardExport(t);
 
   const [showGuidBadge, setShowGuidBadge] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
+  const { isScrolled, onScroll } = useScrolledHeader();
   const [successEvent, setSuccessEvent] = useState<StampsEvent | null>(null);
   const [successGoal, setSuccessGoal] = useState<number | null>(null);
   const [cardSize, setCardSize] = useState<{ width: number; height: number } | null>(null);
@@ -70,7 +75,7 @@ export default function QRScreen() {
     // Anti-exfiltration: no screenshots/recordings of the QR token. Sharing
     // goes through the in-app button, which captures the card deliberately.
     ScreenCapture.preventScreenCaptureAsync('jitplus-qr').catch(() => {});
-    AsyncStorage.getItem('showGuidBadge')
+    AsyncStorage.getItem(SHOW_GUID_BADGE_KEY)
       .then((val) => { if (val === '1') setShowGuidBadge(true); })
       .catch(() => {});
     return () => { ScreenCapture.allowScreenCaptureAsync('jitplus-qr').catch(() => {}); };
@@ -86,7 +91,7 @@ export default function QRScreen() {
     // v2 tokens are single-use: get the next one ready straight away.
     if (qrExpiresAtRef.current) fetchQrToken();
   }, [fetchQrToken]);
-  useScanDetection({ enabled: !isGuest, onScan: handleScan });
+  useScanDetection({ onScan: handleScan });
 
   const handleRetry = useCallback(() => {
     haptic(HapticStyle.Light);
@@ -112,27 +117,20 @@ export default function QRScreen() {
     setCardSize((prev) => (prev?.width === width && prev?.height === height ? prev : { width, height }));
   }, []);
 
-  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const scrolled = e.nativeEvent.contentOffset.y > SCROLLED_THRESHOLD;
-    setIsScrolled((prev) => (prev === scrolled ? prev : scrolled));
-  }, []);
-
   const closeActionMenu = useCallback(() => setShowActionMenu(false), []);
-  const handleShareQR = useCallback(() => { setShowActionMenu(false); share(); }, [share]);
-  const handleSaveToGallery = useCallback(() => { setShowActionMenu(false); saveToGallery(); }, [saveToGallery]);
+  // QrActionSheet closes itself and runs these once it has slid away.
+  const handleShareQR = useCallback(() => { share(); }, [share]);
+  const handleSaveToGallery = useCallback(() => { saveToGallery(); }, [saveToGallery]);
 
   const handleCloseGuidBadge = useCallback(() => {
     haptic(HapticStyle.Light);
     setShowGuidBadge(false);
-    AsyncStorage.setItem('showGuidBadge', '0').catch(() => {});
+    AsyncStorage.setItem(SHOW_GUID_BADGE_KEY, '0').catch(() => {});
   }, []);
-  if (isGuest) return <GuestGuard />;
-
-  const fullName = client ? `${client.prenom || ''} ${client.nom || ''}`.trim() || t('qr.client') : t('qr.client');
+  const fullName = getFullName(client) || t('qr.client');
   // v2 tokens (qrExpiresAt != null) are short-lived + single-use, so sharing a
   // captured image yields an already-invalid QR. Only legacy v1 tokens can be shared.
   const canShare = qrExpiresAt == null && !!qrValue;
-  const accent = isDark ? palette.violetLight : palette.violet;
 
   const renderQrContent = () => {
     if (qrLoading) {
@@ -154,7 +152,7 @@ export default function QRScreen() {
       const offline = qrError === 'offline';
       return (
         <View style={styles.qrState}>
-          <View style={[styles.qrStateIcon, { backgroundColor: offline ? '#F1F5F9' : '#FEF2F2' }]}>
+          <View style={[styles.qrStateIcon, { backgroundColor: offline ? palette.gray100 : palette.redUltraLight }]}>
             {offline
               ? <WifiOff size={ms(26)} color={palette.gray500} strokeWidth={2} />
               : <TriangleAlert size={ms(26)} color={palette.red} strokeWidth={2} />}
@@ -238,13 +236,7 @@ export default function QRScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* ── Header ── */}
-      <View
-        style={[
-          styles.header,
-          { paddingTop: insets.top + hp(10), backgroundColor: theme.bg, borderBottomColor: isScrolled ? theme.border : 'transparent' },
-          isScrolled && !isDark && styles.headerShadow,
-        ]}
-      >
+      <ScreenHeader isScrolled={isScrolled}>
         <View style={styles.titleRow}>
           <View style={styles.titleBlock}>
             <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]} numberOfLines={1} accessibilityRole="header">
@@ -266,13 +258,13 @@ export default function QRScreen() {
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: hp(130) + insets.bottom }]}
         showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
+        onScroll={onScroll}
         scrollEventThrottle={32}
       >
         <FadeInView delay={60} duration={380} distance={hp(12)}>
@@ -327,7 +319,7 @@ export default function QRScreen() {
               {steps.map(({ icon: Icon, label }, i) => (
                 <View key={i} style={styles.step}>
                   <View style={[styles.stepIcon, { backgroundColor: `${palette.violet}${isDark ? '2E' : '12'}` }]}>
-                    <Icon size={ms(18)} color={accent} strokeWidth={2} />
+                    <Icon size={ms(18)} color={theme.primary} strokeWidth={2} />
                     <View style={[styles.stepNum, { backgroundColor: palette.violet, borderColor: theme.bgCard }]}>
                       <Text style={[styles.stepNumText, { fontFamily: fonts.bold }]}>{i + 1}</Text>
                     </View>
@@ -360,14 +352,7 @@ export default function QRScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header (mirrors the home / notifications headers)
-  header: {
-    paddingHorizontal: wp(20), paddingBottom: hp(12),
-    borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 10,
-  },
-  headerShadow: {
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
-  },
+  // Header row (inside ScreenHeader)
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: wp(8), minHeight: ms(46) },
   titleBlock: { flex: 1 },
   title: { fontSize: fontSize['3xl'], letterSpacing: -0.6 },

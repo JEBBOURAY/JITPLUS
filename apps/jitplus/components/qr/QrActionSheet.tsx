@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { memo, useCallback, useRef } from 'react';
+import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Download, Share2 } from 'lucide-react-native';
 import { Text } from '@/components/AppText';
 import BottomSheet from '@/components/BottomSheet';
@@ -17,16 +17,34 @@ interface Props {
   onSave: () => void;
 }
 
-/** Bottom sheet with the loyalty card actions: share, save to gallery. */
+/** iOS drops (or dismisses with it) a share sheet / Alert presented while a Modal is still dismissing. */
+const DISMISS_DELAY_MS = Platform.OS === 'ios' ? 350 : 0;
+
+/**
+ * Bottom sheet with the loyalty card actions: share, save to gallery.
+ * The chosen action runs once the sheet has slid away (same as ActionSheet),
+ * so the iOS share sheet is not presented on top of the closing Modal.
+ */
 export default memo(function QrActionSheet({ visible, bottomInset, theme, fonts, t, onClose, onShare, onSave }: Props) {
+  const pendingRef = useRef<(() => void) | null>(null);
+  const runPending = useCallback(() => {
+    const run = pendingRef.current;
+    pendingRef.current = null;
+    if (run) setTimeout(run, DISMISS_DELAY_MS);
+  }, []);
+  const choose = (action: () => void) => () => {
+    pendingRef.current = action;
+    onClose();
+  };
   const rows = [
-    { key: 'share', Icon: Share2, onPress: onShare, title: t('qr.shareTitle'), sub: t('qr.shareSubtitle'), a11y: t('qr.shareAccessibility') },
-    { key: 'save', Icon: Download, onPress: onSave, title: t('qr.saveTitle'), sub: t('qr.saveSubtitle'), a11y: t('qr.saveAccessibility') },
+    { key: 'share', Icon: Share2, onPress: choose(onShare), title: t('qr.shareTitle'), sub: t('qr.shareSubtitle'), a11y: t('qr.shareAccessibility') },
+    { key: 'save', Icon: Download, onPress: choose(onSave), title: t('qr.saveTitle'), sub: t('qr.saveSubtitle'), a11y: t('qr.saveAccessibility') },
   ];
   return (
     <BottomSheet
       visible={visible}
       onClose={onClose}
+      onExited={runPending}
       backdropColor="rgba(15,23,42,0.5)"
       backdropLabel={t('common.close')}
       handleStyle={styles.handle}

@@ -42,6 +42,18 @@ export async function getPermissionStatus(): Promise<boolean> {
 }
 
 /**
+ * True while the OS can still show the permission prompt (iOS: status
+ * "undetermined"). Once denied, only the Settings app can grant it.
+ */
+export async function canAskPermission(): Promise<boolean> {
+  if (!Notifications || isExpoGo) return false;
+  try {
+    const { status, canAskAgain } = await Notifications.getPermissionsAsync();
+    return status !== 'granted' && canAskAgain !== false;
+  } catch { return false; }
+}
+
+/**
  * Create the Android notification channel (required for Android 8+).
  * Must match the channelId used by the backend Firebase service ('jit-marketing').
  */
@@ -91,17 +103,14 @@ export async function setupAndroidChannel() {
   }
 }
 
-/** Max retries when fetching the native FCM/APNs token (first launch can be slow). */
+/** Max retries when fetching the Expo push token (first launch can be slow). */
 const TOKEN_MAX_RETRIES = 3;
 const TOKEN_RETRY_DELAY_MS = 2_000;
 
 /**
- * Request notification permissions and return the native FCM/APNs device token.
+ * Request notification permissions and return the Expo push token
+ * (`ExponentPushToken[…]`, which the backend sends through Expo's push service).
  * Returns null if permissions are denied or device is not physical.
- *
- * IMPORTANT: Only native device tokens (FCM on Android, APNs on iOS) are returned.
- * Expo Push Tokens are NOT supported — the backend uses Firebase Admin SDK which
- * can only deliver to native tokens.
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   // Push notifications don't work in Expo Go (SDK 53+)

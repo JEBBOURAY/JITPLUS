@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
 import { ActivityIndicator, Alert, BackHandler, ScrollView, StyleSheet, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { backToTabs } from '@/utils/navReset';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useCompleteOnboarding } from '@/hooks/useQueryHooks';
@@ -36,7 +37,6 @@ interface Props {
 export default function SetupWizard({ merchant, initialStep }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const router = useRouter();
   const storageKey = `${ASYNC_STORAGE_KEYS.SETUP_STEP}:${merchant.id}`;
   const [index, setIndex] = useState<number | null>(initialStep ? SETUP_STEPS.indexOf(initialStep) : null);
   const [busy, setBusy] = useState(false);
@@ -74,7 +74,9 @@ export default function SetupWizard({ merchant, initialStep }: Props) {
 
   const goToStep = useCallback((step: SetupStepId) => goTo(SETUP_STEPS.indexOf(step)), [goTo]);
 
-  const exit = useCallback(() => router.replace('/(tabs)'), [router]);
+  // Back to the tabs underneath (opened from Home) or open them alone (after
+  // sign-up): never a second set of tabs on top of the first.
+  const exit = useCallback(() => backToTabs(), []);
 
   const current = index ?? 0;
 
@@ -131,7 +133,7 @@ export default function SetupWizard({ merchant, initialStep }: Props) {
       await AsyncStorage.removeItem(storageKey).catch(() => {});
       exit();
     } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('setup.done.error')));
+      toast.error(getErrorMessage(err, t('setup.done.error')));
     }
   }, [complete, storageKey, exit, t]);
 

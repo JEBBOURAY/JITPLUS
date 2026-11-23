@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -179,7 +180,6 @@ export default function StoresScreen() {
         <ScreenHeader
           title={t('stores.title')}
           caption={t('storesHub.caption')}
-          back={false}
           right={<DemoVideoButton id="boutique" variant="header" />}
         />
 

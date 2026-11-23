@@ -1,28 +1,33 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, FlatList, RefreshControl, ScrollView, StyleSheet, Pressable, ActivityIndicator, Platform,
   type ListRenderItem,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertCircle, BadgePercent, ChevronDown, MapPin, Navigation } from 'lucide-react-native';
+import { BadgePercent, ChevronDown, MapPin, Navigation, Search, X, type LucideIcon } from 'lucide-react-native';
 import { pluralKey } from '@jitplus/shared';
 import {
-  DEAL_FEED_TABS, moroccoCityLabel, type ClientDealSummary, type DealFeedTab,
+  DEAL_FEED_TABS, moroccoCityLabel, type ClientDealSummary, type DealFeedSort, type DealFeedTab,
 } from '@jitplus/shared/src/deals';
 import { Text } from '@/components/AppText';
+import EmptyState from '@/components/EmptyState';
+import RetryState from '@/components/RetryState';
+import SearchField from '@/components/SearchField';
 import Skeleton from '@/components/Skeleton';
 import ActionSheet, { type ActionSheetOption } from '@/components/ActionSheet';
 import DealRow, { DEAL_ROW_THUMB } from '@/components/deals/DealRow';
-import DealsGuestTeaser from '@/components/deals/DealsGuestTeaser';
 import DealAlertCard from '@/components/deals/DealAlertCard';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useAuth } from '@/contexts/AuthContext';
 import {
   dealArea, useDealCategoryCounts, useDealCities, useDealCityPreference, useDealsFeed,
 } from '@/hooks/useDealHooks';
 import { useDealLocation } from '@/hooks/useDealLocation';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { useCloseOnBack } from '@/hooks/useCloseOnBack';
+import { DEBOUNCE_MS } from '@/constants';
+import { DEAL_SEARCH_MAX, DEAL_SEARCH_MIN } from '@/services/api/deals';
 import { CATEGORIES } from '@/utils/categories';
 import { suggestAlertCity } from '@/utils/dealAlerts';
 import { useAppFonts } from '@/utils/fonts';
@@ -37,28 +42,6 @@ const MAX_CITY_OPTIONS = 8;
 const SKELETON_ROWS = [0, 1, 2, 3];
 
 export default function DealsScreen() {
-  const { isGuest } = useAuth();
-  const theme = useTheme();
-  const fonts = useAppFonts();
-  const { t } = useLanguage();
-  const insets = useSafeAreaInsets();
-
-  if (isGuest) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <View style={[styles.header, { paddingTop: insets.top + hp(10) }]}>
-          <View style={styles.titleRow}>
-            <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]} accessibilityRole="header">{t('deals.title')}</Text>
-          </View>
-        </View>
-        <DealsGuestTeaser />
-      </View>
-    );
-  }
-  return <DealsFeed />;
-}
-
-function DealsFeed() {
   const theme = useTheme();
   const fonts = useAppFonts();
   const { t, locale } = useLanguage();
@@ -68,14 +51,23 @@ function DealsFeed() {
 
   const [tab, setTab] = useState<DealFeedTab>('nearby');
   const [category, setCategory] = useState<string | null>(null);
+  const [sort, setSort] = useState<DealFeedSort>('recommended');
+  const [searching, setSearching] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [query, setQuery] = useState<string | null>(null);
   const [cityKey, setCityKey, cityReady] = useDealCityPreference();
   const { coords, resolved, request: requestLocation } = useDealLocation(t);
   const area = useMemo(() => dealArea(cityKey, coords), [cityKey, coords]);
-  const feed = useDealsFeed(tab, area, category, cityReady && resolved);
-  const categoryCounts = useDealCategoryCounts(tab, area, cityReady && resolved);
+  // The saved list is short: it is searched, never filtered or re-ordered.
+  const filterable = tab !== 'saved';
+  const filters = useMemo(
+    () => ({ category: filterable ? category : null, q: query, sort: filterable ? sort : 'recommended' as const }),
+    [filterable, category, query, sort],
+  );
+  const feed = useDealsFeed(tab, area, filters, cityReady && resolved);
+  const categoryCounts = useDealCategoryCounts(tab, area, cityReady && resolved && filterable);
   const [citySheet, setCitySheet] = useState(false);
   const cities = useDealCities(coords, citySheet);
-  const [refreshing, setRefreshing] = useState(false);
 
   // Offset pages can overlap when deals are published between two pages.
   const items = useMemo(() => {
@@ -89,7 +81,14 @@ function DealsFeed() {
     return out;
   }, [feed.data]);
 
+  useEffect(() => {
+    const text = searchText.trim();
+    const timer = setTimeout(() => setQuery(text.length >= DEAL_SEARCH_MIN ? text : null), DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
   const serverCity = feed.data?.pages[0]?.cityKey ?? null;
+  const suggestedCity = feed.data?.pages[0]?.suggestedCity ?? null;
   const alertCity = useMemo(() => suggestAlertCity(cityKey, coords, serverCity), [cityKey, coords, serverCity]);
   const cityLabel = cityKey
     ? moroccoCityLabel(cityKey, locale)
@@ -109,6 +108,14 @@ function DealsFeed() {
   const scrollTop = useCallback(() => listRef.current?.scrollToOffset({ offset: 0, animated: false }), []);
   const chooseTab = useCallback((next: DealFeedTab) => { haptic(); setTab(next); scrollTop(); }, [scrollTop]);
   const chooseCategory = useCallback((next: string | null) => { haptic(); setCategory(next); scrollTop(); }, [scrollTop]);
+  const toggleSort = useCallback(() => {
+    haptic();
+    setSort((current) => (current === 'discount' ? 'recommended' : 'discount'));
+    scrollTop();
+  }, [scrollTop]);
+  const closeSearch = useCallback(() => { setSearching(false); setSearchText(''); setQuery(null); scrollTop(); }, [scrollTop]);
+  useCloseOnBack(searching, closeSearch);
+  const chooseCity = useCallback((key: string) => { haptic(); setCityKey(key); scrollTop(); }, [setCityKey, scrollTop]);
 
   const openDeal = useCallback((deal: ClientDealSummary) => {
     if (!isEntityId(deal.id)) return;
@@ -121,10 +128,7 @@ function DealsFeed() {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try { await refetch(); } finally { setRefreshing(false); }
-  }, [refetch]);
+  const { refreshing, onRefresh } = usePullToRefresh(refetch);
 
   const cityOptions = useMemo<ActionSheetOption[]>(() => {
     const list = [...(cities.data?.cities ?? [])]
@@ -153,25 +157,29 @@ function DealsFeed() {
   );
 
   const loading = !cityReady || !resolved || feed.isLoading;
+  // A failed next page or pull-to-refresh keeps its pages (react-query v5 still
+  // sets isError): the list stays on screen, only an empty feed shows the error.
+  const loadFailed = feed.isError && items.length === 0;
   const showLocationHint = tab === 'nearby' && !cityKey && !coords && resolved;
-
-  const locationHint = showLocationHint ? (
-    <View style={[styles.hint, { backgroundColor: theme.primaryBg, borderColor: `${palette.violet}30` }]}>
-      <Navigation size={ms(16)} color={palette.violet} strokeWidth={2} />
-      <Text style={[styles.hintText, { color: theme.text, fontFamily: fonts.regular }]}>{t('deals.feed.locationHint')}</Text>
-      <Pressable
-        onPress={() => { haptic(); void requestLocation(); }}
-        style={({ pressed }) => [styles.hintBtn, { backgroundColor: palette.violet, opacity: pressed ? 0.8 : 1 }]}
-        accessibilityRole="button"
-      >
-        <Text style={[styles.hintBtnText, { fontFamily: fonts.semibold }]}>{t('deals.feed.enableLocation')}</Text>
-      </Pressable>
-    </View>
-  ) : null;
 
   const header = (
     <>
-      {locationHint}
+      {showLocationHint && (
+        <FeedHint
+          icon={Navigation}
+          text={t('deals.feed.locationHint')}
+          action={t('deals.feed.enableLocation')}
+          onPress={() => { haptic(); void requestLocation(); }}
+        />
+      )}
+      {tab === 'nearby' && !!suggestedCity && (
+        <FeedHint
+          icon={MapPin}
+          text={t('deals.feed.nothingNearby')}
+          action={t('deals.feed.seeCity', { city: moroccoCityLabel(suggestedCity.key, locale) })}
+          onPress={() => chooseCity(suggestedCity.key)}
+        />
+      )}
       {cityReady && resolved && <DealAlertCard suggestedCityKey={alertCity} />}
     </>
   );
@@ -183,39 +191,31 @@ function DealsFeed() {
         {SKELETON_ROWS.map((i) => <Skeleton key={i} width="100%" height={ms(DEAL_ROW_THUMB) + ms(20)} borderRadius={ms(16)} />)}
       </View>
     );
-  } else if (feed.isError) {
+  } else if (loadFailed) {
     empty = (
-      <View style={styles.empty}>
-        <View style={[styles.emptyIcon, { backgroundColor: `${theme.danger}14` }]}>
-          <AlertCircle size={ms(30)} color={theme.danger} strokeWidth={1.8} />
-        </View>
-        <Text style={[styles.emptyText, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('deals.feed.loadError')}</Text>
-        <Pressable onPress={() => { void refetch(); }} style={[styles.emptyBtn, { backgroundColor: palette.violet }]} accessibilityRole="button">
-          <Text style={[styles.emptyBtnText, { fontFamily: fonts.semibold }]}>{t('common.retry')}</Text>
-        </Pressable>
-      </View>
+      <RetryState withIcon message={t('deals.feed.loadError')} onRetry={() => { void refetch(); }} style={styles.retry} />
     );
   } else {
     empty = (
-      <View style={styles.empty}>
-        <View style={[styles.emptyIcon, { backgroundColor: `${palette.violet}14` }]}>
-          <BadgePercent size={ms(30)} color={palette.violet} strokeWidth={1.8} />
-        </View>
-        <Text style={[styles.emptyTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('deals.feed.emptyTitle')}</Text>
-        <Text style={[styles.emptyText, { color: theme.textSecondary, fontFamily: fonts.regular }]}>
-          {category ? t('deals.feed.emptyCategory') : t(`deals.feed.empty.${tab}`)}
-        </Text>
-        {!!category && (
-          <Pressable onPress={() => chooseCategory(null)} style={[styles.emptyBtn, { backgroundColor: palette.violet }]} accessibilityRole="button">
-            <Text style={[styles.emptyBtnText, { fontFamily: fonts.semibold }]}>{t('deals.feed.showAllCategories')}</Text>
-          </Pressable>
-        )}
-      </View>
+      <EmptyState
+        icon={BadgePercent}
+        title={t('deals.feed.emptyTitle')}
+        hint={query
+          ? t('deals.feed.emptySearch', { query })
+          : filters.category ? t('deals.feed.emptyCategory') : t(`deals.feed.empty.${tab}`)}
+        action={query
+          ? { label: t('deals.feed.clearSearch'), onPress: closeSearch }
+          : filters.category ? { label: t('deals.feed.showAllCategories'), onPress: () => chooseCategory(null) } : undefined}
+      />
     );
   }
 
   const footer = isFetchingNextPage ? (
     <ActivityIndicator style={styles.footer} color={palette.violet} />
+  ) : feed.isFetchNextPageError ? (
+    <Pressable onPress={onEndReached} style={styles.footer} accessibilityRole="button">
+      <Text style={[styles.endText, { color: palette.violet, fontFamily: fonts.semibold }]}>{t('common.retry')}</Text>
+    </Pressable>
   ) : !hasNextPage && items.length > 6 ? (
     <Text style={[styles.endText, { color: theme.textMuted, fontFamily: fonts.regular }]}>{t('deals.feed.endReached')}</Text>
   ) : null;
@@ -223,10 +223,41 @@ function DealsFeed() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + hp(10), borderBottomColor: theme.border }]}>
+        {searching ? (
+          <View style={styles.titleRow}>
+            <SearchField
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder={t('deals.feed.searchPlaceholder')}
+              accessibilityLabel={t('deals.feed.search')}
+              maxLength={DEAL_SEARCH_MAX}
+              autoFocus
+              style={styles.search}
+            />
+            <Pressable
+              onPress={closeSearch}
+              hitSlop={8}
+              style={({ pressed }) => [styles.iconBtn, { backgroundColor: theme.bgCard, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('deals.feed.closeSearch')}
+            >
+              <X size={ms(18)} color={theme.text} strokeWidth={2} />
+            </Pressable>
+          </View>
+        ) : (
         <View style={styles.titleRow}>
           <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]} accessibilityRole="header" numberOfLines={1}>
             {t('deals.title')}
           </Text>
+          <Pressable
+            onPress={() => { haptic(); setSearching(true); }}
+            hitSlop={8}
+            style={({ pressed }) => [styles.iconBtn, { backgroundColor: theme.bgCard, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t('deals.feed.search')}
+          >
+            <Search size={ms(18)} color={theme.text} strokeWidth={2} />
+          </Pressable>
           <Pressable
             onPress={() => { haptic(); setCitySheet(true); }}
             style={({ pressed }) => [styles.cityChip, { backgroundColor: theme.bgCard, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }]}
@@ -238,6 +269,7 @@ function DealsFeed() {
             <ChevronDown size={ms(14)} color={theme.textMuted} strokeWidth={2} />
           </Pressable>
         </View>
+        )}
 
         <ScrollView
           horizontal
@@ -268,9 +300,27 @@ function DealsFeed() {
           })}
         </ScrollView>
 
-        {categoryChips.length > 0 && (
+        {filterable && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-            {[null, ...categoryChips.map((c) => c.id)].map((id) => {
+            <Pressable
+              onPress={toggleSort}
+              style={({ pressed }) => [
+                styles.catChip,
+                styles.sortChip,
+                sort === 'discount'
+                  ? { backgroundColor: theme.primaryBg, borderColor: theme.primary }
+                  : { backgroundColor: theme.bgCard, borderColor: theme.border },
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: sort === 'discount' }}
+            >
+              <BadgePercent size={ms(14)} color={sort === 'discount' ? theme.primary : theme.textSecondary} strokeWidth={2} />
+              <Text style={[styles.catText, { color: sort === 'discount' ? theme.primary : theme.text, fontFamily: sort === 'discount' ? fonts.semibold : fonts.medium }]}>
+                {t('deals.feed.sortDiscount')}
+              </Text>
+            </Pressable>
+            {categoryChips.length > 0 && [null, ...categoryChips.map((c) => c.id)].map((id) => {
               const active = category === id;
               return (
                 <Pressable
@@ -298,7 +348,7 @@ function DealsFeed() {
 
       <FlatList
         ref={listRef}
-        data={loading || feed.isError ? [] : items}
+        data={loading || loadFailed ? [] : items}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         ItemSeparatorComponent={Separator}
@@ -329,6 +379,25 @@ function DealsFeed() {
   );
 }
 
+/** One-line notice above the list with a single action (enable the location, switch to a city). */
+function FeedHint({ icon: Icon, text, action, onPress }: { icon: LucideIcon; text: string; action: string; onPress: () => void }) {
+  const theme = useTheme();
+  const fonts = useAppFonts();
+  return (
+    <View style={[styles.hint, { backgroundColor: theme.primaryBg, borderColor: `${palette.violet}30` }]}>
+      <Icon size={ms(16)} color={palette.violet} strokeWidth={2} />
+      <Text style={[styles.hintText, { color: theme.text, fontFamily: fonts.regular }]}>{text}</Text>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.hintBtn, { backgroundColor: palette.violet, opacity: pressed ? 0.8 : 1 }]}
+        accessibilityRole="button"
+      >
+        <Text style={[styles.hintBtnText, { fontFamily: fonts.semibold }]}>{action}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 const keyExtractor = (deal: ClientDealSummary) => deal.id;
 const Separator = () => <View style={styles.separator} />;
 
@@ -342,6 +411,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(12), height: ms(36), borderRadius: ms(18), borderWidth: 1,
   },
   cityText: { flexShrink: 1, fontSize: ms(13) },
+  iconBtn: { width: ms(36), height: ms(36), borderRadius: ms(18), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  search: { flex: 1 },
+  sortChip: { flexDirection: 'row', alignItems: 'center', gap: wp(5) },
   tabs: { flexGrow: 0, marginHorizontal: -wp(20), borderBottomWidth: StyleSheet.hairlineWidth },
   tabsContent: { flexGrow: 1, paddingHorizontal: wp(8) },
   tab: { flexGrow: 1, height: ms(44), paddingHorizontal: wp(12), alignItems: 'center', justifyContent: 'flex-end' },
@@ -361,12 +433,7 @@ const styles = StyleSheet.create({
   hintBtn: { paddingHorizontal: wp(12), paddingVertical: hp(6), borderRadius: ms(12) },
   hintBtnText: { color: '#FFFFFF', fontSize: ms(12) },
   skeletons: { gap: hp(10) },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: wp(24), paddingVertical: hp(40) },
-  emptyIcon: { width: ms(68), height: ms(68), borderRadius: ms(22), alignItems: 'center', justifyContent: 'center', marginBottom: hp(14) },
-  emptyTitle: { fontSize: ms(17), marginBottom: hp(6), textAlign: 'center' },
-  emptyText: { fontSize: ms(14), lineHeight: ms(20), textAlign: 'center' },
-  emptyBtn: { marginTop: hp(16), paddingHorizontal: wp(18), paddingVertical: hp(10), borderRadius: ms(14) },
-  emptyBtnText: { color: '#FFFFFF', fontSize: ms(14) },
+  retry: { flex: 1, justifyContent: 'center', paddingHorizontal: wp(24), paddingVertical: hp(40) },
   footer: { paddingVertical: hp(16) },
   endText: { textAlign: 'center', fontSize: ms(12), paddingVertical: hp(16) },
 });

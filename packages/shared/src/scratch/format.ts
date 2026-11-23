@@ -1,25 +1,10 @@
 // ── Scratch cards & coupons — pure formatting helpers (no React Native) ──────
-import { ALL_WEEKDAYS_MASK, COUPON_CODE_LENGTH, WEEKDAY_BITS } from './constants';
+import { ALL_WEEKDAYS_MASK, WEEKDAY_BITS } from './constants';
 import type { CouponConditions, CouponRewardType } from './types';
 import type { MoneyFormatter } from '../currency';
 
 /** Translator compatible with i18n-js `t(key, params)` */
 export type ScratchTranslate = (key: string, params?: Record<string, unknown>) => string;
-
-/** '042913' → '042 913' */
-export function formatCouponCode(code: string): string {
-  const digits = normalizeCouponCode(code);
-  return digits.length === COUPON_CODE_LENGTH ? `${digits.slice(0, 3)} ${digits.slice(3)}` : digits;
-}
-
-/** Keeps digits only, at most 6 (for the cashier input) */
-export function normalizeCouponCode(input: string): string {
-  return (input || '').replace(/\D/g, '').slice(0, COUPON_CODE_LENGTH);
-}
-
-export function isCompleteCouponCode(input: string): boolean {
-  return normalizeCouponCode(input).length === COUPON_CODE_LENGTH;
-}
 
 /** Bitmask → ISO weekdays (1 = Monday … 7 = Sunday) */
 export function weekdaysFromMask(mask: number | null | undefined): number[] {

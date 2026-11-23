@@ -71,10 +71,12 @@ const mockPrismaService = {
     // Phone uniqueness check run by every signup.
     findFirst: jest.fn().mockResolvedValue(null),
     update: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     create: jest.fn(),
   },
   teamMember: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
   },
   deviceSession: {
     updateMany: jest.fn(),
@@ -274,7 +276,7 @@ describe('AuthService + MerchantSessionService + MerchantSignupService', () => {
       expect(mockPrismaService.merchant.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'merchant-uuid-1' },
-          data: expect.objectContaining({ failedLoginAttempts: 1 }),
+          data: { failedLoginAttempts: { increment: 1 } },
         }),
       );
     });
@@ -509,6 +511,16 @@ describe('AuthService + MerchantSessionService + MerchantSignupService', () => {
     });
 
     const signup = { nom: 'Test', email: 'new@jitplus.com', password: 'ValidPass1!', phoneNumber: '+212600000000', termsAccepted: true };
+
+    it('refuses an email already used by a team member (login would shadow the member)', async () => {
+      mockPrismaService.teamMember.findFirst.mockResolvedValueOnce({ id: 'member-1' });
+
+      await expect(signupService.register({ ...signup, email: 'Staff@Shop.ma' } as any)).rejects.toThrow(ConflictException);
+      expect(mockPrismaService.teamMember.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: { email: { equals: 'Staff@Shop.ma', mode: 'insensitive' } },
+      }));
+      expect(mockPrismaService.merchant.create).not.toHaveBeenCalled();
+    });
 
     it('refuses a phone number already used by another merchant', async () => {
       mockPrismaService.merchant.findFirst.mockResolvedValueOnce({ id: 'other' });

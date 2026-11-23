@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException, UnauthorizedException, Inject, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Inject, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import {
@@ -22,10 +22,24 @@ import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { withRetry } from '../common/utils/retry-transaction.helper';
 import { merchantListCacheKey, merchantListGeneration } from '../common/utils/merchant-list-cache';
 import { computeStampsExpiry } from '../merchant/utils/loyalty.utils';
+import {
+  WELCOME_BONUS_CARD_SELECT,
+  canStartWelcomeBonus,
+  effectivePlanOf,
+  pendingWelcomeBonus,
+  grantWelcomeBonusInTx,
+  resolveWelcomeOffer,
+  type WelcomeBonusCardState,
+} from '../merchant/utils/welcome-bonus';
+import { BOOKABLE_SERVICE_WHERE, MERCHANT_LOYALTY_SELECT, WELCOME_BONUS_MERCHANT_SELECT } from '../common/prisma-selects';
 import { DealsClientService, type MerchantDealBadge } from '../deals/deals-client.service';
 import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 import { DEAL_DIGEST_AUDIENCE } from '../deals/deal-limits';
 import { maskEmail } from '../common/utils/pii-mask';
+import { getNotifTranslations } from '../common/utils/notification-i18n';
+import { NotificationsService } from '../notifications/notifications.service';
+import { ClientClosureService } from './client-closure.service';
+import { normalizePhone, isValidPhone } from './client-phone.util';
 
 /**
  * The client map (jitplus Discover) is the only reader of the merchants list:
@@ -34,6 +48,16 @@ import { maskEmail } from '../common/utils/pii-mask';
  * the merchant page; selecting them here sent them for every map point and
  * stored them in the client's persisted cache for nothing.
  */
+/** Stores sent with each card: enough to find a phone number and a place to go. */
+const CARD_CONTACT_STORES = 3;
+
+/** WhatsApp number from the merchant's free-form social links, when there is one. */
+function whatsappOf(socialLinks: Prisma.JsonValue | null): string | null {
+  if (!socialLinks || typeof socialLinks !== 'object' || Array.isArray(socialLinks)) return null;
+  const value = socialLinks.whatsapp;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 const MERCHANT_MAP_SELECT = {
   id: true,
   nom: true,
@@ -45,6 +69,12 @@ const MERCHANT_MAP_SELECT = {
   latitude: true,
   longitude: true,
   logoUrl: true,
+  plan: true,
+  planExpiresAt: true,
+  stampsForReward: true,
+  ...WELCOME_BONUS_MERCHANT_SELECT,
+  // The first gift, shown on the map card so a newcomer sees what the card is worth.
+  rewards: { select: { titre: true, cout: true }, orderBy: { cout: 'asc' }, take: 1 },
   stores: {
     where: { isActive: true },
     select: { id: true, nom: true, ville: true, quartier: true, adresse: true, latitude: true, longitude: true },
@@ -66,6 +96,10 @@ interface MerchantMapPoint {
   logoUrl: string | null;
   storeId?: string;
   storeName?: string;
+  /** Badge of the map. `validUntil` is checked after the shared list cache. */
+  welcomeOffer?: { stamps: number; validUntil: string | null };
+  /** Cheapest reward of the loyalty card: "Café offert · 8 tampons". */
+  firstReward?: { title: string; stamps: number };
 }
 
 @Injectable()
@@ -87,6 +121,8 @@ export class ClientService {
     private clientClaimService: ClientClaimService,
     private deals: DealsClientService,
     private planService: MerchantPlanService,
+    private notifications: NotificationsService,
+    private closure: ClientClosureService,
   ) {}
 
   /** Live-deal badges; a failure only hides the badges, never the merchants. */
@@ -167,16 +203,25 @@ export class ClientService {
   ) {
     // Normalise inputs once outside the transaction.
     if (updates.email) updates.email = updates.email.trim().toLowerCase();
-    if (updates.telephone) updates.telephone = updates.telephone.trim();
+    if (updates.telephone) {
+      // Same canonical form as signup / OTP flows: the unique index is on the raw
+      // string, so "+212 6…" and "+2126…" must not count as two numbers.
+      updates.telephone = normalizePhone(updates.telephone.trim());
+      if (!isValidPhone(updates.telephone)) {
+        throw new BadRequestException('error.auth.phoneInvalidFormat');
+      }
+    }
 
     const { dateNaissance: dateNaissanceStr, language, ...restUpdates } = updates;
     const baseData: {
-      prenom?: string; nom?: string; email?: string; telephone?: string;
+      prenom?: string; nom?: string | null; email?: string; telephone?: string;
       countryCode?: string; shareInfoMerchants?: boolean; notifPush?: boolean; notifEmail?: boolean; notifWhatsapp?: boolean;
       language?: string;
       dateNaissance?: Date | null;
       emailVerified?: boolean; telephoneVerified?: boolean;
     } = { ...restUpdates };
+    // The last name is optional: an emptied field is stored as "none", not as ''.
+    if (typeof baseData.nom === 'string' && !baseData.nom.trim()) baseData.nom = null;
     if (language) baseData.language = language;
     if ('dateNaissance' in updates) {
       baseData.dateNaissance = dateNaissanceStr ? new Date(dateNaissanceStr) : null;
@@ -193,7 +238,7 @@ export class ClientService {
             select: { id: true },
           });
           if (existing && existing.id !== clientId) {
-            throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
+            throw new ConflictException('error.auth.emailExists');
           }
         }
 
@@ -203,12 +248,16 @@ export class ClientService {
             select: { id: true, isAnonymous: true },
           });
           if (existing && existing.id !== clientId) {
-            if ((existing as any).isAnonymous) {
+            if (existing.isAnonymous) {
               throw new ConflictException(
                 await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
               );
             }
-            throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
+            // Typing a number proves nothing: it is never taken from another
+            // account here. Its real owner gets it back by proving it with the
+            // WhatsApp code (verifyChangeContactOtp), even when the other
+            // account only holds it unverified.
+            throw new ConflictException('error.auth.phoneExists');
           }
         }
 
@@ -260,7 +309,7 @@ export class ClientService {
     });
 
     if (!client) {
-      throw new BadRequestException('Compte introuvable');
+      throw new BadRequestException('error.auth.clientNotFound');
     }
 
     // Identity verification: password required for password-based accounts,
@@ -268,11 +317,12 @@ export class ClientService {
     // they are already authenticated via JWT.
     if (client.password) {
       if (!password) {
-        throw new BadRequestException('Le mot de passe est requis pour supprimer votre compte');
+        throw new BadRequestException('error.auth.passwordRequiredForDeletion');
       }
       const isValid = await bcrypt.compare(password, client.password);
       if (!isValid) {
-        throw new UnauthorizedException('Mot de passe incorrect');
+        // 400, not 401: a 401 makes the app refresh the session and replay the request.
+        throw new BadRequestException('error.auth.passwordIncorrect');
       }
     }
     // Social-only users (Google/Apple, no password) are already authenticated
@@ -284,11 +334,9 @@ export class ClientService {
     const originalLanguage = client.language;
     const isEmailReal = !!originalEmail && originalEmail.includes('@');
 
-    // Atomic soft-delete inside a transaction to ensure all related data
-    // is cleaned up. Prevents orphaned records leaking to recreated accounts.
-    const now = new Date();
-
-    await this.txRunner.run(async (tx) => {
+    // Atomic soft-delete: also ends the client's bookings, coupons and cards.
+    // Prevents orphaned records leaking to recreated accounts.
+    await this.closure.close(clientId, async (tx, now) => {
       // 1. Soft-delete client: anonymise ALL PII so email/phone/social IDs can be reused
       await tx.client.update({
         where: { id: clientId },
@@ -309,30 +357,22 @@ export class ClientService {
         },
       });
 
-      await tx.clientSession.deleteMany({ where: { clientId } });
-
-      // 2. Deactivate all loyalty cards (cannot delete — Transaction references with Restrict)
-      await tx.loyaltyCard.updateMany({
-        where: { clientId, deactivatedAt: null },
-        data: { deactivatedAt: now },
-      });
-
-      // 3. Clean up notification read statuses
+      // 2. Clean up notification read statuses
       await tx.clientNotificationStatus.deleteMany({
         where: { clientId },
       });
 
-      // 4. Clean up browsing history (privacy)
+      // 3. Clean up browsing history (privacy)
       await tx.profileView.deleteMany({
         where: { clientId },
       });
 
-      // 5. Clean up referral records
+      // 4. Clean up referral records
       await tx.clientReferral.deleteMany({
         where: { clientId },
       });
 
-      // 6. Clean up payout requests
+      // 5. Clean up payout requests
       await tx.payoutRequest.deleteMany({
         where: { clientId },
       });
@@ -405,6 +445,16 @@ export class ClientService {
                 orderBy: { cout: 'asc' },
                 take: 1,
               },
+              // Shortcuts under the card: book, call, WhatsApp, directions.
+              socialLinks: true,
+              bookingSettings: { select: { enabled: true } },
+              bookableServices: { where: BOOKABLE_SERVICE_WHERE, select: { id: true }, take: 1 },
+              stores: {
+                where: { isActive: true },
+                select: { id: true, nom: true, telephone: true, latitude: true, longitude: true },
+                orderBy: { createdAt: 'asc' },
+                take: CARD_CONTACT_STORES,
+              },
             },
           },
         },
@@ -444,6 +494,9 @@ export class ClientService {
               cardBackgroundUrl: card.merchant.cardBackgroundUrl ?? null,
               cardBackgroundColor: card.merchant.cardBackgroundColor ?? null,
               cardTextColor: card.merchant.cardTextColor ?? null,
+              canBook: !!card.merchant.bookingSettings?.enabled && card.merchant.bookableServices.length > 0,
+              whatsapp: whatsappOf(card.merchant.socialLinks),
+              stores: card.merchant.stores,
             }
           : undefined,
       })),
@@ -499,6 +552,9 @@ export class ClientService {
           cardTextColor: true,
           socialLinks: true,
           profileViews: true,
+          plan: true,
+          planExpiresAt: true,
+          ...WELCOME_BONUS_MERCHANT_SELECT,
           stores: {
             where: { isActive: true },
             // Same order as the merchant's store list in JitPlus Pro.
@@ -540,6 +596,8 @@ export class ClientService {
             },
             take: 1,
           },
+          // Only a hint for the app (skip a request): the collection endpoint applies the real rules.
+          collections: { where: { status: 'ACTIVE' }, select: { id: true }, take: 1 },
           _count: { select: { loyaltyCards: true } },
         },
       });
@@ -573,9 +631,22 @@ export class ClientService {
     const existingCard = clientId
       ? await this.loyaltyCardRepo.findUnique({
           where: { clientId_merchantId: { clientId, merchantId: id } },
-          select: { id: true, stamps: true, deactivatedAt: true, lastVisitAt: true },
+          select: {
+            id: true,
+            stamps: true,
+            deactivatedAt: true,
+            lastVisitAt: true,
+            ...WELCOME_BONUS_CARD_SELECT,
+            client: {
+              select: { transactions: { where: { merchantId: id, type: 'EARN_STAMPS' }, select: { id: true }, take: 1 } },
+            },
+          },
         })
       : null;
+    // The offer is only advertised to someone who can still get it.
+    const canGetWelcomeOffer = !existingCard || (
+      canStartWelcomeBonus(existingCard) && !existingCard.client?.transactions?.length
+    );
     const activeDealCount = (await this.dealBadges())[id]?.activeDealCount ?? 0;
     const cardStampsExpireAt =
       existingCard && !existingCard.deactivatedAt && existingCard.stamps > 0
@@ -619,8 +690,11 @@ export class ClientService {
       cardDeactivated: !!existingCard?.deactivatedAt,
       cardBalance: existingCard?.stamps ?? 0,
       cardStampsExpireAt,
+      welcomeOffer: canGetWelcomeOffer ? resolveWelcomeOffer(m, effectivePlanOf(m)) : null,
+      cardWelcomeBonus: existingCard && !existingCard.deactivatedAt ? pendingWelcomeBonus(existingCard, m) : null,
       stores: m.stores ?? [],
       activeDealCount,
+      hasCollection: (m.collections?.length ?? 0) > 0,
       rewards: m.rewards.map((r: any) => ({
         id: r.id,
         titre: r.titre,
@@ -648,38 +722,90 @@ export class ClientService {
   }
 
   /**
-   * Self-associate: client joins a merchant and gets a loyalty card with 0 balance.
+   * Self-associate: client joins a merchant and gets a loyalty card, credited
+   * with the welcome gift when the merchant offers it on card add.
    * If the card already exists, returns it without error (idempotent).
    */
   async joinMerchant(clientId: string, merchantId: string) {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId, isActive: true },
-      select: { id: true, nom: true },
+      select: { id: true, nom: true, ...MERCHANT_LOYALTY_SELECT },
     });
     if (!merchant) throw new NotFoundException('Merchant not found');
 
-    const existing = await this.loyaltyCardRepo.findUnique({
-      where: { clientId_merchantId: { clientId, merchantId } },
-      select: { id: true, stamps: true, createdAt: true, deactivatedAt: true },
+    // Same rule as an enrolment at the till: unblock first.
+    const cardKey = { clientId_merchantId: { clientId, merchantId } };
+    const [blocked, existing] = await Promise.all([
+      this.blockRepo.findUnique({ where: cardKey, select: { id: true } }),
+      this.loyaltyCardRepo.findUnique({
+        where: cardKey,
+        select: { id: true, stamps: true, createdAt: true, deactivatedAt: true, consentPending: true, ...WELCOME_BONUS_CARD_SELECT },
+      }),
+    ]);
+    if (blocked) throw new NotFoundException('Merchant not found');
+
+    const toResponse = (
+      card: { id: string; stamps: number; createdAt: Date } & WelcomeBonusCardState,
+      welcomeBonusGranted = 0,
+    ) => ({
+      success: true,
+      card: {
+        id: card.id,
+        stamps: card.stamps,
+        createdAt: card.createdAt,
+        welcomeBonus: pendingWelcomeBonus(card, merchant),
+        welcomeBonusGranted,
+      },
     });
+
     if (existing && !existing.deactivatedAt) {
-      return { success: true, card: { id: existing.id, stamps: existing.stamps, createdAt: existing.createdAt } };
+      // The client joining confirms a card the merchant opened from a typed phone number.
+      if (existing.consentPending) {
+        await this.loyaltyCardRepo.update({ where: { id: existing.id }, data: { consentPending: false } });
+      }
+      return toResponse(existing);
     }
 
     // A self-join counts against the merchant's FREE plan limit like any other
     // enrolment (it used to bypass it — security audit 2026-11-05).
     const { plan } = await this.planService.resolveEffectivePlan(merchantId);
-    const card = await this.txRunner.run(async (tx) => {
+    const { card, granted } = await this.txRunner.run(async (tx) => {
       await this.planService.assertCanAddClient(merchantId, { tx, plan });
-      return tx.loyaltyCard.upsert({
+      const joined = await tx.loyaltyCard.upsert({
         where: { clientId_merchantId: { clientId, merchantId } },
         create: { clientId, merchantId, stamps: 0 },
-        update: { deactivatedAt: null },
-        select: { id: true, stamps: true, createdAt: true },
+        update: { deactivatedAt: null, consentPending: false },
+        select: { id: true, stamps: true, createdAt: true, ...WELCOME_BONUS_CARD_SELECT },
+      });
+      const offer = resolveWelcomeOffer(merchant, plan);
+      return grantWelcomeBonusInTx(tx, {
+        card: joined,
+        clientId,
+        merchantId,
+        offer: offer?.trigger === 'CARD_OR_SCAN' ? offer : null,
+        accumulationLimit: merchant.accumulationLimit,
       });
     });
 
-    return { success: true, card };
+    if (granted > 0) void this.notifyWelcomeGift(clientId, merchantId, merchant.nom, granted);
+    return toResponse(card, granted);
+  }
+
+  /** Runs after the commit: a failed push never undoes the gift. */
+  private async notifyWelcomeGift(clientId: string, merchantId: string, merchantName: string, stamps: number) {
+    try {
+      const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { language: true } });
+      const t = getNotifTranslations(client?.language);
+      await this.notifications.sendToClient(
+        merchantId,
+        clientId,
+        t.welcomeGiftTitle(stamps),
+        t.welcomeGiftBody(stamps, merchantName),
+        { event: 'welcome_bonus', action: 'open_card', merchantId, stamps: String(stamps) },
+      );
+    } catch (err) {
+      this.logger.warn(`Welcome gift notification failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
@@ -786,6 +912,14 @@ export class ClientService {
       /* swallow — block succeeded, loyalty cleanup is best-effort */
     }
 
+    // Upcoming bookings there would keep the slot taken and send reminders for
+    // a merchant the client can no longer open. Best-effort like the card.
+    try {
+      await this.closure.cancelUpcomingAt(clientId, merchantId);
+    } catch (err) {
+      this.logger.warn(`Bookings not cancelled after block: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     // Invalidate list caches so the blocked merchant disappears immediately.
     await this.cache.del(`merchant:detail:${merchantId}`);
 
@@ -871,14 +1005,29 @@ export class ClientService {
       : baseResult.merchants.filter((m: any) => !blockedIds.has(m.id));
 
     // Deal badges change faster than the merchant list: merged after its cache.
-    // Guests only get the count (the content of a deal requires an account).
+    // Guests get them too: deals are open to "Explorer sans compte".
     const badges = await this.dealBadges();
+    const now = new Date();
+    // The welcome badge is for newcomers: hidden on merchants this client already joined.
+    const offerMerchantIds = [...new Set<string>(visible.filter((m: any) => m.welcomeOffer).map((m: any) => m.id))];
+    const joinedIds = clientId && offerMerchantIds.length
+      ? new Set(
+          (await this.loyaltyCardRepo.findMany({
+            where: { clientId, merchantId: { in: offerMerchantIds } },
+            select: { merchantId: true },
+          })).map((c: { merchantId: string }) => c.merchantId),
+        )
+      : null;
     const merchants = visible.map((m: any) => {
       const badge = badges[m.id];
+      const offerStillValid = m.welcomeOffer
+        && !joinedIds?.has(m.id)
+        && (!m.welcomeOffer.validUntil || new Date(m.welcomeOffer.validUntil) > now);
       return {
         ...m,
+        welcomeOffer: offerStillValid ? { stamps: m.welcomeOffer.stamps } : undefined,
         activeDealCount: badge?.activeDealCount ?? 0,
-        topDeal: clientId ? badge?.topDeal ?? null : null,
+        topDeal: badge?.topDeal ?? null,
       };
     });
     return { ...baseResult, merchants };
@@ -888,6 +1037,10 @@ export class ClientService {
     const entries: MerchantMapPoint[] = [];
 
     for (const m of merchants) {
+      const offer = resolveWelcomeOffer(m, effectivePlanOf(m));
+      const offerEnds = [m.welcomeBonusEndsAt, m.planExpiresAt]
+        .filter((d): d is Date => !!d)
+        .map((d) => new Date(d).getTime());
       const base: MerchantMapPoint = {
         id: m.id,
         nomBoutique: m.nom,
@@ -898,6 +1051,15 @@ export class ClientService {
         latitude: m.latitude,
         longitude: m.longitude,
         logoUrl: m.logoUrl ?? null,
+        ...(m.rewards?.[0] ? { firstReward: { title: m.rewards[0].titre, stamps: m.rewards[0].cout } } : {}),
+        ...(offer
+          ? {
+              welcomeOffer: {
+                stamps: offer.stamps,
+                validUntil: offerEnds.length ? new Date(Math.min(...offerEnds)).toISOString() : null,
+              },
+            }
+          : {}),
       };
 
       // One map point per active store. The merchant's own coordinates mirror

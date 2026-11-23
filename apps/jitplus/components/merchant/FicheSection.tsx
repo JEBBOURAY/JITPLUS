@@ -4,42 +4,53 @@ import { Text } from '@/components/AppText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
-import { wp, hp, ms } from '@/utils/responsive';
+import { wp, hp, fontSize, radius } from '@/utils/responsive';
 
 interface Props {
   title?: string;
   /** Link at the end of the title row, e.g. "Voir tout" toward a tab. */
   action?: { label: string; onPress: () => void };
+  /**
+   * `card` (default): padded white card. `list`: card whose rows bring their own
+   * vertical padding. `plain`: no shell, for children that are already cards.
+   */
+  variant?: 'card' | 'list' | 'plain';
   children: ReactNode;
 }
 
-/** Flat block of the merchant page, separated from the next one by a hairline. */
-export default function FicheSection({ title, action, children }: Props) {
+/** Block of the merchant page: a title on the page background, then one white card. */
+export default function FicheSection({ title, action, variant = 'card', children }: Props) {
   const theme = useTheme();
   const fonts = useAppFonts();
 
   return (
-    <View style={[styles.section, { borderBottomColor: theme.border }]}>
+    <View style={styles.section}>
       {!!title && (
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]} numberOfLines={1} accessibilityRole="header">
             {title}
           </Text>
           {action && (
-            <Pressable onPress={() => { haptic(); action.onPress(); }} hitSlop={10} accessibilityRole="button">
+            <Pressable onPress={() => { haptic(); action.onPress(); }} hitSlop={12} accessibilityRole="button">
               <Text style={[styles.action, { color: theme.primary, fontFamily: fonts.semibold }]}>{action.label}</Text>
             </Pressable>
           )}
         </View>
       )}
-      {children}
+      {variant === 'plain' ? children : (
+        <View style={[styles.card, variant === 'list' && styles.list, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+          {children}
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  section: { paddingVertical: hp(18), borderBottomWidth: StyleSheet.hairlineWidth },
-  header: { flexDirection: 'row', alignItems: 'center', gap: wp(10), marginBottom: hp(12) },
-  title: { flex: 1, fontSize: ms(17), letterSpacing: -0.2 },
-  action: { fontSize: ms(14) },
+  section: { marginTop: hp(24) },
+  header: { flexDirection: 'row', alignItems: 'center', gap: wp(12), marginBottom: hp(12), paddingHorizontal: wp(4) },
+  title: { flex: 1, fontSize: fontSize.lg, letterSpacing: -0.2 },
+  action: { fontSize: fontSize.sm },
+  card: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, padding: wp(16) },
+  list: { paddingVertical: hp(6) },
 });

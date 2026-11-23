@@ -4,6 +4,7 @@ import { Text } from '@/components/AppText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ticket } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
+import { getErrorStatus } from '@jitplus/shared';
 
 import {
   RedeemConfirm, RedeemError, RedeemLayout, RedeemLoading, RedeemLoginPrompt, RedeemSuccessIcon,
@@ -14,16 +15,17 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/services/api';
 import { invalidateScratchCards, usePendingScratchCards } from '@/hooks/useScratchHooks';
-import { queryKeys } from '@/hooks/useQueryHooks';
+import { invalidateStamps } from '@/hooks/useQueryHooks';
 import { clearPendingClaim, savePendingClaim } from '@/services/pendingClaim';
 import { isClaimToken } from '@/utils/ids';
+import { getFullName } from '@/utils/profileCompletion';
 
 type ConsumeResult = { success: true; alreadyConsumed: boolean; mergedCards: number; pendingScratchCards?: number; merchant: { id: string; nom: string | null } };
 
 type ErrorKey = 'errorExpired' | 'errorInvalid' | 'errorAlreadyUsed' | 'errorNetwork';
 
 function classifyError(err: unknown): { messageKey: ErrorKey; retryable: boolean } {
-  const status = (err as { response?: { status?: number } })?.response?.status;
+  const status = getErrorStatus(err);
   if (status === 410) return { messageKey: 'errorExpired', retryable: false };
   if (status === 403) return { messageKey: 'errorAlreadyUsed', retryable: false };
   // No response, rate limit or server error: the link was not consumed.
@@ -53,19 +55,17 @@ export default function ClaimScreen() {
     // The merge moved cards and scratch cards onto this account; cached lists predate it.
     onSuccess: () => {
       invalidateScratchCards(queryClient);
-      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
+      invalidateStamps(queryClient);
     },
     classifyError,
     savePending: savePendingClaim,
     clearPending: clearPendingClaim,
   });
 
-  const accountName = client
-    ? `${client.prenom ?? ''} ${client.nom ?? ''}`.trim() || t('qr.client')
-    : '';
+  const accountName = client ? getFullName(client) || t('qr.client') : '';
 
   const goHome = useCallback(() => router.replace('/(tabs)'), [router]);
-  const goToLogin = useCallback(() => router.replace('/welcome'), [router]);
+  const goToLogin = useCallback(() => router.replace('/login'), [router]);
   const consume = useCallback(() => { void run(); }, [run]);
 
   // After a successful merge, a scratch card may have been re-attributed to

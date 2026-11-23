@@ -14,6 +14,7 @@ import {
   buildOtpEmail,
   getOtpSubject,
   buildWelcomeClientEmail,
+  buildAccountExistsClientEmail,
   buildWelcomeMerchantEmail,
   buildReferralBonusEmail,
   buildAccountDeletedEmail,
@@ -23,9 +24,13 @@ import {
   buildPlanRevokedEmail,
   buildPlanExpiringEmail,
   buildPayoutStatusEmail,
+  buildBookingConfirmedEmail,
+  getBookingConfirmedSubject,
+  BookingEmailParams,
 } from './email-templates';
 import {
   WELCOME_CLIENT_I18N,
+  ACCOUNT_EXISTS_CLIENT_I18N,
   WELCOME_MERCHANT_I18N,
   REFERRAL_I18N,
   ACCOUNT_DELETED_I18N,
@@ -148,6 +153,12 @@ export class MailService implements IMailProvider, OnModuleDestroy {
     const html = buildWelcomeClientEmail(prenom, lang);
     const subject = WELCOME_CLIENT_I18N[lang].subject;
     await this.send(to, this.fromAddress, subject, html, 'welcome-client');
+  }
+
+  /** Tells the owner of an address that someone tried to sign up with it. */
+  async sendAccountExistsClient(to: string, lang: MailLang = 'fr'): Promise<void> {
+    const html = buildAccountExistsClientEmail(lang);
+    await this.send(to, this.fromAddress, ACCOUNT_EXISTS_CLIENT_I18N[lang].subject, html, 'account-exists-client');
   }
 
   /**
@@ -308,6 +319,14 @@ export class MailService implements IMailProvider, OnModuleDestroy {
       <p style="font-size:12px;color:#666">Action attendue sous 24 h — voir admin console.</p>
     </body></html>`;
     await this.send(to, this.fromAddress, subject, html, 'content-report');
+  }
+
+  /**
+   * Booking confirmed (client). Best-effort: callers catch and log.
+   */
+  async sendBookingConfirmed(to: string, params: BookingEmailParams, lang: MailLang = 'fr'): Promise<void> {
+    const html = buildBookingConfirmedEmail(params, lang);
+    await this.send(to, this.fromAddress, getBookingConfirmedSubject(params, lang), html, 'booking-confirmed');
   }
 
   /**

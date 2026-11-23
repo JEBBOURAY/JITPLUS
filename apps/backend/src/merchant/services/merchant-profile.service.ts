@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  ConflictException,
   Inject,
 } from '@nestjs/common';
 import { MerchantPlan, Prisma } from '@prisma/client';
@@ -19,6 +20,7 @@ import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
+  TEAM_MEMBER_REPOSITORY, type ITeamMemberRepository,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -33,7 +35,9 @@ import {
 } from '../../merchant-inbox/merchant-notif-policy';
 import { AppleTokenError, AppleTokenVerifier, MERCHANT_APPLE_ERRORS } from '../../common/apple/apple-token-verifier.service';
 import { OAuth2Client } from 'google-auth-library';
-import { BCRYPT_SALT_ROUNDS, DEFAULT_STAMPS_FOR_REWARD } from '../../common/constants';
+import { BCRYPT_SALT_ROUNDS, DEFAULT_STAMPS_FOR_REWARD, WELCOME_BONUS_MIN_THRESHOLD, USER_TYPE_MERCHANT } from '../../common/constants';
+import { computeRewardThreshold } from '../utils/loyalty.utils';
+import { computeWelcomeBonusMax } from '../utils/welcome-bonus';
 import { MERCHANT_PROFILE_SELECT, MerchantProfileData } from '../../common/prisma-selects';
 import { MERCHANT_PROFILE_CACHE_TTL } from '../../common/constants';
 import { stripUndefined } from '../../common/utils';
@@ -54,6 +58,7 @@ export class MerchantProfileService {
     @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(TRANSACTION_REPOSITORY) private transactionRepoDelegate: ITransactionRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
+    @Inject(TEAM_MEMBER_REPOSITORY) private teamMemberRepo: ITeamMemberRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private notifications: NotificationsService,
     private configService: ConfigService,
@@ -134,6 +139,14 @@ export class MerchantProfileService {
           missing: 'Confirmez votre identité (mot de passe actuel ou Google/Apple) pour changer d\'adresse email',
           wrongPassword: 'Mot de passe actuel incorrect',
         });
+        // Login looks up merchants before team members: taking a team member's
+        // email (any tenant) would shadow that member's login. Signup and
+        // team-member creation already refuse this collision.
+        const teamMember = await this.teamMemberRepo.findFirst({
+          where: { email: { equals: String(data.email).trim(), mode: 'insensitive' } },
+          select: { id: true },
+        });
+        if (teamMember) throw new ConflictException('Un compte avec cet email existe déjà');
         // Flag only: the new address is shown as unverified, login is not blocked.
         data.emailVerified = false;
       }
@@ -191,6 +204,11 @@ export class MerchantProfileService {
       devicesDisconnected = await revokeDeviceSessions(this.deviceSessionRepo, this.cache, {
         merchantId, tokenId: { not: currentTokenId },
       });
+      // Same reason as removeDeviceSession: a logged-out device must not keep
+      // the push token. The current app re-registers it.
+      if (devicesDisconnected > 0) {
+        await this.merchantRepo.update({ where: { id: merchantId }, data: { pushToken: null } });
+      }
     }
 
     return { message: 'Mot de passe modifié avec succès', devicesDisconnected };
@@ -229,7 +247,7 @@ export class MerchantProfileService {
   async removeDeviceSession(sessionId: string, merchantId: string, currentTokenId?: string): Promise<{ message: string }> {
     const session = await this.deviceSessionRepo.findUnique({
       where: { id: sessionId },
-      select: { merchantId: true, tokenId: true },
+      select: { merchantId: true, tokenId: true, userType: true },
     });
     if (!session || session.merchantId !== merchantId) {
       throw new NotFoundException('Session non trouvée');
@@ -239,6 +257,13 @@ export class MerchantProfileService {
     }
     await this.deviceSessionRepo.delete({ where: { id: sessionId } });
     await evictSessionCache(this.cache, [session.tokenId]);
+    // The merchant has a single push token and we can't tell which owner device
+    // registered it: drop it so a revoked (e.g. stolen) phone stops receiving
+    // merchant pushes. The caller's app re-registers right after. Team members
+    // never register the merchant push token, so their sessions don't matter.
+    if ((session.userType ?? USER_TYPE_MERCHANT) === USER_TYPE_MERCHANT) {
+      await this.merchantRepo.update({ where: { id: merchantId }, data: { pushToken: null } });
+    }
     return { message: 'Appareil déconnecté' };
   }
 
@@ -268,9 +293,14 @@ export class MerchantProfileService {
         stampsForReward: true,
         accumulationLimit: true,
         stampValidityDays: true,
+        welcomeBonusEnabled: true,
+        welcomeBonusStamps: true,
+        rewards: { select: { cout: true } },
       },
     });
     if (!merchant) throw new NotFoundException('Commerce non trouvé');
+
+    this.assertWelcomeBonusSettings(merchant, dto);
 
     if (dto.stampsForReward !== undefined && dto.stampsForReward < 1) {
       throw new BadRequestException('Le nombre de tampons pour un cadeau doit être au moins 1');
@@ -286,6 +316,7 @@ export class MerchantProfileService {
     const forceCapClients = dto.forceCapClients;
     const { forceCapClients: _strip, ...dtoWithoutForce } = dto;
     const data: Record<string, unknown> = stripUndefined(dtoWithoutForce);
+    if (typeof dto.welcomeBonusEndsAt === 'string') data.welcomeBonusEndsAt = new Date(dto.welcomeBonusEndsAt);
     // Restart the expiry countdown whenever the rule changes, so enabling or
     // shortening the validity never wipes a card without a reminder first.
     if (dto.stampValidityDays !== undefined && dto.stampValidityDays !== merchant.stampValidityDays) {
@@ -341,10 +372,47 @@ export class MerchantProfileService {
         stampsForReward: dto.stampsForReward,
         accumulationLimit: dto.accumulationLimit,
         stampValidityDays: dto.stampValidityDays,
+        welcomeBonusEnabled: dto.welcomeBonusEnabled,
+        welcomeBonusStamps: dto.welcomeBonusStamps,
+        welcomeBonusTrigger: dto.welcomeBonusTrigger,
+        welcomeBonusEndsAt: dto.welcomeBonusEndsAt,
       },
     });
 
     return updated;
+  }
+
+  /**
+   * Checked only when the request touches the gift, so that later changes of
+   * the rewards never block a save: the credit re-applies the cap anyway.
+   */
+  private assertWelcomeBonusSettings(
+    merchant: { stampsForReward: number | null; welcomeBonusEnabled: boolean; welcomeBonusStamps: number; rewards: { cout: number }[] },
+    dto: UpdateLoyaltySettingsDto,
+  ): void {
+    const enabled = dto.welcomeBonusEnabled ?? merchant.welcomeBonusEnabled;
+    if (!enabled || (dto.welcomeBonusEnabled === undefined && dto.welcomeBonusStamps === undefined)) return;
+
+    // A change of stampsForReward rescales the rewards in the same save.
+    const oldRef = merchant.stampsForReward || DEFAULT_STAMPS_FOR_REWARD;
+    const newRef = dto.stampsForReward ?? oldRef;
+    const threshold = computeRewardThreshold({
+      stampsForReward: newRef,
+      rewards: merchant.rewards.map((r) => ({ cout: Math.max(Math.round((r.cout * newRef) / oldRef), 1) })),
+    });
+    const max = computeWelcomeBonusMax(threshold);
+    if (max === 0) {
+      throw new BadRequestException({
+        code: 'WELCOME_BONUS_THRESHOLD_TOO_LOW',
+        message: `Le premier cadeau doit demander au moins ${WELCOME_BONUS_MIN_THRESHOLD} tampons`,
+      });
+    }
+    if ((dto.welcomeBonusStamps ?? merchant.welcomeBonusStamps) > max) {
+      throw new BadRequestException({
+        code: 'WELCOME_BONUS_TOO_HIGH',
+        message: `Le cadeau de bienvenue ne peut pas dépasser ${max} tampon(s)`,
+      });
+    }
   }
 
   /** Currency used to display amounts (no conversion of stored amounts). */

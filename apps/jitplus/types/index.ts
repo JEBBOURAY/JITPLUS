@@ -68,6 +68,12 @@ export interface Merchant {
   stampValidityDays?: number | null;
   /** When the client's current stamps expire if they do not come back (ISO). */
   cardStampsExpireAt?: string | null;
+  /** Cheapest reward of the loyalty card (map list only): what a newcomer can earn */
+  firstReward?: { title: string; stamps: number } | null;
+  /** Welcome gift this client can still get here (the list endpoint only sends `stamps`) */
+  welcomeOffer?: { stamps: number; trigger?: 'CARD_OR_SCAN' | 'FIRST_SCAN' } | null;
+  /** Welcome gift reserved on the card: locked until the client's QR is scanned */
+  cardWelcomeBonus?: { stamps: number } | null;
   minRewardCost?: number | null;
   logoUrl?: string | null;
   coverUrl?: string | null;
@@ -82,6 +88,8 @@ export interface Merchant {
   rewards?: MerchantReward[];
   /** Active luckyWheel campaign for this merchant */
   activeLuckyWheel?: MerchantActiveLuckyWheel | null;
+  /** false = no collection running here (absent on older API versions) */
+  hasCollection?: boolean;
   /** Live deals (« Bons plans »), also sent to guests */
   activeDealCount?: number;
   /** Best live deal, list endpoint only; null for guests */
@@ -92,6 +100,10 @@ export interface Merchant {
   cardDeactivated?: boolean;
   /** Current stamps balance on the card */
   cardBalance?: number;
+  /** Cards list only: the merchant takes bookings and has a service to book. */
+  canBook?: boolean;
+  /** Cards list only: WhatsApp number as typed by the merchant. */
+  whatsapp?: string | null;
   /** Store ID when this entry represents a specific store location */
   storeId?: string;
   /** Store name when this entry represents a specific store location */

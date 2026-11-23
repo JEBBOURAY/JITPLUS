@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Trash2, Edit3, Power } from 'lucide-react-native';
 import { JitLock, JitScan } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';

@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { toast as notify } from '@/components/ui/Toast';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -32,7 +34,8 @@ import {
 } from '@/hooks/useQueryHooks';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { getErrorMessage } from '@/utils/error';
-import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
+import { prepareUploadImage } from '@/utils/prepareUploadImage';
+import { MERCHANT_ICON_MAP } from '@jitplus/shared/src/merchantIcons';
 import { getCategoryLabel, CATEGORY_ICONS } from '@/constants/categories';
 import { getCategoryEmoji } from '@jitplus/shared';
 import type { Merchant } from '@/types';
@@ -123,23 +126,26 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
       const ImagePicker = await import('expo-image-picker');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
+        // iOS ignores `aspect` (square crop only): pick uncropped, cut to 3:2 below.
+        allowsEditing: Platform.OS !== 'ios',
         aspect: [3, 2],
         quality: 0.7,
         preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
-      if (typeof asset.fileSize === 'number' && asset.fileSize > CARD_BG_MAX_BYTES) {
+      const image = await prepareUploadImage(asset, { aspect: [3, 2], maxSide: 1600, compress: 0.7 });
+      // The picker size only matters when the file could not be scaled down.
+      if (image.uri === asset.uri && typeof asset.fileSize === 'number' && asset.fileSize > CARD_BG_MAX_BYTES) {
         Alert.alert(t('storePreview.cardDesignTitle'), t('storePreview.cardBackgroundTooLarge'));
         return;
       }
       // The upload endpoint also stores the URL on the merchant.
-      const { url } = await uploadCardBackground.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType });
+      const { url } = await uploadCardBackground.mutateAsync(image);
       updateMerchant({ cardBackgroundUrl: url });
       haptic();
     } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err));
+      notify.error(getErrorMessage(err));
     }
   }, [uploadCardBackground, isPremium, updateMerchant, t]);
 
@@ -155,7 +161,7 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
             updateMerchant({ cardBackgroundUrl: null });
             haptic();
           } catch (err) {
-            Alert.alert(t('common.error'), getErrorMessage(err));
+            notify.error(getErrorMessage(err));
           }
         },
       },
@@ -169,7 +175,7 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
       haptic();
       showToast(t('storePreview.savedToast'));
     } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err));
+      notify.error(getErrorMessage(err));
     }
   }, [changes, update, updateMerchant, showToast, t]);
 

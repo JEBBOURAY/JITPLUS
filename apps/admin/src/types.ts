@@ -1,6 +1,7 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 import type { MerchantPlan, Pagination } from '@jitplus/shared';
+import type { DealOffer } from '@jitplus/shared/src/deals';
 export type { MerchantPlan, Pagination } from '@jitplus/shared';
 
 export interface AdminInfo {
@@ -564,6 +565,12 @@ export interface AdminAlerts {
 
 export type InsightPeriod = 7 | 30 | 90;
 
+/** JitPlus sign-up funnel: people counted per step, sign-up method and platform. */
+export interface SignupFunnel {
+  days: number;
+  rows: { step: string; method: string; platform: string; count: number }[];
+}
+
 export interface InsightDailyPoint {
   date: string;
   merchants: number;
@@ -804,6 +811,8 @@ export interface AdminDealRow {
   reportCount: number;
   viewCount: number;
   linkClickCount: number;
+  /** Clients who tapped "J'en profite" */
+  claimCount: number;
   createdAt: string;
   merchant: { id: string; nom: string; email: string };
   displayStatus: AdminDealDisplayStatus;
@@ -820,6 +829,19 @@ export interface AdminDealReport {
   comment: string | null;
   createdAt: string;
   client: { id: string; prenom: string | null; nom: string | null } | null;
+}
+
+/** Offer of a published deal before and after the merchant edited it */
+export interface AdminDealOfferChange {
+  id: string;
+  before: DealOffer;
+  after: DealOffer;
+  createdAt: string;
+}
+
+export interface AdminDealModeration {
+  reports: AdminDealReport[];
+  offerChanges: AdminDealOfferChange[];
 }
 
 export interface AdminDealListParams {

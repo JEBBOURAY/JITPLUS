@@ -66,15 +66,21 @@ export async function persistTokens(data: { access_token?: string; refresh_token
   if (data.refresh_token) await setRefreshToken(data.refresh_token);
 }
 
-// ── Token management helpers ──────────────────────────────
-export const getStoredToken = () => getToken();
+/**
+ * Legacy v1 QR tokens are permanent: cached so the QR still shows offline.
+ * Short-lived v2 tokens are never cached.
+ */
+export const getCachedQrToken = () => getStored(QR_TOKEN_KEY);
+export const setCachedQrToken = (token: string) => setStored(QR_TOKEN_KEY, token);
+export const clearCachedQrToken = () => removeStored(QR_TOKEN_KEY);
 
+// ── Token management helpers ──────────────────────────────
 export async function clearAuth(): Promise<void> {
   await removeToken();
   await removeRefreshToken();
   await clearEmailOtpNewUser();
   await clearRememberMe();
-  await removeStored(QR_TOKEN_KEY);
+  await clearCachedQrToken();
   await clearCachedProfile();
 }
 
@@ -163,3 +169,35 @@ async function clearCachedProfile(): Promise<void> {
   // Also purge the legacy SecureStore entry (pre-migration installs)
   try { await SecureStore.deleteItemAsync(PROFILE_CACHE_KEY); } catch { /* non-fatal */ }
 }
+
+// ── iOS reinstall ──
+// The iOS keychain (SecureStore) survives an uninstall while AsyncStorage does
+// not, so a reinstalled app silently reopened the previous account.
+const INSTALL_MARKER_KEY = 'install_marker_v1';
+
+/**
+ * On the first launch of an install, drops the session left in the keychain by
+ * a previous one. An update from a build without the marker is told apart by
+ * the profile cache still being in AsyncStorage: that session is kept. Never throws.
+ */
+async function purgeSessionAfterReinstall(keys: string[]): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  try {
+    if (await AsyncStorage.getItem(INSTALL_MARKER_KEY)) return;
+    // Only a signed-in session writes the profile cache, so it tells an update
+    // apart from a reinstall even when other startup code (theme, language,
+    // query persister) has already written to AsyncStorage on this launch.
+    const previousSession = await AsyncStorage.getItem(PROFILE_CACHE_KEY);
+    if (!previousSession) {
+      await Promise.allSettled(keys.map((key) => SecureStore.deleteItemAsync(key)));
+    }
+    await AsyncStorage.setItem(INSTALL_MARKER_KEY, '1');
+  } catch {
+    // AsyncStorage unreadable: keep the session rather than log out by mistake.
+  }
+}
+
+/** Keychain entries of a client session. */
+export const purgeClientSessionAfterReinstall = async (): Promise<void> => {
+  await purgeSessionAfterReinstall([TOKEN_KEY, REFRESH_TOKEN_KEY, QR_TOKEN_KEY, REMEMBER_ME_KEY, EMAIL_OTP_NEW_USER_KEY]);
+};

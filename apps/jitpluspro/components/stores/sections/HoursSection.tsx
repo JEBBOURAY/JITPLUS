@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
-import { StyleSheet, Text, TouchableOpacity, Alert } from 'react-native';
+import { toast as notify } from '@/components/ui/Toast';
+import { StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Clock, Copy } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
@@ -29,7 +31,7 @@ export default function HoursSection({ merchant }: { merchant: Merchant }) {
   const save = useCallback(async () => {
     const payload = toPayload();
     if ('error' in payload) {
-      Alert.alert(t('common.error'), t(payload.error));
+      notify.error(t(payload.error));
       return;
     }
     try {
@@ -38,7 +40,7 @@ export default function HoursSection({ merchant }: { merchant: Merchant }) {
       haptic();
       showToast(t('storePreview.savedToast'));
     } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err));
+      notify.error(getErrorMessage(err));
     }
   }, [toPayload, reset, update, updateMerchant, showToast, t]);
 

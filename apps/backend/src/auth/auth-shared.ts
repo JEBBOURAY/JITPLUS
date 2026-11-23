@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import type { IMerchantRepository } from '../common/repositories';
-import type { LockoutDbOps } from '../common/utils/login-lockout.helper';
+import { prismaLockoutOps, type LockoutDbOps } from '../common/utils/login-lockout.helper';
 import type { MerchantResponse } from '../common/interfaces/merchant-response.interface';
 import type { LoginDto } from './dto/login.dto';
 
@@ -34,16 +34,5 @@ export const sha256 = (value: string): string => createHash('sha256').update(val
 
 /** Lockout DB ops for Merchant model (password, Google and Apple sign-ins). */
 export function merchantLockoutOps(merchantRepo: IMerchantRepository): LockoutDbOps {
-  return {
-    incrementFailedAttempts: (id, newAttempts, lockedUntil) =>
-      merchantRepo.update({
-        where: { id },
-        data: { failedLoginAttempts: newAttempts, ...(lockedUntil && { lockedUntil }) },
-      }).then(() => {}),
-    resetFailedAttempts: (id) =>
-      merchantRepo.update({
-        where: { id },
-        data: { failedLoginAttempts: 0, lockedUntil: null },
-      }).then(() => {}),
-  };
+  return prismaLockoutOps(merchantRepo);
 }

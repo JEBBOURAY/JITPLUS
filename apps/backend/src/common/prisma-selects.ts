@@ -1,5 +1,13 @@
 import { Prisma } from '@prisma/client';
 
+/** Merchant settings of the welcome gift. */
+export const WELCOME_BONUS_MERCHANT_SELECT = {
+  welcomeBonusEnabled: true,
+  welcomeBonusStamps: true,
+  welcomeBonusTrigger: true,
+  welcomeBonusEndsAt: true,
+} satisfies Prisma.MerchantSelect;
+
 /**
  * Standard merchant profile select — used in getProfile, updateProfile, auth login.
  * Excludes sensitive fields (password, pushToken).
@@ -34,6 +42,7 @@ export const MERCHANT_PROFILE_SELECT = {
   accumulationLimit: true,
   stampValidityDays: true,
   activeRewardId: true,
+  ...WELCOME_BONUS_MERCHANT_SELECT,
   rewards: true,
   currency: true,
   countryCode: true,
@@ -67,6 +76,7 @@ export const MERCHANT_LOYALTY_SELECT = {
   stampsForReward: true,
   stampEarningMode: true,
   accumulationLimit: true,
+  ...WELCOME_BONUS_MERCHANT_SELECT,
   rewards: true,
 } satisfies Prisma.MerchantSelect;
 
@@ -127,3 +137,10 @@ export const CLIENT_SCAN_SELECT = {
   shareInfoMerchants: true,
   createdAt: true,
 } satisfies Prisma.ClientSelect;
+
+/** A service a client can actually book: active, with at least one active resource. */
+export const BOOKABLE_SERVICE_WHERE = {
+  isActive: true,
+  deletedAt: null,
+  resources: { some: { resource: { isActive: true } } },
+} satisfies Prisma.BookableServiceWhereInput;

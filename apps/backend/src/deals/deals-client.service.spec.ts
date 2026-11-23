@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DealsClientService, interleave, parseCursor } from './deals-client.service';
 
@@ -18,6 +18,8 @@ function dealRow(id: string, overrides: Record<string, unknown> = {}) {
     percentOff: 20,
     buyQty: null,
     freeQty: null,
+    priceFrom: false,
+    priceUnit: null,
     allStores: true,
     startsAt: new Date(Date.now() - 3_600_000),
     endsAt: new Date(Date.now() + 86_400_000),
@@ -53,12 +55,21 @@ function setup() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     dealReport: { create: jest.fn(), count: jest.fn().mockResolvedValue(0) },
+    dealSave: { findUnique: jest.fn().mockResolvedValue(null), createMany: jest.fn(), deleteMany: jest.fn() },
+    dealClaim: { findUnique: jest.fn().mockResolvedValue(null), findUniqueOrThrow: jest.fn() },
+    loyaltyCard: { findFirst: jest.fn().mockResolvedValue(null) },
     clientMerchantBlock: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue(null) },
     $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn().mockResolvedValue(1),
   };
   const cache = { get: jest.fn().mockResolvedValue(undefined), set: jest.fn() };
-  return { prisma, cache, service: new DealsClientService(prisma, cache as any) };
+  const inbox = { record: jest.fn().mockResolvedValue('inbox-1') };
+  const mail = { sendContentReport: jest.fn().mockResolvedValue(undefined) };
+  return { prisma, cache, inbox, mail, service: new DealsClientService(prisma, cache as any, inbox as any, mail as any) };
 }
+
+/** Bound values of the n-th counter statement (the SQL fragments of its columns left out). */
+const countedWith = (prisma: any, call = 0): unknown[] => prisma.$executeRaw.mock.calls[call].slice(1);
 
 describe('interleave / parseCursor', () => {
   it('puts one online item after every n local ones, leftovers at the end', () => {
@@ -132,6 +143,42 @@ describe('DealsClientService.feed', () => {
     expect(res.nextCursor).toBe('37.23');
   });
 
+  it('a search or the discount sort reads the city list instead of the distance order', async () => {
+    const { prisma, service } = setup();
+    await service.feed(CLIENT, { tab: 'nearby', lat: 34.02, lng: -6.84, q: 'pizza', sort: 'discount' });
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    const { where, orderBy } = prisma.deal.findMany.mock.calls[0][0];
+    expect(where.OR).toEqual([{ scope: 'ONLINE' }, { scope: 'LOCAL', cityKeys: { has: 'rabat' } }]);
+    const contains = { contains: 'pizza', mode: 'insensitive' };
+    expect(where.AND).toEqual([{ OR: [{ title: contains }, { merchant: { nom: contains } }] }]);
+    expect(orderBy[0]).toEqual({ percentOff: { sort: 'desc', nulls: 'last' } });
+  });
+
+  it('saved tab: the live deals the client bookmarked, wherever they are; nothing for a guest', async () => {
+    const { prisma, service } = setup();
+    await service.feed(CLIENT, { tab: 'saved', cityKey: 'rabat' });
+    const { where, orderBy } = prisma.deal.findMany.mock.calls[0][0];
+    expect(where).toMatchObject({ status: 'ACTIVE', saves: { some: { clientId: CLIENT } } });
+    expect(where.OR).toBeUndefined();
+    expect(orderBy[0]).toEqual({ endsAt: 'asc' });
+
+    prisma.deal.findMany.mockClear();
+    expect((await service.feed(null, { tab: 'saved' })).items).toEqual([]);
+    expect(prisma.deal.findMany).not.toHaveBeenCalled();
+    await expect(service.categoryCounts(CLIENT, { tab: 'saved' })).resolves.toEqual({ counts: {} });
+  });
+
+  it('nearby with nothing around suggests the closest city that has deals', async () => {
+    const { prisma, service } = setup();
+    // 1st raw query: no local deal around; 2nd: deals per city.
+    prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { key: 'casablanca', count: 9 },
+      { key: 'rabat', count: 4 },
+    ]);
+    const res = await service.feed(CLIENT, { tab: 'nearby', lat: 34.26, lng: -6.58 });
+    expect(res).toMatchObject({ suggestedCity: { key: 'rabat', dealCount: 4 } });
+  });
+
   it('stops paginating past the maximum depth', async () => {
     const { prisma, service } = setup();
     const res = await service.feed(CLIENT, { tab: 'new', cursor: '9999' });
@@ -182,16 +229,30 @@ describe('DealsClientService.categoryCounts', () => {
 });
 
 describe('DealsClientService.detail', () => {
-  it('counts one view per client and hides the link of an ended deal', async () => {
+  it('marks the view of a live deal for the database to de-duplicate, and hides the link of an ended deal', async () => {
     const { prisma, service } = setup();
     prisma.deal.findUnique.mockResolvedValue(dealRow('d1', { linkUrl: 'https://x.ma' }));
     await service.detail(CLIENT, 'd1', {});
-    await service.detail(CLIENT, 'd1', {});
-    expect(prisma.deal.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(countedWith(prisma)).toEqual(expect.arrayContaining([CLIENT, 'VIEW', 'd1']));
 
     prisma.deal.findUnique.mockResolvedValue(dealRow('d2', { status: 'ENDED', linkUrl: 'https://x.ma' }));
     const ended = await service.detail(CLIENT, 'd2', {});
     expect(ended).toMatchObject({ isOver: true, linkUrl: null });
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells what the client did with the deal: saved, pass taken, card held', async () => {
+    const { prisma, service } = setup();
+    prisma.deal.findUnique.mockResolvedValue(dealRow('d1'));
+    expect(await service.detail(CLIENT, 'd1', {})).toMatchObject({ saved: false, claimedAt: null, hasCard: false });
+
+    const claimedAt = new Date('2026-11-20T10:00:00Z');
+    prisma.dealSave.findUnique.mockResolvedValue({ dealId: 'd1' });
+    prisma.dealClaim.findUnique.mockResolvedValue({ createdAt: claimedAt });
+    prisma.loyaltyCard.findFirst.mockResolvedValue({ id: 'card' });
+    expect(await service.detail(CLIENT, 'd1', {})).toMatchObject({ saved: true, claimedAt: claimedAt.toISOString(), hasCard: true });
+    expect(prisma.loyaltyCard.findFirst.mock.calls[0][0].where).toEqual({ clientId: CLIENT, merchantId: 'm1', deactivatedAt: null });
   });
 
   it.each([
@@ -212,10 +273,46 @@ describe('DealsClientService.detail', () => {
   });
 });
 
-describe('DealsClientService.report', () => {
-  it('hides the deal after enough distinct reports from established accounts', async () => {
+describe('DealsClientService guests (no account)', () => {
+  it('feed: no blocked-merchant lookup and no report filter', async () => {
     const { prisma, service } = setup();
-    prisma.deal.findFirst.mockResolvedValue({ id: 'd1' });
+    await service.feed(null, { tab: 'online' });
+    expect(prisma.clientMerchantBlock.findMany).not.toHaveBeenCalled();
+    const where = prisma.deal.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ status: 'ACTIVE', scope: 'ONLINE' });
+    expect(where.reports).toBeUndefined();
+    expect(where.merchantId).toBeUndefined();
+  });
+
+  it('nearby feed and category counts run their SQL without a client id', async () => {
+    const { prisma, service } = setup();
+    await service.feed(null, { tab: 'nearby', lat: 34.02, lng: -6.84 });
+    await service.categoryCounts(null, { tab: 'new' });
+    // Nearby ids, the deals per city (nothing around: a city is suggested), the category counts.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
+    for (const [strings, ...values] of prisma.$queryRaw.mock.calls) {
+      expect((strings as string[]).join('?') + JSON.stringify(values)).not.toContain('deal_reports');
+    }
+    expect(prisma.clientMerchantBlock.findMany).not.toHaveBeenCalled();
+  });
+
+  it('detail: no personal lookup, the view is marked under the guest key', async () => {
+    const { prisma, service } = setup();
+    prisma.deal.findUnique.mockResolvedValue(dealRow('d1'));
+    const deal = await service.detail(null, 'd1', {}, 'g:abc');
+    expect(deal).toMatchObject({ saved: false, claimedAt: null, hasCard: false });
+    expect(prisma.clientMerchantBlock.findUnique).not.toHaveBeenCalled();
+    expect(prisma.dealSave.findUnique).not.toHaveBeenCalled();
+    expect(countedWith(prisma)).toEqual(expect.arrayContaining(['g:abc', 'VIEW']));
+  });
+});
+
+const REPORTED = { id: 'd1', title: 'Moins 30', merchantId: 'm1', merchant: { nom: 'Shop', language: 'fr' } };
+
+describe('DealsClientService.report', () => {
+  it('hides the deal after enough distinct reports from established accounts, and says so once', async () => {
+    const { prisma, inbox, mail, service } = setup();
+    prisma.deal.findFirst.mockResolvedValue(REPORTED);
     prisma.deal.update.mockResolvedValue({ reportCount: 5 });
     prisma.dealReport.count.mockResolvedValue(5);
     await service.report(CLIENT, 'd1', { reason: 'MISLEADING' });
@@ -230,21 +327,30 @@ describe('DealsClientService.report', () => {
       where: { id: 'd1', status: 'ACTIVE' },
       data: { status: 'REMOVED', endedReason: 'AUTO_REPORTS' },
     });
+    expect(inbox.record).toHaveBeenCalledWith('m1', expect.objectContaining({ action: 'open_deals', body: expect.stringContaining('Moins 30') }));
+    expect(mail.sendContentReport).toHaveBeenCalledWith(expect.objectContaining({ merchantId: 'm1', details: expect.stringContaining('d1') }));
+
+    // A later report finds the deal already hidden: nobody is told twice.
+    prisma.deal.updateMany.mockResolvedValue({ count: 0 });
+    await service.report('client-2', 'd1', { reason: 'MISLEADING' });
+    expect(inbox.record).toHaveBeenCalledTimes(1);
+    expect(mail.sendContentReport).toHaveBeenCalledTimes(1);
   });
 
   // Security audit 2026-11-05: throwaway accounts cannot take a deal down.
   it('keeps the deal up when the reports come from fresh / unverified accounts', async () => {
-    const { prisma, service } = setup();
-    prisma.deal.findFirst.mockResolvedValue({ id: 'd1' });
+    const { prisma, inbox, service } = setup();
+    prisma.deal.findFirst.mockResolvedValue(REPORTED);
     prisma.deal.update.mockResolvedValue({ reportCount: 12 });
     prisma.dealReport.count.mockResolvedValue(2);
     await service.report(CLIENT, 'd1', { reason: 'MISLEADING' });
     expect(prisma.deal.updateMany).not.toHaveBeenCalled();
+    expect(inbox.record).not.toHaveBeenCalled();
   });
 
   it('is idempotent per client', async () => {
     const { prisma, service } = setup();
-    prisma.deal.findFirst.mockResolvedValue({ id: 'd1' });
+    prisma.deal.findFirst.mockResolvedValue(REPORTED);
     prisma.dealReport.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }),
     );
@@ -254,13 +360,32 @@ describe('DealsClientService.report', () => {
 });
 
 describe('DealsClientService shared counters', () => {
-  it('records each event type once per window', async () => {
+  it('marks each event with its kind; a failing counter never fails the request', async () => {
     const { prisma, service } = setup();
-    await service.recordEvent(CLIENT, 'd1', 'LINK_CLICK');
-    await service.recordEvent(CLIENT, 'd1', 'LINK_CLICK');
-    await service.recordEvent(CLIENT, 'd1', 'SHARE');
-    expect(prisma.deal.updateMany).toHaveBeenCalledTimes(2);
-    expect(prisma.deal.updateMany.mock.calls[1][0].data).toEqual({ shareCount: { increment: 1 } });
+    await service.recordEvent(CLIENT, 'd1', 'CALL');
+    expect(countedWith(prisma)).toEqual(expect.arrayContaining([CLIENT, 'CALL', 'd1']));
+
+    prisma.$executeRaw.mockRejectedValue(new Error('db down'));
+    await expect(service.recordEvent(CLIENT, 'd1', 'SHARE')).resolves.toEqual({ success: true });
+  });
+
+  it('share preview: title and https picture of a live deal, cached; misses are not cached', async () => {
+    const { prisma, cache, service } = setup();
+    prisma.deal.findFirst.mockResolvedValue({ title: 'Moins 30', imageUrl: null, merchant: { nom: 'Shop', coverUrl: 'https://cdn/c.webp' } });
+    const preview = { title: 'Moins 30', merchant: 'Shop', imageUrl: 'https://cdn/c.webp' };
+    expect(await service.sharePreview('d1')).toEqual(preview);
+    expect(prisma.deal.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'd1', status: 'ACTIVE' });
+    expect(cache.set).toHaveBeenCalledWith('deals:share:d1', { preview }, expect.any(Number));
+
+    prisma.deal.findFirst.mockResolvedValue(null);
+    cache.set.mockClear();
+    expect(await service.sharePreview('gone')).toBeNull();
+    expect(cache.set).not.toHaveBeenCalled();
+
+    cache.get.mockResolvedValue({ preview });
+    prisma.deal.findFirst.mockClear();
+    expect(await service.sharePreview('d1')).toEqual(preview);
+    expect(prisma.deal.findFirst).not.toHaveBeenCalled();
   });
 
   it('teaser returns counters and pictures only, cached per city', async () => {
@@ -291,5 +416,49 @@ describe('DealsClientService shared counters', () => {
     });
     expect(badges.m2.activeDealCount).toBe(1);
     expect(cache.set).toHaveBeenCalledWith('deals:merchant-badges', badges, expect.any(Number));
+  });
+});
+
+describe('DealsClientService "J\'en profite" and saved deals', () => {
+  const LIVE = { id: 'd1', scope: 'LOCAL', merchantId: 'm1' };
+
+  it('claim is idempotent: one statement counts it, the stored date comes back', async () => {
+    const { prisma, service } = setup();
+    const createdAt = new Date('2026-11-20T10:00:00Z');
+    prisma.deal.findFirst.mockResolvedValue(LIVE);
+    prisma.dealClaim.findUniqueOrThrow.mockResolvedValue({ createdAt });
+    expect(await service.claim(CLIENT, 'd1')).toEqual({ claimedAt: createdAt.toISOString() });
+    expect(await service.claim(CLIENT, 'd1')).toEqual({ claimedAt: createdAt.toISOString() });
+    expect(prisma.deal.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'd1', status: 'ACTIVE' });
+    const sql = (prisma.$executeRaw.mock.calls[0][0] as string[]).join('?');
+    expect(sql).toContain('ON CONFLICT DO NOTHING');
+    expect(prisma.$executeRaw.mock.calls[0].slice(1)).toEqual(expect.arrayContaining(['d1', CLIENT]));
+  });
+
+  it('claim refuses an online deal, an ended deal and a blocked merchant', async () => {
+    const { prisma, service } = setup();
+    prisma.deal.findFirst.mockResolvedValue({ ...LIVE, scope: 'ONLINE' });
+    await expect(service.claim(CLIENT, 'd1')).rejects.toThrow(BadRequestException);
+
+    prisma.deal.findFirst.mockResolvedValue(null);
+    await expect(service.claim(CLIENT, 'd1')).rejects.toThrow(NotFoundException);
+
+    prisma.deal.findFirst.mockResolvedValue(LIVE);
+    prisma.clientMerchantBlock.findUnique.mockResolvedValue({ id: 'b' });
+    await expect(service.claim(CLIENT, 'd1')).rejects.toThrow(NotFoundException);
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('saves a live deal once and removes only the caller\'s bookmark', async () => {
+    const { prisma, service } = setup();
+    prisma.deal.findFirst.mockResolvedValue(LIVE);
+    expect(await service.setSaved(CLIENT, 'd1', true)).toEqual({ saved: true });
+    expect(prisma.dealSave.createMany).toHaveBeenCalledWith({ data: [{ clientId: CLIENT, dealId: 'd1' }], skipDuplicates: true });
+
+    expect(await service.setSaved(CLIENT, 'd1', false)).toEqual({ saved: false });
+    expect(prisma.dealSave.deleteMany).toHaveBeenCalledWith({ where: { clientId: CLIENT, dealId: 'd1' } });
+
+    prisma.deal.findFirst.mockResolvedValue(null);
+    await expect(service.setSaved(CLIENT, 'gone', true)).rejects.toThrow(NotFoundException);
   });
 });

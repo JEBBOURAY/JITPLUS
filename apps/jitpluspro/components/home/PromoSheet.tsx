@@ -1,18 +1,18 @@
 import React, { useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Modal,
   Pressable,
-  I18nManager,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
 import { PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
 
 export type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -37,6 +37,7 @@ export function useSheetColors() {
 
 export function SheetSectionLabel({ text, tone, Icon }: { text: string; tone: PromoTone; Icon?: LucideIcon }) {
   const color = useSheetColors().ink(tone);
+  const { isRTL } = useDir();
   const label = (
     <Text style={[styles.sectionLabel, { color }]} maxFontSizeMultiplier={1.2}>
       {text}
@@ -44,7 +45,7 @@ export function SheetSectionLabel({ text, tone, Icon }: { text: string; tone: Pr
   );
   if (!Icon) return <View style={styles.sectionLabelWrap}>{label}</View>;
   return (
-    <View style={[styles.sectionLabelWrap, styles.sectionLabelRow, I18nManager.isRTL && styles.rowRtl]}>
+    <View style={[styles.sectionLabelWrap, styles.sectionLabelRow, isRTL && styles.rowRtl]}>
       <Icon size={13} color={color} strokeWidth={2.2} />
       {label}
     </View>
@@ -103,7 +104,7 @@ export default function PromoSheet({
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { surface, hairline, ink } = useSheetColors();
-  const isRTL = I18nManager.isRTL;
+  const { isRTL } = useDir();
   const { fill: accent, deep: accentDeep } = PROMO_TONES[tone];
 
   return (

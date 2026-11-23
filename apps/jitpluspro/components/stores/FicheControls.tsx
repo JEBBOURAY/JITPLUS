@@ -7,16 +7,16 @@
  * control, not its siblings. Theme and i18n are read from context, which
  * only changes on dark-mode / language switch.
  */
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
+  type ViewStyle,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { Image as ExpoImage } from 'expo-image';
 import {
   Check,
@@ -31,7 +31,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
 import { font, icon as iconTokens } from '@/constants/design';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { MERCHANT_ICON_MAP, MERCHANT_ICON_SLUGS } from '@/utils/merchantIcons';
+import { MERCHANT_ICON_MAP, MERCHANT_ICON_SLUGS } from '@jitplus/shared/src/merchantIcons';
 import { getCategoryOptions, CATEGORY_ICONS } from '@/constants/categories';
 import {
   MERCHANT_BADGE_CODES,
@@ -44,16 +44,35 @@ import { WEEK_DAYS, type WeekDayKey } from '@/components/stores/brand';
 
 export const MAX_SLOTS_PER_DAY = 3;
 
-const CONTENT_WIDTH = Dimensions.get('window').width - PANEL_INSET;
 const ICON_GAP = 8;
 const ICON_COLS = 6;
-const ICON_TILE_SIZE = Math.floor((CONTENT_WIDTH - (ICON_COLS - 1) * ICON_GAP) / ICON_COLS);
+// On a tablet the tiles stop growing and more of them fit on a row.
+const ICON_TILE_MAX = 64;
 const GALLERY_GAP = 10;
 const GALLERY_COLS = 3;
-const GALLERY_TILE_SIZE = Math.floor((CONTENT_WIDTH - (GALLERY_COLS - 1) * GALLERY_GAP) / GALLERY_COLS);
+const GALLERY_TILE_MAX = 168;
 // Sized so the card color row ("none" + 8 presets) fits on a single line.
 const SWATCH_COLS = 9;
-const SWATCH_SIZE = Math.min(40, Math.floor((CONTENT_WIDTH - (SWATCH_COLS - 1) * 4) / SWATCH_COLS));
+const SWATCH_MAX = 40;
+
+/** Tile size from the live window width, so it follows a tablet rotation. */
+function useTileSize(cols: number, gap: number, max: number): ViewStyle {
+  const { width } = useWindowDimensions();
+  const size = Math.min(max, Math.floor((width - PANEL_INSET - (cols - 1) * gap) / cols));
+  return useMemo(() => ({ width: size, height: size }), [size]);
+}
+
+/** Swatch ring and fill share the size; the fill only needs the radius. */
+function useSwatchSize() {
+  const ring = useTileSize(SWATCH_COLS, 4, SWATCH_MAX);
+  const size = ring.width as number;
+  return useMemo(() => ({
+    ring: { ...ring, borderRadius: size / 2 },
+    fill: { borderRadius: size / 2 },
+  }), [ring, size]);
+}
+type SwatchSize = ReturnType<typeof useSwatchSize>;
+
 const SWATCH_HIT = { top: 4, bottom: 4, left: 2, right: 2 };
 
 function autoFormatTime(value: string): string {
@@ -76,22 +95,24 @@ export const PresetSwatches = memo(function PresetSwatches({
 }) {
   const lower = selected.toLowerCase();
   const dir = useDir();
+  const size = useSwatchSize();
   return (
     <View style={[s.swatchRow, { flexDirection: dir.row }]}>
       {presets.map(({ hex, nameKey }) => (
-        <PresetSwatch key={hex} hex={hex} nameKey={nameKey} isActive={hex.toLowerCase() === lower} onPick={onPick} />
+        <PresetSwatch key={hex} hex={hex} nameKey={nameKey} isActive={hex.toLowerCase() === lower} onPick={onPick} size={size} />
       ))}
     </View>
   );
 });
 
 const PresetSwatch = memo(function PresetSwatch({
-  hex, nameKey, isActive, onPick,
+  hex, nameKey, isActive, onPick, size,
 }: {
   hex: string;
   nameKey: string;
   isActive: boolean;
   onPick: (hex: string) => void;
+  size: SwatchSize;
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
@@ -101,12 +122,12 @@ const PresetSwatch = memo(function PresetSwatch({
       onPress={handlePress}
       activeOpacity={0.85}
       hitSlop={SWATCH_HIT}
-      style={[s.swatchRing, { borderColor: isActive ? hex : 'transparent' }]}
+      style={[s.swatchRing, size.ring, { borderColor: isActive ? hex : 'transparent' }]}
       accessibilityRole="radio"
       accessibilityLabel={t(`storePreview.${nameKey}`)}
       accessibilityState={{ selected: isActive }}
     >
-      <View style={[s.swatch, { backgroundColor: hex, borderColor: theme.bgCard }]}>
+      <View style={[s.swatch, size.fill, { backgroundColor: hex, borderColor: theme.bgCard }]}>
         {isActive && <Check size={16} color="#FFFFFF" strokeWidth={iconTokens.strokeSmall} />}
       </View>
     </TouchableOpacity>
@@ -125,6 +146,7 @@ export const IconGrid = memo(function IconGrid({
   const { t } = useLanguage();
   const fill = fieldFill(theme);
   const dir = useDir();
+  const tile = useTileSize(ICON_COLS, ICON_GAP, ICON_TILE_MAX);
   const handleClear = useCallback(() => onSelect(null), [onSelect]);
   const noneActive = !selectedIcon;
   return (
@@ -132,7 +154,7 @@ export const IconGrid = memo(function IconGrid({
       <TouchableOpacity
         onPress={handleClear}
         activeOpacity={0.85}
-        style={[s.iconTile, { backgroundColor: noneActive ? `${accent}14` : fill, borderColor: noneActive ? accent : 'transparent' }]}
+        style={[s.iconTile, tile, { backgroundColor: noneActive ? `${accent}14` : fill, borderColor: noneActive ? accent : 'transparent' }]}
         accessibilityRole="radio"
         accessibilityLabel={t('storePreview.noIcon')}
         accessibilityState={{ selected: noneActive }}
@@ -140,19 +162,20 @@ export const IconGrid = memo(function IconGrid({
         <XIcon size={18} color={noneActive ? accent : theme.textMuted} strokeWidth={iconTokens.stroke} />
       </TouchableOpacity>
       {MERCHANT_ICON_SLUGS.map((slug) => (
-        <IconTile key={slug} slug={slug} isActive={selectedIcon === slug} accent={accent} onSelect={onSelect} />
+        <IconTile key={slug} slug={slug} isActive={selectedIcon === slug} accent={accent} onSelect={onSelect} tile={tile} />
       ))}
     </View>
   );
 });
 
 const IconTile = memo(function IconTile({
-  slug, isActive, accent, onSelect,
+  slug, isActive, accent, onSelect, tile,
 }: {
   slug: string;
   isActive: boolean;
   accent: string;
   onSelect: (slug: string) => void;
+  tile: ViewStyle;
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
@@ -163,7 +186,7 @@ const IconTile = memo(function IconTile({
     <TouchableOpacity
       onPress={handlePress}
       activeOpacity={0.85}
-      style={[s.iconTile, { backgroundColor: isActive ? `${accent}14` : fieldFill(theme), borderColor: isActive ? accent : 'transparent' }]}
+      style={[s.iconTile, tile, { backgroundColor: isActive ? `${accent}14` : fieldFill(theme), borderColor: isActive ? accent : 'transparent' }]}
       accessibilityRole="radio"
       accessibilityLabel={t(`storePreview.iconNames.${slug}`, { defaultValue: slug })}
       accessibilityState={{ selected: isActive }}
@@ -465,6 +488,7 @@ export const GalleryGrid = memo(function GalleryGrid({
 } & GalleryHandlers) {
   const { t } = useLanguage();
   const dir = useDir();
+  const tile = useTileSize(GALLERY_COLS, GALLERY_GAP, GALLERY_TILE_MAX);
   return (
     <View style={[s.galleryGrid, { flexDirection: dir.row }]}>
       {items.map((url, idx) => (
@@ -477,6 +501,7 @@ export const GalleryGrid = memo(function GalleryGrid({
           isMutationPending={isMutationPending}
           onRemove={onRemove}
           onMove={onMove}
+          tile={tile}
         />
       ))}
       {items.length < max && (
@@ -484,7 +509,7 @@ export const GalleryGrid = memo(function GalleryGrid({
           onPress={onAddPhotos}
           disabled={isUploading}
           activeOpacity={0.8}
-          style={[s.galleryAdd, { borderColor: `${accent}66`, backgroundColor: `${accent}0D` }]}
+          style={[s.galleryAdd, tile, { borderColor: `${accent}66`, backgroundColor: `${accent}0D` }]}
           accessibilityRole="button"
           accessibilityLabel={t('storePreview.galleryAddPhoto')}
         >
@@ -507,13 +532,14 @@ export const GalleryGrid = memo(function GalleryGrid({
 });
 
 const GalleryThumb = memo(function GalleryThumb({
-  url, idx, total, isBusy, isMutationPending, onRemove, onMove,
+  url, idx, total, isBusy, isMutationPending, onRemove, onMove, tile,
 }: {
   url: string;
   idx: number;
   total: number;
   isBusy: boolean;
   isMutationPending: boolean;
+  tile: ViewStyle;
 } & GalleryHandlers) {
   const theme = useTheme();
   const { t } = useLanguage();
@@ -524,7 +550,7 @@ const GalleryThumb = memo(function GalleryThumb({
   const handleNext = useCallback(() => onMove(idx, idx + 1), [idx, onMove]);
   const endCorner = dir.isRTL ? s.overlayTopLeft : s.overlayTopRight;
   return (
-    <View style={[s.thumb, { backgroundColor: fieldFill(theme) }]}>
+    <View style={[s.thumb, tile, { backgroundColor: fieldFill(theme) }]}>
       <ExpoImage source={resolveImageUrl(url)} style={s.thumbImage} contentFit="cover" />
       <View style={[s.positionBadge, dir.isRTL ? s.overlayTopRight : s.overlayTopLeft]}>
         <Text style={s.positionText}>{idx + 1}</Text>
@@ -584,6 +610,7 @@ export const CardColorRow = memo(function CardColorRow({
   const theme = useTheme();
   const { t } = useLanguage();
   const dir = useDir();
+  const size = useSwatchSize();
   const handleClear = useCallback(() => onPick(null), [onPick]);
   const noneActive = selected === null;
   return (
@@ -591,12 +618,12 @@ export const CardColorRow = memo(function CardColorRow({
       <TouchableOpacity
         onPress={handleClear}
         hitSlop={SWATCH_HIT}
-        style={[s.swatchRing, { borderColor: noneActive ? accent : 'transparent' }]}
+        style={[s.swatchRing, size.ring, { borderColor: noneActive ? accent : 'transparent' }]}
         accessibilityRole="radio"
         accessibilityLabel={t('storePreview.cardColorNone')}
         accessibilityState={{ selected: noneActive, disabled }}
       >
-        <View style={[s.swatch, { backgroundColor: fieldFill(theme), borderColor: theme.bgCard }]}>
+        <View style={[s.swatch, size.fill, { backgroundColor: fieldFill(theme), borderColor: theme.bgCard }]}>
           <XIcon size={15} color={theme.textMuted} strokeWidth={iconTokens.stroke} />
         </View>
       </TouchableOpacity>
@@ -607,6 +634,7 @@ export const CardColorRow = memo(function CardColorRow({
           nameKey={nameKey}
           isActive={selected?.toLowerCase() === hex.toLowerCase()}
           onPick={onPick}
+          size={size}
         />
       ))}
     </View>
@@ -651,11 +679,11 @@ const s = StyleSheet.create({
   disabled: { opacity: 0.4 },
 
   swatchRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  swatchRing: { width: SWATCH_SIZE, height: SWATCH_SIZE, borderRadius: SWATCH_SIZE / 2, borderWidth: 2, padding: 1.5 },
-  swatch: { flex: 1, borderRadius: SWATCH_SIZE / 2, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  swatchRing: { borderWidth: 2, padding: 1.5 },
+  swatch: { flex: 1, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
 
   iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: ICON_GAP },
-  iconTile: { width: ICON_TILE_SIZE, height: ICON_TILE_SIZE, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  iconTile: { borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5 },
@@ -679,7 +707,7 @@ const s = StyleSheet.create({
   addSlotText: { fontSize: 13, fontFamily: font.semibold },
 
   galleryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: GALLERY_GAP },
-  thumb: { width: GALLERY_TILE_SIZE, height: GALLERY_TILE_SIZE, borderRadius: 12, overflow: 'hidden' },
+  thumb: { borderRadius: 12, overflow: 'hidden' },
   thumbImage: { width: '100%', height: '100%' },
   positionBadge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: 'rgba(15,23,42,0.6)', alignItems: 'center', justifyContent: 'center' },
   positionText: { color: '#fff', fontSize: 11, fontFamily: font.semibold },
@@ -689,7 +717,7 @@ const s = StyleSheet.create({
   overlayDisabled: { opacity: 0.3 },
   orderRow: { position: 'absolute', bottom: 5, left: 5, right: 5, flexDirection: 'row', justifyContent: 'space-between' },
   busyOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center' },
-  galleryAdd: { width: GALLERY_TILE_SIZE, height: GALLERY_TILE_SIZE, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, gap: 6 },
+  galleryAdd: { borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, gap: 6 },
   galleryAddIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   galleryAddText: { fontSize: 12, fontFamily: font.semibold, textAlign: 'center' },
 

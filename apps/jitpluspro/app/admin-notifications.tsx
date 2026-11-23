@@ -1,7 +1,6 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   SectionList,
   ActivityIndicator,
@@ -9,6 +8,7 @@ import {
   RefreshControl,
   Platform,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import {
   ArrowLeft,
   ShieldAlert,
@@ -26,12 +26,14 @@ import {
   Settings2,
   type LucideIcon,
 } from 'lucide-react-native';
-import { JitGift, JitMessages, JitPremium } from '@/components/icons';
+import { JitCalendar, JitGift, JitMessages, JitPremium } from '@/components/icons';
 import { useRouter } from 'expo-router';
+import { openRoute } from '@/utils/navReset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
+import { useGoBack } from '@/hooks/useGoBack';
 import { font, icon } from '@/constants/design';
 import { ActionButton } from '@/components/ui/ActionButton';
 import {
@@ -51,6 +53,7 @@ import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { logWarn } from '@/utils/devLogger';
 
 const CATEGORY_STYLE: Record<InboxCategory, { icon: LucideIcon; color: string; labelKey: string }> = {
+  BOOKING: { icon: JitCalendar, color: palette.violet, labelKey: 'inbox.catBooking' },
   SECURITY: { icon: ShieldAlert, color: '#DC2626', labelKey: 'inbox.catSecurity' },
   PLAN: { icon: JitPremium, color: '#D97706', labelKey: 'inbox.catPlan' },
   STATUS: { icon: BadgeInfo, color: '#0F766E', labelKey: 'inbox.catStatus' },
@@ -203,6 +206,7 @@ const InboxCard = memo(function InboxCard({
 export default function AdminNotificationsScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const goBack = useGoBack();
   const runSpecialAction = useSpecialAction();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
@@ -260,13 +264,13 @@ export default function AdminNotificationsScreen() {
     const route = routeForAction(item.action);
     if (route && route !== SELF_ROUTE) {
       markRead(item);
-      router.push(route);
+      openRoute(route);
     } else if (isLong) {
       toggleExpand(item);
     } else {
       markRead(item);
     }
-  }, [markRead, router, toggleExpand, runSpecialAction]);
+  }, [markRead, toggleExpand, runSpecialAction]);
 
   const handleMarkAllRead = useCallback(() => {
     if (unreadCount === 0 || markAllRead.isPending) return;
@@ -310,7 +314,7 @@ export default function AdminNotificationsScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={[styles.headerBar, { paddingTop: insets.top + 12, flexDirection: row }]}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={goBack}
           hitSlop={HIT_SLOP_BACK}
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}

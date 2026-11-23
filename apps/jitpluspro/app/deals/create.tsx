@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Globe, ImagePlus, Save, Send, Trash2 } from 'lucide-react-native';
 import { JitPin, JitStore } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,23 +14,16 @@ import { useAuthStore } from '@/stores/authStore';
 import { useStores } from '@/hooks/queries/stores';
 import { useCreateDeal, useMerchantDeal, useMerchantDeals, useUpdateDeal, useUploadDealImage } from '@/hooks/queries/deals';
 import { getErrorMessage } from '@/utils/error';
+import { prepareUploadImage } from '@/utils/prepareUploadImage';
 import { ms } from '@/utils/responsive';
 import { font } from '@/constants/design';
-import { DEAL_LIMITS, computePercentOff, type DealScope } from '@jitplus/shared/src/deals';
+import { DEAL_LIMITS, DEAL_PRICE_UNITS, type DealScope } from '@jitplus/shared/src/deals';
 import { addDaysYmd, diffDaysYmd } from '@jitplus/shared/src/scratch';
 import { Button, Chip, ChipRow, FieldLabel, Input, Notice, OptionCard, Section } from '@/components/scratch/ScratchUI';
 import { DateField, formatYmd } from '@/components/scratch/DateField';
 import { moroccoToday, moroccoWallTimeToIso } from '@/components/scratch/campaignForm';
-import {
-  HelpText,
-  ReviewBlock,
-  ReviewLine,
-  WizardFooter,
-  WizardLoading,
-  WizardMessage,
-  WizardShell,
-  useGameWizard,
-} from '@/components/games/GameWizard';
+import { HelpText, ReviewBlock, ReviewLine, WizardFooter, WizardShell, useGameWizard } from '@/components/games/GameWizard';
+import { GameLoadError, GameScreenLoading, GameScreenNotice, useBackTo } from '@/components/games/GameScreen';
 import { digitsOnly } from '@/components/games/gameForm';
 import DealThumb from '@/components/deals/DealThumb';
 import { DealPreviewRow, useDealMerchantLook } from '@/components/deals/DealRows';
@@ -39,11 +34,11 @@ import {
   DEAL_TYPE_OPTIONS,
   DEAL_WIZARD_STEPS,
   dealFormReducer,
+  dealHasPaidPrice,
   dealFormToInput,
   dealFormToPatch,
   formFromDeal,
   initialDealForm,
-  parseDecimal,
   previewOffer,
   priceInput,
   validateDealStep,
@@ -58,7 +53,7 @@ export default function DealWizard() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { t, locale } = useLanguage();
-  const { symbol: currencySymbol } = useMoney();
+  const { symbol: currencySymbol, money } = useMoney();
   const { row, textAlign } = useDir();
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -95,45 +90,30 @@ export default function DealWizard() {
   // "shop.ma" typed without a scheme is validated and sent as "https://shop.ma".
   const normalized = useMemo<DealForm>(() => ({ ...form, linkUrl: withHttps(form.linkUrl) }), [form]);
 
-  const leave = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/deals');
-  }, [router]);
+  const leave = useBackTo('/deals');
 
   const validate = useCallback((s: DealWizardStep) => validateDealStep(normalized, s, today, started), [normalized, today, started]);
-  const {
-    step,
-    index: stepIndex,
-    isLast,
-    stepLabels,
-    heading,
-    hint,
-    nextLabel,
-    scrollRef,
-    goTo,
-    next,
-    back,
-    ensureValid,
-    allowLeave,
-  } = useGameWizard({
+  const wizard = useGameWizard({
     steps: DEAL_WIZARD_STEPS,
     validate,
     dirty,
     onLeave: leave,
     i18nPrefix: 'deals.wizard',
   });
+  const { step, stepLabels, goTo, back, ensureValid, allowLeave } = wizard;
 
   const createMutation = useCreateDeal();
   const updateMutation = useUpdateDeal();
   const uploadMutation = useUploadDealImage();
-  const busy = createMutation.isPending || updateMutation.isPending;
+  // A photo still uploading would be missing from what is published.
+  const busy = createMutation.isPending || updateMutation.isPending || uploadMutation.isPending;
 
   const set = useCallback((patch: Partial<DealForm>) => {
     setDirty(true);
     dispatch({ type: 'SET', patch });
   }, []);
 
-  const fail = useCallback((e: unknown) => Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError'))), [t]);
+  const fail = useCallback((e: unknown) => toast.error(getErrorMessage(e, t('common.genericError'))), [t]);
 
   const pickPhoto = useCallback(async () => {
     if (uploadMutation.isPending) return;
@@ -147,8 +127,8 @@ export default function DealWizard() {
         preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const { url } = await uploadMutation.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType });
+      const image = await prepareUploadImage(result.assets[0], { aspect: [1, 1], maxSide: 1600 });
+      const { url } = await uploadMutation.mutateAsync(image);
       set({ imageUrl: url });
     } catch (e) {
       fail(e);
@@ -165,14 +145,14 @@ export default function DealWizard() {
         await updateMutation.mutateAsync({ id: editId, payload: dealFormToPatch(normalized, started) });
         setDirty(false);
         allowLeave();
-        Alert.alert(t('deals.wizard.saved'));
+        toast.success(t('deals.wizard.saved'));
         leave();
         return;
       }
       const created = await createMutation.mutateAsync(dealFormToInput(normalized));
       setDirty(false);
       allowLeave();
-      Alert.alert(created.displayStatus === 'SCHEDULED' ? t('deals.wizard.scheduledSuccess') : t('deals.wizard.published'));
+      toast.success(created.displayStatus === 'SCHEDULED' ? t('deals.wizard.scheduledSuccess') : t('deals.wizard.published'));
       router.replace({ pathname: '/deals/[id]', params: { id: created.id } });
     } catch (e) {
       showSaveError(e);
@@ -186,33 +166,24 @@ export default function DealWizard() {
 
   const title = editId ? t('deals.wizard.titleEdit') : t('deals.wizard.titleCreate');
 
-  if (!canManage) {
-    return (
-      <WizardMessage title={title} onBack={leave}>
-        <View style={styles.padded}><Notice text={t('deals.list.ownerOnly')} /></View>
-      </WizardMessage>
-    );
-  }
+  if (!canManage) return <GameScreenNotice title={title} onBack={leave} text={t('deals.list.ownerOnly')} />;
 
-  if (editId && loadingExisting) return <WizardLoading />;
+  if (editId && loadingExisting) return <GameScreenLoading />;
 
   if (editId && !existing) {
     return (
-      <WizardMessage title={title} onBack={leave}>
-        <View style={[styles.padded, styles.gap]}>
-          <Notice tone="danger" text={t('deals.wizard.loadError')} />
-          <Button label={t('common.retry')} onPress={() => void refetchExisting()} loading={refetchingExisting} />
-        </View>
-      </WizardMessage>
+      <GameLoadError
+        title={title}
+        onBack={leave}
+        text={t('deals.wizard.loadError')}
+        onRetry={() => void refetchExisting()}
+        retrying={refetchingExisting}
+      />
     );
   }
 
   if (existing && existing.displayStatus !== 'LIVE' && existing.displayStatus !== 'SCHEDULED') {
-    return (
-      <WizardMessage title={title} onBack={leave}>
-        <View style={styles.padded}><Notice text={t('deals.wizard.notEditable')} /></View>
-      </WizardMessage>
-    );
+    return <GameScreenNotice title={title} onBack={leave} text={t('deals.wizard.notEditable')} />;
   }
 
   const day = (ymd: string) => formatYmd(ymd, locale, false);
@@ -222,7 +193,6 @@ export default function DealWizard() {
   const local = form.scope === 'LOCAL';
   const showStores = local && stores.length > 1;
   const someUnlocated = stores.some((s) => s.latitude == null || s.longitude == null);
-  const dropPercent = form.type === 'PRICE_DROP' ? computePercentOff(parseDecimal(form.originalPrice), parseDecimal(form.dealPrice)) : null;
   const link = normalized.linkUrl.trim();
 
   const toggleStore = (id: string) => {
@@ -237,34 +207,20 @@ export default function DealWizard() {
       ? t('deals.wizard.reviewAllStores')
       : t('deals.wizard.reviewSomeStores', { count: form.storeIds.length });
 
-  let footer: ReactNode;
-  if (!isLast) {
-    footer = <WizardFooter onBack={stepIndex > 0 ? back : undefined} primary={{ label: nextLabel, onPress: next }} />;
-  } else {
-    footer = (
-      <WizardFooter
-        onBack={back}
-        primary={{
-          icon: editId ? Save : Send,
-          label: editId ? t('deals.wizard.save') : t('deals.wizard.publish'),
-          onPress: handleSubmit,
-          loading: busy,
-        }}
-      />
-    );
-  }
+  const lastFooter = (
+    <WizardFooter
+      onBack={back}
+      primary={{
+        icon: editId ? Save : Send,
+        label: editId ? t('deals.wizard.save') : t('deals.wizard.publish'),
+        onPress: handleSubmit,
+        loading: busy,
+      }}
+    />
+  );
 
   return (
-    <WizardShell
-      title={title}
-      onBack={back}
-      stepLabels={stepLabels}
-      index={stepIndex}
-      heading={heading}
-      hint={hint}
-      scrollRef={scrollRef}
-      footer={footer}
-    >
+    <WizardShell title={title} wizard={wizard} lastFooter={lastFooter}>
       {step === 'offer' && (
         <>
           <Section title={t('deals.wizard.whereTitle')}>
@@ -298,15 +254,32 @@ export default function DealWizard() {
 
             {form.type === 'PERCENT_OFF' && (
               <>
-                <FieldLabel text={t('deals.wizard.percent')} />
-                <Input
-                  value={form.percentOff}
-                  onChangeText={(v) => set({ percentOff: digitsOnly(v) })}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="20"
-                  accessibilityLabel={t('deals.wizard.percent')}
-                />
+                <View style={[styles.pair, { flexDirection: row }]}>
+                  <View style={styles.flex}>
+                    <FieldLabel text={t('deals.wizard.percent')} />
+                    <Input
+                      value={form.percentOff}
+                      onChangeText={(v) => set({ percentOff: digitsOnly(v) })}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      placeholder="20"
+                      accessibilityLabel={t('deals.wizard.percent')}
+                    />
+                  </View>
+                  <View style={styles.flex}>
+                    <FieldLabel text={t('deals.wizard.originalPrice', { currency: currencySymbol })} hint={t('deals.wizard.optional')} />
+                    <Input
+                      value={form.originalPrice}
+                      onChangeText={(v) => set({ originalPrice: priceInput(v) })}
+                      keyboardType="decimal-pad"
+                      maxLength={10}
+                      accessibilityLabel={t('deals.wizard.originalPrice', { currency: currencySymbol })}
+                    />
+                  </View>
+                </View>
+                {offer.dealPrice != null && (
+                  <HelpText tone="secondary" text={t('deals.wizard.computedPrice', { price: money(offer.dealPrice) })} />
+                )}
               </>
             )}
 
@@ -334,11 +307,12 @@ export default function DealWizard() {
                     />
                   </View>
                 </View>
-                {dropPercent != null && <HelpText tone="secondary" text={t('deals.wizard.computedPercent', { value: dropPercent })} />}
+                {offer.percentOff != null && <HelpText tone="secondary" text={t('deals.wizard.computedPercent', { value: offer.percentOff })} />}
               </>
             )}
 
             {form.type === 'BUY_X_GET_Y' && (
+              <>
               <View style={[styles.pair, { flexDirection: row }]}>
                 <View style={styles.flex}>
                   <FieldLabel text={t('deals.wizard.buyQty')} />
@@ -361,6 +335,15 @@ export default function DealWizard() {
                   />
                 </View>
               </View>
+              <FieldLabel text={t('deals.wizard.unitPrice', { currency: currencySymbol })} hint={t('deals.wizard.optional')} />
+              <Input
+                value={form.originalPrice}
+                onChangeText={(v) => set({ originalPrice: priceInput(v) })}
+                keyboardType="decimal-pad"
+                maxLength={10}
+                accessibilityLabel={t('deals.wizard.unitPrice', { currency: currencySymbol })}
+              />
+              </>
             )}
 
             {form.type === 'FREE_ITEM' && (
@@ -377,6 +360,21 @@ export default function DealWizard() {
             )}
 
             {form.type === 'OTHER' && <HelpText text={t('deals.wizard.otherHint')} />}
+
+            {dealHasPaidPrice(form) && (
+              <>
+                <FieldLabel text={t('deals.wizard.priceDisplay')} hint={t('deals.wizard.optional')} />
+                <ChipRow>
+                  <Chip label={t('deals.wizard.priceFrom')} selected={form.priceFrom} onPress={() => set({ priceFrom: !form.priceFrom })} />
+                </ChipRow>
+                <ChipRow>
+                  <Chip label={t('deals.wizard.noUnit')} selected={form.priceUnit == null} onPress={() => set({ priceUnit: null })} />
+                  {DEAL_PRICE_UNITS.map((unit) => (
+                    <Chip key={unit} label={t(`deals.price.unit.${unit}`)} selected={form.priceUnit === unit} onPress={() => set({ priceUnit: unit })} />
+                  ))}
+                </ChipRow>
+              </>
+            )}
           </Section>
 
           <Section title={t('deals.wizard.textTitle')}>
@@ -589,7 +587,6 @@ function Counter({ count, max }: { count: number; max: number }) {
 }
 
 const styles = StyleSheet.create({
-  padded: { padding: 16 },
   gap: { gap: 10 },
   flex: { flex: 1 },
   pair: { gap: 10 },

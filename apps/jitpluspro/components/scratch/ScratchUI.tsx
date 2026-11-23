@@ -1,57 +1,51 @@
 import React from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  TextInput,
   type StyleProp,
   type ViewStyle,
   type TextInputProps,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { ArrowLeft, Check, ChevronDown, ChevronUp } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { useGoBack } from '@/hooks/useGoBack';
 import { ms } from '@/utils/responsive';
 import { font, icon as iconTokens } from '@/constants/design';
 import type { ScratchCampaignStatus } from '@jitplus/shared/src/scratch';
 
 /**
  * Same look as the "Ma boutique" ScreenHeader (components/stores/StoreUi).
- * Without `onBack` there is no back arrow: the system back gesture is the way out.
+ * The back arrow is there by default, because the iOS swipe is easy to miss:
+ * `onBack` replaces its action, `back={false}` removes it (tab screens).
+ * The title shrinks to fit next to the arrow and the header actions.
  * `wrap`: the title is a user-given name shown nowhere else on the screen, so it
- * takes two lines and shrinks a little instead of being cut after ~12 characters.
+ * also gets a second line.
  */
-export function ScreenHeader({ title, onBack, right, wrap = false }: {
+export function ScreenHeader({ title, onBack, back = true, right, wrap = false }: {
   title: string;
   onBack?: () => void;
+  back?: boolean;
   right?: React.ReactNode;
   wrap?: boolean;
 }) {
   const theme = useTheme();
-  const { t, isRTL } = useLanguage();
+  const { row, textAlign } = useDir();
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.header, { paddingTop: insets.top + 12, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-      {onBack ? (
-        <TouchableOpacity
-          onPress={onBack}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <ArrowLeft size={iconTokens.md} color={theme.text} strokeWidth={iconTokens.stroke} style={isRTL ? styles.flipX : undefined} />
-        </TouchableOpacity>
-      ) : null}
+    <View style={[styles.header, { paddingTop: insets.top + 12, flexDirection: row }]}>
+      {back ? <BackArrow onPress={onBack} /> : null}
       <Text
-        style={[styles.headerTitle, { color: theme.text, textAlign: isRTL ? 'right' : 'left' }]}
+        style={[styles.headerTitle, { color: theme.text, textAlign }]}
         numberOfLines={wrap ? 2 : 1}
-        adjustsFontSizeToFit={wrap}
-        minimumFontScale={wrap ? 0.75 : undefined}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
         accessibilityRole="header"
         maxFontSizeMultiplier={1.3}
       >
@@ -62,18 +56,36 @@ export function ScreenHeader({ title, onBack, right, wrap = false }: {
   );
 }
 
+function BackArrow({ onPress }: { onPress?: () => void }) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const { flip } = useDir();
+  const goBack = useGoBack();
+  return (
+    <TouchableOpacity
+      onPress={onPress ?? goBack}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      style={styles.backButton}
+      accessibilityRole="button"
+      accessibilityLabel={t('common.back')}
+    >
+      <ArrowLeft size={iconTokens.md} color={theme.text} strokeWidth={iconTokens.stroke} style={flip} />
+    </TouchableOpacity>
+  );
+}
+
 export function Section({ title, children, style }: {
   title?: string;
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
+  const { row, textAlign } = useDir();
   return (
     <View style={[styles.section, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }, style]}>
       {title ? (
-        <View style={[styles.sectionHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.4}>
+        <View style={[styles.sectionHeader, { flexDirection: row }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.4}>
             {title}
           </Text>
         </View>
@@ -85,8 +97,7 @@ export function Section({ title, children, style }: {
 
 export function FieldLabel({ text, hint }: { text: string; hint?: string }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
-  const textAlign = isRTL ? 'right' : 'left';
+  const { textAlign } = useDir();
   return (
     <View style={styles.labelWrap}>
       <Text style={[styles.label, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>{text}</Text>
@@ -97,14 +108,14 @@ export function FieldLabel({ text, hint }: { text: string; hint?: string }) {
 
 export function Input(props: TextInputProps) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
+  const { textAlign } = useDir();
   return (
     <TextInput
       placeholderTextColor={theme.inputPlaceholder}
       {...props}
       style={[
         styles.input,
-        { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text, textAlign: isRTL ? 'right' : 'left' },
+        { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text, textAlign },
         props.multiline && styles.inputMultiline,
         props.style,
       ]}
@@ -120,7 +131,7 @@ export function Chip({ label, selected, onPress, disabled }: {
   disabled?: boolean;
 }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
+  const { row } = useDir();
   const color = selected ? '#FFFFFF' : theme.textSecondary;
   return (
     <TouchableOpacity
@@ -133,7 +144,7 @@ export function Chip({ label, selected, onPress, disabled }: {
       style={[
         styles.chip,
         {
-          flexDirection: isRTL ? 'row-reverse' : 'row',
+          flexDirection: row,
           backgroundColor: selected ? theme.primary : theme.bgInput,
           borderColor: selected ? theme.primary : theme.borderLight,
           opacity: disabled ? 0.5 : 1,
@@ -149,8 +160,8 @@ export function Chip({ label, selected, onPress, disabled }: {
 }
 
 export function ChipRow({ children }: { children: React.ReactNode }) {
-  const { isRTL } = useLanguage();
-  return <View style={[styles.chipRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>{children}</View>;
+  const { row } = useDir();
+  return <View style={[styles.chipRow, { flexDirection: row }]}>{children}</View>;
 }
 
 export function Button({ label, onPress, loading, disabled, variant = 'primary', icon: Icon, style }: {
@@ -163,7 +174,7 @@ export function Button({ label, onPress, loading, disabled, variant = 'primary',
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
+  const { row } = useDir();
   const colors = buttonColors(theme, variant);
   const inactive = disabled || loading;
   return (
@@ -176,7 +187,7 @@ export function Button({ label, onPress, loading, disabled, variant = 'primary',
       accessibilityLabel={label}
       style={[
         styles.button,
-        { backgroundColor: colors.bg, borderColor: colors.border, opacity: inactive ? 0.55 : 1, flexDirection: isRTL ? 'row-reverse' : 'row' },
+        { backgroundColor: colors.bg, borderColor: colors.border, opacity: inactive ? 0.55 : 1, flexDirection: row },
         style,
       ]}
     >
@@ -215,9 +226,9 @@ function campaignStatusColor(theme: ThemeColors, status: ScratchCampaignStatus):
 }
 
 export function StatusPill({ label, color }: { label: string; color: string }) {
-  const { isRTL } = useLanguage();
+  const { row } = useDir();
   return (
-    <View style={[styles.pill, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: `${color}1A`, borderColor: `${color}40` }]}>
+    <View style={[styles.pill, { flexDirection: row, backgroundColor: `${color}1A`, borderColor: `${color}40` }]}>
       <View style={[styles.pillDot, { backgroundColor: color }]} />
       <Text style={[styles.pillText, { color }]} maxFontSizeMultiplier={1.3}>{label}</Text>
     </View>
@@ -239,8 +250,7 @@ export function OptionCard({ title, description, icon: Icon, selected, onPress }
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
-  const textAlign = isRTL ? 'right' : 'left';
+  const { row, textAlign } = useDir();
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -251,7 +261,7 @@ export function OptionCard({ title, description, icon: Icon, selected, onPress }
       style={[
         styles.option,
         {
-          flexDirection: isRTL ? 'row-reverse' : 'row',
+          flexDirection: row,
           borderColor: selected ? theme.primary : theme.borderLight,
           backgroundColor: selected ? theme.primaryBg : theme.bgElevated,
         },
@@ -300,16 +310,16 @@ export function MoreOptions({ open, onToggle, label, children }: {
   children: React.ReactNode;
 }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
+  const { row, textAlign } = useDir();
   return (
     <>
       <TouchableOpacity
         onPress={onToggle}
-        style={[styles.moreToggle, { borderTopColor: theme.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+        style={[styles.moreToggle, { borderTopColor: theme.borderLight, flexDirection: row }]}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
       >
-        <Text style={[styles.moreText, { color: theme.textSecondary, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.moreText, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
           {label}
         </Text>
         {open
@@ -323,11 +333,11 @@ export function MoreOptions({ open, onToggle, label, children }: {
 
 export function Notice({ text, tone = 'info' }: { text: string; tone?: 'info' | 'warning' | 'danger' }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
+  const { textAlign } = useDir();
   const color = tone === 'danger' ? theme.danger : tone === 'warning' ? theme.warning : theme.primary;
   return (
     <View style={[styles.notice, { backgroundColor: `${color}12`, borderColor: `${color}35` }]}>
-      <Text style={[styles.noticeText, { color: theme.textSecondary, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.4}>
+      <Text style={[styles.noticeText, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
         {text}
       </Text>
     </View>
@@ -335,7 +345,6 @@ export function Notice({ text, tone = 'info' }: { text: string; tone?: 'info' | 
 }
 
 const styles = StyleSheet.create({
-  flipX: { transform: [{ scaleX: -1 }] },
   header: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10, gap: 12, minHeight: 50 },
   backButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, fontSize: 24, fontFamily: font.semibold, letterSpacing: -0.5 },

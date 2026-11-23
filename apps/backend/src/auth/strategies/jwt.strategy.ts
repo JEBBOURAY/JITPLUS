@@ -131,6 +131,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       clientSessionId: payload.sid ?? undefined,
       teamMemberId: payload.teamMemberId ?? undefined,
       teamMemberName: payload.teamMemberName ?? undefined,
+      issuedAt: payload.iat,
+      issuedAtMs: typeof payload.iatMs === 'number' ? payload.iatMs : undefined,
     };
   }
 }

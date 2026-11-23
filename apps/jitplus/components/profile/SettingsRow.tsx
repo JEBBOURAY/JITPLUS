@@ -1,11 +1,12 @@
 import { memo, type ReactNode } from 'react';
-import { ActivityIndicator, I18nManager, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/AppText';
 import { ChevronRight, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAppFonts } from '@/utils/fonts';
 import { fontSize as FS, hp, ms, wp } from '@/utils/responsive';
 import ToggleSwitch from './ToggleSwitch';
+import { DIR_FLIP } from '@/utils/rtl';
 
 export interface SettingsRowProps {
   icon: LucideIcon;
@@ -27,7 +28,6 @@ export interface SettingsRowProps {
   children?: ReactNode;
 }
 
-const CHEVRON_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 function SettingsRow({
   icon: Icon, tint, title, subtitle, accessory = 'chevron', checked = false, valueText,
@@ -66,7 +66,7 @@ function SettingsRow({
           </Text>
         )}
         {accessory === 'chevron' && (
-          <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} style={CHEVRON_FLIP} />
+          <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} style={DIR_FLIP} />
         )}
         {isSwitch && <ToggleSwitch value={checked} />}
       </View>

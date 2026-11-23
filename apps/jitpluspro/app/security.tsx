@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { toast } from '@/components/ui/Toast';
 import {
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -12,27 +11,25 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { timeAgo } from '@/utils/date';
-import { logError } from '@/utils/devLogger';
+import { Text, TextInput } from '@/components/AppText';
 import {
-  ArrowLeft,
   Eye,
   EyeOff,
   Smartphone,
   Trash2,
   ShieldCheck,
-  Wifi,
-  Clock,
   Check,
-  User,
 } from 'lucide-react-native';
 import { JitLock } from '@/components/icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import { isValidPassword } from '@/utils/passwordStrength';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGoBack } from '@/hooks/useGoBack';
+import { ScreenHeader } from '@/components/scratch/ScratchUI';
+import { SecurityDevices, reRegisterThisDevicePush } from '@/components/account/SecurityDevices';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useTheme, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -171,23 +168,11 @@ function ReauthStatus({
   );
 }
 
-interface DeviceSession {
-  id: string;
-  deviceName: string;
-  deviceOS?: string;
-  userType?: string;
-  userName?: string;
-  lastActiveAt: string;
-  ipAddress?: string;
-  isCurrentDevice: boolean;
-}
-
 type TabId = 'password' | 'devices' | 'delete';
 
 export default function SecurityScreen() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tab?: string }>();
   const { signOut, merchant, isTeamMember } = useAuth();
@@ -227,9 +212,6 @@ export default function SecurityScreen() {
   const socialReauthLoading = isGoogleAccount ? googleDelete.isLoading : appleDelete.isLoading;
   const canSubmitPassword = isSocialAccount ? hasSocialReauth : !!currentPwd;
 
-  const [devices, setDevices] = useState<DeviceSession[]>([]);
-  const [loadingDevices, setLoadingDevices] = useState(true);
-
   const strength = useMemo(() => {
     if (newPwd.length === 0) return { label: '', color: theme.border, width: '0%' as DimensionValue };
     let score = 0;
@@ -244,21 +226,6 @@ export default function SecurityScreen() {
     if (score <= 3) return { label: t('security.strengthGood'), color: theme.primary, width: '70%' as DimensionValue };
     return { label: t('security.strengthStrong'), color: theme.success, width: '100%' as DimensionValue };
   }, [newPwd, theme, t]);
-
-  // The spinner is raised by selectTab (and the initial state), so the effect
-  // only sets state from the request callbacks.
-  useEffect(() => {
-    if (activeTab !== 'devices') return;
-    api.get('/merchant/devices')
-      .then((res) => setDevices(res.data ?? []))
-      .catch((error) => logError('Security', 'Failed to load devices:', error))
-      .finally(() => setLoadingDevices(false));
-  }, [activeTab]);
-
-  const selectTab = useCallback((id: TabId) => {
-    if (id === 'devices' && id !== activeTab) setLoadingDevices(true);
-    setActiveTab(id);
-  }, [activeTab]);
 
   const executePasswordChange = useCallback(async (logoutOthers: boolean) => {
     setSaving(true);
@@ -277,12 +244,13 @@ export default function SecurityScreen() {
 
       const count = res.data?.devicesDisconnected || 0;
       if (logoutOthers && count > 0) {
-        Alert.alert(t('common.success'), t(count === 1 ? 'security.changePwdSuccessLogout_one' : 'security.changePwdSuccessLogout_other', { count }));
+        reRegisterThisDevicePush();
+        toast.success(t(count === 1 ? 'security.changePwdSuccessLogout_one' : 'security.changePwdSuccessLogout_other', { count }));
       } else {
-        Alert.alert(t('common.success'), t('security.changePwdSuccess'));
+        toast.success(t('security.changePwdSuccess'));
       }
     } catch (err: unknown) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('security.changePwdError')));
+      toast.error(getErrorMessage(err, t('security.changePwdError')));
     } finally {
       setSaving(false);
     }
@@ -291,15 +259,15 @@ export default function SecurityScreen() {
   const handleChangePassword = useCallback(async () => {
     if (isSocialAccount && !hasSocialReauth) return;
     if (!isSocialAccount && !currentPwd.trim()) {
-      Alert.alert(t('common.error'), t('security.enterCurrentPassword'));
+      toast.error(t('security.enterCurrentPassword'));
       return;
     }
     if (!isValidPassword(newPwd)) {
-      Alert.alert(t('common.error'), t('security.passwordRequirements'));
+      toast.error(t('security.passwordRequirements'));
       return;
     }
     if (newPwd !== confirmPwd) {
-      Alert.alert(t('common.error'), t('security.passwordMismatch'));
+      toast.error(t('security.passwordMismatch'));
       return;
     }
 
@@ -321,28 +289,6 @@ export default function SecurityScreen() {
       ],
     );
   }, [isSocialAccount, hasSocialReauth, currentPwd, newPwd, confirmPwd, executePasswordChange, t]);
-
-  const handleRemoveDevice = useCallback((device: DeviceSession) => {
-    Alert.alert(
-      t('security.disconnectTitle'),
-      t('security.disconnectMsg', { name: device.deviceName }),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('security.disconnect'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.delete(`/merchant/devices/${device.id}`);
-              setDevices((prev) => prev.filter((d) => d.id !== device.id));
-            } catch {
-              Alert.alert(t('common.error'), t('security.disconnectError'));
-            }
-          },
-        },
-      ],
-    );
-  }, [t]);
 
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
@@ -369,7 +315,7 @@ export default function SecurityScreen() {
                 { cancelable: false },
               );
             } catch (err: unknown) {
-              Alert.alert(t('common.error'), getErrorMessage(err, t('security.deleteAccountError')));
+              toast.error(getErrorMessage(err, t('security.deleteAccountError')));
             } finally {
               setDeleting(false);
             }
@@ -379,7 +325,7 @@ export default function SecurityScreen() {
     );
   }, [isGoogleAccount, isAppleAccount, deleteGoogleToken, deleteAppleToken, deletePwd, signOut, t]);
 
-  const goBack = useCallback(() => router.back(), [router]);
+  const goBack = useGoBack();
 
   const tabs = useMemo<{ id: TabId; label: string; icon: React.ReactNode }[]>(() => [
     { id: 'password', label: t('security.tabPassword'), icon: <JitLock size={15} strokeWidth={iconTokens.stroke} color={activeTab === 'password' ? '#fff' : theme.textMuted} /> },
@@ -418,18 +364,7 @@ export default function SecurityScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <View style={[styles.headerBar, { flexDirection: dir.row, paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity
-          onPress={goBack}
-          style={styles.backBtn}
-          hitSlop={HIT_SLOP_12}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <ArrowLeft size={22} color={theme.text} strokeWidth={iconTokens.stroke} style={dir.flip} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3} accessibilityRole="header">{t('security.title')}</Text>
-      </View>
+      <ScreenHeader title={t('security.title')} />
 
       <View
         style={[
@@ -450,7 +385,7 @@ export default function SecurityScreen() {
             <TouchableOpacity
               key={tab.id}
               style={[styles.tab, { flexDirection: dir.row }, isActive && { backgroundColor: tab.id === 'delete' ? theme.danger : theme.primary }]}
-              onPress={() => selectTab(tab.id)}
+              onPress={() => setActiveTab(tab.id)}
               activeOpacity={0.7}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
@@ -688,116 +623,7 @@ export default function SecurityScreen() {
           </View>
         ) : (
           <View key="devices">
-            {loadingDevices ? (
-              <View style={styles.loadingCenter}>
-                <ActivityIndicator size="large" color={theme.primary} />
-              </View>
-            ) : devices.length === 0 ? (
-              <View style={styles.emptyDevices}>
-                <Smartphone size={48} color={theme.textMuted} strokeWidth={iconTokens.stroke} />
-                <Text style={[styles.emptyTitle, { color: theme.text }]} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
-                  {t('security.noDevices')}
-                </Text>
-                <Text style={[styles.emptyText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-                  {t('security.noDevicesHint')}
-                </Text>
-              </View>
-            ) : (
-              devices.map((device) => (
-                <View
-                  key={device.id}
-                  style={[styles.deviceCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-                >
-                  <View style={[styles.deviceRow, { flexDirection: dir.row }]}>
-                    <View
-                      style={[
-                        styles.deviceIcon,
-                        {
-                          backgroundColor: device.isCurrentDevice
-                            ? theme.success + '15'
-                            : theme.primary + '12',
-                        },
-                      ]}
-                    >
-                      <Smartphone
-                        size={20}
-                        color={device.isCurrentDevice ? theme.success : theme.primary}
-                        strokeWidth={iconTokens.stroke}
-                      />
-                    </View>
-                    <View style={[styles.deviceInfo, dir.isRTL ? styles.deviceInfoRTL : styles.deviceInfoLTR]}>
-                      <View style={[styles.deviceNameRow, { flexDirection: dir.row }]}>
-                        <Text style={[styles.deviceName, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                          {device.deviceName}
-                        </Text>
-                        {device.isCurrentDevice && (
-                          <View style={[styles.currentBadge, { backgroundColor: theme.success + '18' }]}>
-                            <Text style={[styles.currentBadgeText, { color: theme.success }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                              {t('security.currentDevice')}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      {device.deviceOS && (
-                        <Text style={[styles.deviceOS, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                          {device.deviceOS}
-                        </Text>
-                      )}
-                      {device.userName && (
-                        <View style={[styles.deviceMeta, styles.deviceMetaUser, { flexDirection: dir.row }]}>
-                          <User size={11} strokeWidth={iconTokens.strokeSmall} color={device.userType === 'team_member' ? theme.warning : theme.primary} />
-                          <Text style={[styles.deviceMetaText, { color: device.userType === 'team_member' ? theme.warning : theme.primary, fontFamily: font.semibold }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                            {device.userName}
-                          </Text>
-                          <View style={[
-                            styles.userTypeBadge,
-                            dir.isRTL ? styles.userTypeBadgeRTL : styles.userTypeBadgeLTR,
-                            { backgroundColor: device.userType === 'team_member' ? theme.warning + '18' : theme.primary + '12' },
-                          ]}>
-                            <Text style={[
-                              styles.userTypeBadgeText,
-                              { color: device.userType === 'team_member' ? theme.warning : theme.primary },
-                            ]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                              {device.userType === 'team_member' ? t('security.teamBadge') : t('security.ownerBadge')}
-                            </Text>
-                          </View>
-                        </View>
-                      )}
-                      <View style={[styles.deviceMeta, { flexDirection: dir.row }]}>
-                        <Clock size={11} color={theme.textMuted} strokeWidth={iconTokens.strokeSmall} />
-                        <Text style={[styles.deviceMetaText, { color: theme.textMuted }]} numberOfLines={1}>
-                          {timeAgo(device.lastActiveAt)}
-                        </Text>
-                        {device.ipAddress && (
-                          <>
-                            <Wifi size={11} color={theme.textMuted} strokeWidth={iconTokens.strokeSmall} style={dir.isRTL ? styles.wifiIconRTL : styles.wifiIconLTR} />
-                            <Text
-                              style={[styles.deviceMetaText, { color: theme.textMuted }]}
-                              numberOfLines={1}
-                              accessibilityLabel={`IP ${device.ipAddress.split('.').join(' ')}`}
-                            >
-                              {device.ipAddress}
-                            </Text>
-                          </>
-                        )}
-                      </View>
-                    </View>
-
-                    {!device.isCurrentDevice && (
-                      <TouchableOpacity
-                        onPress={() => handleRemoveDevice(device)}
-                        style={[styles.removeBtn, { backgroundColor: theme.danger + '12' }]}
-                        hitSlop={HIT_SLOP_8}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('security.removeDeviceA11y')}
-                      >
-                        <Trash2 size={16} color={theme.danger} strokeWidth={iconTokens.stroke} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              ))
-            )}
+            <SecurityDevices />
           </View>
         )}
 
@@ -833,20 +659,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontFamily: font.regular,
-  },
-
-  headerBar: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 12,
-    gap: 10,
-  },
-  backBtn: { padding: 4 },
-  headerTitle: {
-    flex: 1,
-    fontSize: 28,
-    fontFamily: font.semibold,
-    letterSpacing: -0.5,
   },
 
   tabBar: {
@@ -907,66 +719,6 @@ const styles = StyleSheet.create({
   strengthLabel: { fontSize: 12, minWidth: 45, fontFamily: font.semibold },
 
   saveBtn: { marginTop: 28 },
-
-  loadingCenter: { alignItems: 'center', paddingTop: 60 },
-  emptyDevices: { alignItems: 'center', paddingTop: 60 },
-  emptyTitle: { fontSize: 18, marginTop: 16, fontFamily: font.semibold },
-  emptyText: {
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 30,
-    lineHeight: 20,
-    fontFamily: font.regular,
-  },
-
-  deviceCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-  },
-  deviceRow: { alignItems: 'center' },
-  deviceIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deviceInfo: { flex: 1 },
-  deviceInfoLTR: { marginLeft: 14 },
-  deviceInfoRTL: { marginRight: 14 },
-  deviceNameRow: { alignItems: 'center', gap: 8 },
-  deviceName: { fontSize: 15, fontFamily: font.semibold },
-  currentBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  currentBadgeText: { fontSize: 11, fontFamily: font.semibold },
-  deviceOS: { fontSize: 12, marginTop: 2, fontFamily: font.regular },
-  deviceMeta: { alignItems: 'center', gap: 4, marginTop: 4 },
-  deviceMetaUser: { marginTop: 3 },
-  deviceMetaText: { fontSize: 11, fontFamily: font.regular },
-  wifiIconLTR: { marginLeft: 8 },
-  wifiIconRTL: { marginRight: 8 },
-  userTypeBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 8,
-  },
-  userTypeBadgeLTR: { marginLeft: 6 },
-  userTypeBadgeRTL: { marginRight: 6 },
-  userTypeBadgeText: { fontSize: 11, fontFamily: font.semibold },
-
-  removeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   dangerZone: {
     marginTop: 32,

@@ -5,12 +5,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { flagHomeWelcome } from '@/hooks/useHomeBanners';
 import { haptic } from '@/utils/haptics';
 import { isNoAccountError } from '@/utils/authErrors';
 import i18n from '@/i18n';
 
-const SHOW_WELCOME_KEY = 'showWelcome';
 
 export interface AuthProviderOptions {
   actionLabel: string;
@@ -25,22 +24,17 @@ export interface AuthProviderResult {
 
 export interface AuthProviderState {
   isLoading: boolean;
-  isSuccess: boolean;
   error: string;
-  noAccount: boolean;
   mountedRef: React.MutableRefObject<boolean>;
   reset: () => void;
   setLoading: (v: boolean) => void;
   handleResult: (result: AuthProviderResult, errorKey: string) => Promise<void>;
   handleError: (errorKey: string) => void;
-  dismissNoAccount: () => void;
 }
 
 export function useAuthProvider({ actionLabel }: AuthProviderOptions): AuthProviderState {
   const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState('');
-  const [noAccount, setNoAccount] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -49,8 +43,6 @@ export function useAuthProvider({ actionLabel }: AuthProviderOptions): AuthProvi
 
   const reset = useCallback(() => {
     setError('');
-    setIsSuccess(false);
-    setNoAccount(false);
     setIsLoading(true);
   }, []);
 
@@ -58,7 +50,6 @@ export function useAuthProvider({ actionLabel }: AuthProviderOptions): AuthProvi
     if (!mountedRef.current) return;
 
     if (result.success) {
-      setIsSuccess(true);
       // Keep the spinner active during the 600ms transition so the button cannot be re-tapped.
       setIsLoading(true);
       haptic();
@@ -67,7 +58,7 @@ export function useAuthProvider({ actionLabel }: AuthProviderOptions): AuthProvi
           if (mountedRef.current) router.push('/complete-profile');
         }, 600);
       } else {
-        await AsyncStorage.setItem(SHOW_WELCOME_KEY, '1');
+        await flagHomeWelcome('back');
         setTimeout(() => {
           if (mountedRef.current) goHomeAfterLogin(router);
         }, 600);
@@ -75,7 +66,6 @@ export function useAuthProvider({ actionLabel }: AuthProviderOptions): AuthProvi
     } else {
       setIsLoading(false);
       if (result.rawError && isNoAccountError(result.rawError)) {
-        setNoAccount(true);
         setError(i18n.t(`${errorKey}.noAccountFound`));
       } else {
         setError(result.error || i18n.t(`${errorKey}.error`, { action: actionLabel }));
@@ -89,13 +79,8 @@ export function useAuthProvider({ actionLabel }: AuthProviderOptions): AuthProvi
     setError(i18n.t(`${errorKey}.error`, { action: actionLabel }));
   }, [actionLabel]);
 
-  const dismissNoAccount = useCallback(() => {
-    setNoAccount(false);
-    setError('');
-  }, []);
-
   return useMemo(() => ({
-    isLoading, isSuccess, error, noAccount, mountedRef,
-    reset, setLoading: setIsLoading, handleResult, handleError, dismissNoAccount,
-  }), [isLoading, isSuccess, error, noAccount, reset, handleResult, handleError, dismissNoAccount]);
+    isLoading, error, mountedRef,
+    reset, setLoading: setIsLoading, handleResult, handleError,
+  }), [isLoading, error, reset, handleResult, handleError]);
 }

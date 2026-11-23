@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -20,6 +19,7 @@ import { THROTTLE_TTL } from '../common/constants';
 import { MerchantTypeGuard } from '../auth/guards/merchant-type.guard';
 import { MerchantOwnerGuard } from '../auth/guards/merchant-owner.guard';
 import { PremiumGuard } from '../auth/guards/premium.guard';
+import { parseIdempotencyKey } from '../common/utils/idempotency-key';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { ScratchCampaignService } from './scratch-campaign.service';
@@ -169,13 +169,6 @@ export class ScratchMerchantController {
     @Body() dto: RedeemCouponDto,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    let key: string | undefined;
-    if (idempotencyKey && idempotencyKey.trim()) {
-      key = idempotencyKey.trim();
-      if (key.length > 64 || !/^[A-Za-z0-9_-]+$/.test(key)) {
-        throw new BadRequestException('Idempotency-Key invalide (max 64 chars, [A-Za-z0-9_-]).');
-      }
-    }
     return this.coupons.redeem(
       user.userId,
       id,
@@ -185,7 +178,7 @@ export class ScratchMerchantController {
         performedByName: user.teamMemberName ?? undefined,
         redeemedBy: user.type === 'team_member' ? user.teamMemberId ?? user.userId : user.userId,
       },
-      key,
+      parseIdempotencyKey(idempotencyKey),
     );
   }
 

@@ -1,4 +1,5 @@
 // Texts shared by the deal list, the detail screen and the merchant page (no React Native).
+import { toZoneWall } from '@jitplus/shared/src/zoneTime';
 import {
   dealBadgeLabel, dealTimeLeftLabel, dealPrices,
   type ClientDealStore, type DealTranslate,
@@ -40,7 +41,9 @@ export function formatDealEndDate(endsAt: string, locale: string): string {
   const date = new Date(endsAt);
   if (Number.isNaN(date.getTime())) return '';
   try {
-    return date.toLocaleDateString(tag, { day: 'numeric', month: 'long', timeZone: 'Africa/Casablanca' });
+    // Hermes prints Africa/Casablanca at UTC+0: shift to the Morocco wall clock, then print as UTC.
+    const wall = toZoneWall(date, 'Africa/Casablanca') ?? date;
+    return wall.toLocaleDateString(tag, { day: 'numeric', month: 'long', timeZone: 'UTC' });
   } catch {
     // Engines without time zone data reject the option.
     return date.toLocaleDateString(tag, { day: 'numeric', month: 'long' });

@@ -35,7 +35,9 @@ describe('reward settings cache', () => {
 
     const updated = { ...reward, titre: 'Thé offert' };
     jest.mocked(useRewards).mockReturnValue({ data: [updated], isLoading: false, error: null } as unknown as ReturnType<typeof useRewards>);
-    rerender(<RewardManager {...props} />);
+    // RewardManager is memoized and the hook is mocked, so nothing would re-render
+    // it on its own: a new `t` reference stands in for the query's notification.
+    rerender(<RewardManager {...props} t={(key: string) => key} />);
     expect(getByText('Thé offert')).toBeTruthy();
   });
 });

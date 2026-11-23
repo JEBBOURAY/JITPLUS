@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ChevronRight } from 'lucide-react-native';
 import { Image, type ImageSource } from 'expo-image';
 import { useTheme } from '@/contexts/ThemeContext';

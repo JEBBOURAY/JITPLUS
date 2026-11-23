@@ -1,7 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -11,12 +10,13 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle, Defs, Line, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
-import { ArrowLeft, ChevronRight, Eye, Package } from 'lucide-react-native';
+import { ChevronRight, Eye, Package } from 'lucide-react-native';
 import { JitClients, JitGames, JitGift, JitScan, JitStamp, JitTicket } from '@/components/icons';
 import type { LucideIcon } from 'lucide-react-native';
 import PremiumLockCard from '@/components/PremiumLockCard';
@@ -29,6 +29,8 @@ import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useDir } from '@/hooks/useDir';
 import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
+import { ScreenHeader } from '@/components/scratch/ScratchUI';
+import { useGoBack } from '@/hooks/useGoBack';
 import {
   queryKeys,
   useDashboardKpis,
@@ -772,7 +774,7 @@ function LoyaltyGiftsList({ distribution }: { distribution: RewardDistribution }
 function StateScreen({ title, message, children }: { title: string; message?: string; children?: ReactNode }) {
   const theme = useTheme();
   return (
-    <View style={[styles.stateContainer, { backgroundColor: theme.bg }]}>
+    <View style={styles.stateContainer}>
       <Text style={[styles.stateTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>{title}</Text>
       {message ? <Text style={[styles.stateText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{message}</Text> : null}
       {children}
@@ -785,8 +787,7 @@ export default function DashboardScreen() {
   const { merchant, isTeamMember } = useAuth();
   const { isPremium } = usePlanStatus(merchant);
   const theme = useTheme();
-  const dir = useDir();
-  const router = useRouter();
+  const goBack = useGoBack();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -811,7 +812,7 @@ export default function DashboardScreen() {
   const onRefresh = useGuardedCallback(async () => {
     hapticLight();
     await Promise.all(
-      [queryKeys.dashboardKpis, queryKeys.dashboardGames, queryKeys.dashboardDistribution, ['dashboard-trends']].map(
+      [queryKeys.dashboardKpis, queryKeys.dashboardGames, queryKeys.dashboardDistribution, queryKeys.dashboardTrendsRoot].map(
         (queryKey) => queryClient.invalidateQueries({ queryKey }),
       ),
     );
@@ -819,47 +820,33 @@ export default function DashboardScreen() {
 
   if (shouldWait) return null;
 
-  if (isTeamMember) {
-    return (
-      <StateScreen title={t('common.ownerOnly')} message={t('common.ownerOnlyMsg')}>
-        <ActionButton label={t('common.back')} variant="secondary" onPress={() => router.back()} style={styles.stateButton} />
-      </StateScreen>
-    );
-  }
+  const header = <ScreenHeader title={t('dashboard.title')} right={<DemoVideoButton id="stats" variant="header" />} />;
 
-  if (kpis.isLoading) {
+  // The header stays on the state screens so there is always a way back.
+  if (isTeamMember || kpis.isLoading || kpis.isError) {
     return (
-      <View style={[styles.stateContainer, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator size="large" color={theme.textMuted} accessibilityLabel={t('common.loading')} />
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
+        {header}
+        {isTeamMember ? (
+          <StateScreen title={t('common.ownerOnly')} message={t('common.ownerOnlyMsg')}>
+            <ActionButton label={t('common.back')} variant="secondary" onPress={goBack} style={styles.stateButton} />
+          </StateScreen>
+        ) : kpis.isLoading ? (
+          <View style={styles.stateContainer}>
+            <ActivityIndicator size="large" color={theme.textMuted} accessibilityLabel={t('common.loading')} />
+          </View>
+        ) : (
+          <StateScreen title={t('common.error')}>
+            <ActionButton label={t('common.retry')} onPress={() => { hapticLight(); kpis.refetch(); }} style={styles.stateButton} />
+          </StateScreen>
+        )}
       </View>
-    );
-  }
-
-  if (kpis.isError) {
-    return (
-      <StateScreen title={t('common.error')}>
-        <ActionButton label={t('common.retry')} onPress={() => { hapticLight(); kpis.refetch(); }} style={styles.stateButton} />
-      </StateScreen>
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.header, { flexDirection: dir.row, paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          hitSlop={HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <ArrowLeft size={icon.lg} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text, textAlign: dir.textAlign }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>
-          {t('dashboard.title')}
-        </Text>
-        <DemoVideoButton id="stats" variant="header" />
-      </View>
+      {header}
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
@@ -931,10 +918,6 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 8 },
   stack: { gap: 12 },
   spaced: { alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-
-  header: { alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingBottom: 8 },
-  backButton: { width: 32, height: 40, justifyContent: 'center' },
-  headerTitle: { flex: 1, fontSize: 26, fontFamily: font.semibold, letterSpacing: -0.5 },
 
   section: { marginTop: 28 },
   sectionTitle: { fontSize: 16, fontFamily: font.semibold, marginBottom: 12 },

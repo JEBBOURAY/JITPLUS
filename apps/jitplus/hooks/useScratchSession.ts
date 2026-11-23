@@ -11,6 +11,7 @@ import { haptic, hapticSelection, hapticSuccess } from '@/utils/haptics';
 import {
   invalidateScratchCards, useMarkScratchCardOpened, useScratchCard, useScratchCardByCampaign, useScratchCardDraw,
 } from '@/hooks/useScratchHooks';
+import { getErrorStatus } from '@jitplus/shared';
 import { SCRATCH_REVEAL_THRESHOLD } from '@jitplus/shared/src/scratch';
 import type { CouponDto } from '@jitplus/shared/src/scratch';
 
@@ -129,7 +130,7 @@ export function useScratchSession(id: string | undefined, isCampaignMode: boolea
       onError: (err) => {
         // 410 = card expired / campaign cancelled / no reward left: retrying can
         // never succeed, so refetch the card to render its terminal state.
-        if ((err as { response?: { status?: number } })?.response?.status === 410) {
+        if (getErrorStatus(err) === 410) {
           setDrawGone(true);
           invalidateScratchCards(queryClient);
           return;

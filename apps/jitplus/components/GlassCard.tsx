@@ -7,8 +7,6 @@ interface GlassCardProps {
   style?: ViewStyle;
   children: React.ReactNode;
   haptic?: boolean;
-  /** Kept for API compatibility (callers pass their corner radius); no longer used. */
-  radius?: number;
   accessibilityLabel?: string;
   accessibilityHint?: string;
 }

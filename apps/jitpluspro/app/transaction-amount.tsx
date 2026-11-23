@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Alert,
   ScrollView,
@@ -9,7 +8,8 @@ import {
   Platform,
   BackHandler,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Text } from '@/components/AppText';
+import { useRouter, useLocalSearchParams, useNavigation, usePreventRemove } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { randomUUID } from '@/utils/crypto';
 import { hapticError, hapticSuccess, safeSelection } from '@/utils/haptics';
@@ -37,6 +37,7 @@ import {
 } from '@/hooks/useQueryHooks';
 import type { ClientCouponAtTill } from '@jitplus/shared/src/scratch';
 import { useClientCouponsAtTill } from '@/hooks/useScratchHooks';
+import { useCheckCollectionItems, useTillCollection } from '@/hooks/useCollectionHooks';
 import { ScreenHeader } from '@/components/scratch/ScratchUI';
 import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { StampClientCard } from '@/components/transaction/StampClientCard';
@@ -44,6 +45,7 @@ import { EarnSection } from '@/components/transaction/EarnSection';
 import { RewardSelector } from '@/components/transaction/RewardSelector';
 import { StampActionBar } from '@/components/transaction/StampActionBar';
 import { ClientWinnings } from '@/components/transaction/ClientWinnings';
+import { CollectionSection } from '@/components/transaction/CollectionSection';
 import { TransactionSuccessModal } from '@/components/transaction/TransactionSuccessModal';
 import { cardSurface, cardStyles } from '@/components/transaction/ui';
 import { isValidUUID } from '@/utils/validation';
@@ -53,6 +55,7 @@ import {
   parseAmount,
   sanitizeAmountInput,
   type EarningMode,
+  type StampPlan,
 } from '@/utils/stampTransaction';
 import type { Reward } from '@/types';
 
@@ -60,7 +63,9 @@ import type { Reward } from '@/types';
 const NO_REWARDS: Reward[] = [];
 const NO_PRIZES: LuckyWheelPendingDraw[] = [];
 const NO_COUPONS: ClientCouponAtTill[] = [];
-const SKELETON_HEIGHTS = [ms(190), ms(120), ms(150)];
+const NO_ITEMS: string[] = [];
+// Same blocks as the loaded screen: client card, stamps, gifts.
+const SKELETON_HEIGHTS = [ms(60), ms(92), ms(190)];
 
 interface SuccessState {
   title: string;
@@ -75,8 +80,11 @@ function haptic(kind: 'success' | 'selection') {
 export default function TransactionAmountScreen() {
   const shouldWait = useRequireAuth();
   const router = useRouter();
-  const { clientId, scanTicket } = useLocalSearchParams<{ clientId: string; scanTicket?: string }>();
+  // bookingId / amount / completeBooking: the till was opened from a booking (agenda/[id]).
+  const params = useLocalSearchParams<{ clientId: string; scanTicket?: string; bookingId?: string; amount?: string; completeBooking?: string }>();
+  const { clientId, scanTicket } = params;
   const validClientId = clientId && isValidUUID(clientId) ? clientId : undefined;
+  const bookingId = params.bookingId && isValidUUID(params.bookingId) ? params.bookingId : undefined;
   const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -86,25 +94,40 @@ export default function TransactionAmountScreen() {
   const status = useClientStatus(validClientId, scanTicket);
   const { data: rewardsData, isLoading: loadingRewards } = useRewards();
   const { data: wheelInfo } = useLuckyWheelActiveInfo();
-  const { data: clientPrizes = NO_PRIZES, isLoading: loadingPrizes } = useLuckyWheelClientPrizes(validClientId);
-  const { data: clientCoupons = NO_COUPONS, isLoading: loadingCoupons } = useClientCouponsAtTill(validClientId);
+  const { data: clientPrizes = NO_PRIZES } = useLuckyWheelClientPrizes(validClientId);
+  const { data: clientCoupons = NO_COUPONS } = useClientCouponsAtTill(validClientId);
+  const { data: collection } = useTillCollection(validClientId);
   const recordTransaction = useRecordTransaction();
+  const checkCollection = useCheckCollectionItems();
 
   const mode: EarningMode = merchant?.stampEarningMode === 'PER_AMOUNT' ? 'PER_AMOUNT' : 'PER_VISIT';
-  const [amount, setAmount] = useState('');
+  // The price of the booked service, as a start: the merchant corrects it for an extra or a discount.
+  const [initialAmount, setInitialAmount] = useState(() => (bookingId && sanitizeAmountInput(params.amount ?? '')) || '');
+  const [amount, setAmount] = useState(initialAmount);
+  // Sent with the stamps, once: a booking takes one transaction.
+  const [visit, setVisit] = useState(() => (bookingId ? { bookingId, completeBooking: params.completeBooking === '1' } : null));
   const [countVisit, setCountVisit] = useState(true);
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
+  const [collectionItems, setCollectionItems] = useState<string[]>(NO_ITEMS);
   const [purchaseRecordedByCoupon, setPurchaseRecordedByCoupon] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<SuccessState | null>(null);
+  // Set in the same render as the success reset: the leave guard must not come back on
+  // while router.back() runs, or it blocks the back it is replaying, forever.
+  const [leaving, setLeaving] = useState(false);
 
   // One key per draft: a retry after a network failure is replayed, never doubled.
   // Initial keys are created lazily: randomUUID() is a native call and this screen re-renders on every keystroke.
   const [initialEarnKey] = useState(randomUUID);
   const [initialRedeemKey] = useState(randomUUID);
+  const [initialCollectionKey] = useState(randomUUID);
   const earnKeyRef = useRef(initialEarnKey);
   const redeemKeyRef = useRef(initialRedeemKey);
+  const collectionKeyRef = useRef(initialCollectionKey);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What was just validated: the balance refetches behind the success modal, and the bar
+  // must not show the next visit's preview ("7 → 2") while the cashier reads "Nouveau solde : 7".
+  const [submitted, setSubmitted] = useState<{ plan: StampPlan; stamps: number } | null>(null);
   const leavingRef = useRef(false);
 
   useEffect(() => () => {
@@ -154,10 +177,16 @@ export default function TransactionAmountScreen() {
     () => formatCurrency(wheelMinSpend, currency, intlLocale),
     [wheelMinSpend, currency, intlLocale],
   );
-  const clientName =
-    [customer?.prenom, customer?.nom].filter(Boolean).join(' ') || t('transaction.defaultClient');
-  const winningsCount = clientPrizes.length + clientCoupons.length;
-  const isDirty = amount !== '' || selectedRewardId !== null;
+  // An anonymous client has no name to show: "?" says it without extra text.
+  const clientName = [customer?.prenom, customer?.nom].filter(Boolean).join(' ') || '?';
+  // Only what can be handed over right now: an expired or not-yet-valid coupon is nothing to give.
+  const redeemableCoupons = useMemo(() => clientCoupons.filter((c) => c.canRedeem), [clientCoupons]);
+  const winningsCount = clientPrizes.length + redeemableCoupons.length;
+  const collectionGiftsDue = useMemo(
+    () => redeemableCoupons.filter((c) => c.coupon.source === 'COLLECTION').length,
+    [redeemableCoupons],
+  );
+  const isDirty = amount !== initialAmount || selectedRewardId !== null || collectionItems.length > 0;
 
   const handleAmountChange = useCallback((text: string) => {
     const next = sanitizeAmountInput(text);
@@ -168,16 +197,31 @@ export default function TransactionAmountScreen() {
   }, []);
 
   const handleCountVisitChange = useCallback((value: boolean) => {
+    haptic('selection');
     setCountVisit(value);
     setPurchaseRecordedByCoupon(false);
     earnKeyRef.current = randomUUID();
   }, []);
+
+  const visitToggle = useMemo(
+    () => (mode === 'PER_VISIT' ? { on: countVisit, disabled: plan.atLimit, onChange: handleCountVisitChange } : null),
+    [mode, countVisit, plan.atLimit, handleCountVisitChange],
+  );
 
   const handleSelectReward = useCallback((id: string | null) => {
     haptic('selection');
     setSelectedRewardId(id);
     redeemKeyRef.current = randomUUID();
   }, []);
+
+  const onePerVisit = collection?.onePerVisit ?? false;
+  const handleToggleCollectionItem = useCallback((itemId: string) => {
+    haptic('selection');
+    // One a day: a new pick replaces the previous one.
+    setCollectionItems((prev) =>
+      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : onePerVisit ? [itemId] : [...prev, itemId]);
+    collectionKeyRef.current = randomUUID();
+  }, [onePerVisit]);
 
   const handleCouponRedeemed = useCallback((purchaseAmount: number) => {
     // A coupon redeemed with a ticket amount already credited this purchase.
@@ -192,6 +236,7 @@ export default function TransactionAmountScreen() {
     if (leavingRef.current) return;
     leavingRef.current = true;
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    setLeaving(true);
     setSuccess(null);
     router.back();
   }, [router]);
@@ -214,20 +259,52 @@ export default function TransactionAmountScreen() {
     return () => sub.remove();
   }, [handleBack]);
 
-  const handleSubmit = useCallback(async () => {
-    if (plan.kind === 'none' || submitting || !validClientId) return;
-    const reward = selectedReward;
-    const steps: ('earn' | 'redeem')[] =
-      plan.kind === 'earn'
-        ? ['earn']
-        : plan.kind === 'redeem'
-          ? ['redeem']
-          : plan.order === 'redeemFirst'
-            ? ['redeem', 'earn']
-            : ['earn', 'redeem'];
-    const done = new Set<'earn' | 'redeem'>();
-    let credited = 0;
+  // Same guard for the iOS swipe-back (BackHandler is Android-only): it erased
+  // the typed amount without asking, or left during the send, so the cashier
+  // never saw whether the stamp went through.
+  const navigation = useNavigation();
+  usePreventRemove(!leaving && (submitting || (isDirty && !success)), ({ data }) => {
+    if (leavingRef.current) {
+      navigation.dispatch(data.action);
+      return;
+    }
+    if (submitting) return;
+    Alert.alert(t('stampScreen.leaveTitle'), t('stampScreen.leaveMessage'), [
+      { text: t('stampScreen.stay'), style: 'cancel' },
+      {
+        text: t('stampScreen.leaveConfirm'),
+        style: 'destructive',
+        onPress: () => {
+          leavingRef.current = true;
+          navigation.dispatch(data.action);
+        },
+      },
+    ]);
+  });
 
+  const handleSubmit = useCallback(async () => {
+    const hasCollection = collectionItems.length > 0;
+    if ((plan.kind === 'none' && !hasCollection) || submitting || !validClientId) return;
+    const reward = selectedReward;
+    type Step = 'earn' | 'redeem' | 'collection';
+    const steps: Step[] =
+      plan.kind === 'none'
+        ? []
+        : plan.kind === 'earn'
+          ? ['earn']
+          : plan.kind === 'redeem'
+            ? ['redeem']
+            : plan.order === 'redeemFirst'
+              ? ['redeem', 'earn']
+              : ['earn', 'redeem'];
+    // Last: a new client gets their card from the stamp, and collecting needs the card.
+    if (hasCollection) steps.push('collection');
+    const done = new Set<Step>();
+    let collected: Awaited<ReturnType<typeof checkCollection.mutateAsync>> | null = null;
+    let credited = 0;
+    let welcomeBonus = 0;
+
+    setSubmitted({ plan, stamps: currentStamps });
     setSubmitting(true);
     try {
       for (const step of steps) {
@@ -239,8 +316,17 @@ export default function TransactionAmountScreen() {
             stamps: plan.earnStamps,
             idempotencyKey: earnKeyRef.current,
             scanTicket,
+            ...visit,
           });
           credited = typeof tx?.stamps === 'number' ? tx.stamps : plan.creditedStamps;
+          welcomeBonus = typeof tx?.welcomeBonus === 'number' ? tx.welcomeBonus : 0;
+        } else if (step === 'collection') {
+          collected = await checkCollection.mutateAsync({
+            clientId: validClientId,
+            itemIds: collectionItems,
+            idempotencyKey: collectionKeyRef.current,
+          });
+          setCollectionItems(NO_ITEMS);
         } else if (reward) {
           await recordTransaction.mutateAsync({
             clientId: validClientId,
@@ -258,18 +344,26 @@ export default function TransactionAmountScreen() {
       haptic('success');
       // First success = best moment to offer notifications (next home visit).
       markNotifPromptWin().catch(() => {});
-      const balance = plan.balanceAfter - plan.creditedStamps + credited;
+      const balance = plan.balanceAfter - plan.creditedStamps + credited + welcomeBonus;
       const lines: string[] = [];
       if (credited > 0) lines.push(t(credited === 1 ? 'stampScreen.successStamps_one' : 'stampScreen.successStamps_other', { count: credited }));
+      if (welcomeBonus > 0) lines.push(t('stampScreen.successWelcomeBonus', { count: welcomeBonus }));
       if (done.has('redeem') && reward) lines.push(t('stampScreen.successReward', { title: reward.titre }));
-      lines.push(t('stampScreen.successBalance', { count: balance }));
+      if (plan.kind !== 'none') lines.push(t('stampScreen.successBalance', { count: balance }));
+      if (collected) {
+        lines.push(collected.gift
+          ? t('collection.till.successGift', { gift: collected.gift.label })
+          : t('collection.till.successProgress', { checked: collected.collection.checked, total: collected.collection.total }));
+      }
       setSuccess({
         title:
-          plan.kind === 'earnAndRedeem'
-            ? t(plan.purchaseOnly ? 'stampScreen.successPurchaseAndRedeem' : 'stampScreen.successEarnAndRedeem')
-            : plan.kind === 'redeem'
-              ? t('stampScreen.successRedeem')
-              : t(plan.purchaseOnly ? 'stampScreen.successPurchase' : 'stampScreen.successEarn'),
+          plan.kind === 'none'
+            ? t('collection.till.successOnly')
+            : plan.kind === 'earnAndRedeem'
+                ? t(plan.purchaseOnly ? 'stampScreen.successPurchaseAndRedeem' : 'stampScreen.successEarnAndRedeem')
+              : plan.kind === 'redeem'
+                ? t('stampScreen.successRedeem')
+                : t(plan.purchaseOnly ? 'stampScreen.successPurchase' : 'stampScreen.successEarn'),
         lines,
       });
       closeTimerRef.current = setTimeout(leave, SUCCESS_DISPLAY_MS);
@@ -278,6 +372,8 @@ export default function TransactionAmountScreen() {
       // Drop what already went through so a retry only sends the rest.
       if (done.has('earn')) {
         setAmount('');
+        setInitialAmount('');
+        setVisit(null);
         setCountVisit(false);
         earnKeyRef.current = randomUUID();
       }
@@ -285,19 +381,23 @@ export default function TransactionAmountScreen() {
         setSelectedRewardId(null);
         redeemKeyRef.current = randomUUID();
       }
-      const partial = done.has('redeem')
-        ? t(plan.purchaseOnly ? 'stampScreen.partialRedeemDonePurchase' : 'stampScreen.partialRedeemDone')
-        : done.has('earn')
-          ? t(plan.purchaseOnly ? 'stampScreen.partialPurchaseDone' : 'stampScreen.partialEarnDone')
-          : null;
+      // Stamps and gift both planned, only one went through: say which.
+      const bothPlanned = steps.includes('earn') && steps.includes('redeem');
+      const partial = !bothPlanned || done.has('earn') === done.has('redeem')
+        ? null
+        : done.has('redeem')
+          ? t(plan.purchaseOnly ? 'stampScreen.partialRedeemDonePurchase' : 'stampScreen.partialRedeemDone')
+          : t(plan.purchaseOnly ? 'stampScreen.partialPurchaseDone' : 'stampScreen.partialEarnDone');
+      // Something went through but not the collection: say that part is left too.
+      const collectionLeft = hasCollection && !done.has('collection') && done.size > 0 ? t('collection.till.partial') : null;
       Alert.alert(
         t('common.error'),
-        [partial, getErrorMessage(err, t('stampScreen.error'))].filter(Boolean).join('\n\n'),
+        [partial, collectionLeft, getErrorMessage(err, t('stampScreen.error'))].filter(Boolean).join('\n\n'),
       );
     } finally {
       setSubmitting(false);
     }
-  }, [plan, submitting, validClientId, scanTicket, selectedReward, recordTransaction, amountNum, leave, t]);
+  }, [plan, currentStamps, submitting, validClientId, scanTicket, visit, selectedReward, recordTransaction, checkCollection, collectionItems, amountNum, leave, t]);
 
   if (shouldWait) return null;
 
@@ -324,19 +424,15 @@ export default function TransactionAmountScreen() {
       <>
         <StampClientCard
           name={clientName}
-          prenom={customer.prenom}
-          nom={customer.nom}
           stamps={currentStamps}
-          pendingStamps={plan.kind === 'earn' ? plan.creditedStamps : 0}
           goal={goal}
           isBirthday={customer.isBirthday}
         />
 
-        {(winningsCount > 0 || loadingPrizes || loadingCoupons) && (
+        {winningsCount > 0 && (
           <ClientWinnings
             prizes={clientPrizes}
-            coupons={clientCoupons}
-            loading={loadingPrizes || loadingCoupons}
+            coupons={redeemableCoupons}
             clientId={validClientId!}
             defaultAmount={amount}
             onCouponRedeemed={handleCouponRedeemed}
@@ -347,8 +443,6 @@ export default function TransactionAmountScreen() {
           mode={mode}
           amount={amount}
           onAmountChange={handleAmountChange}
-          countVisit={countVisit}
-          onCountVisitChange={handleCountVisitChange}
           plan={plan}
           amountPerStampLabel={amountPerStampLabel}
           wheelMinSpend={wheelMinSpend}
@@ -357,6 +451,15 @@ export default function TransactionAmountScreen() {
           accumulationLimit={accumulationLimit}
           purchaseRecordedByCoupon={purchaseRecordedByCoupon}
         />
+
+        {collection && (
+          <CollectionSection
+            collection={collection}
+            selected={collectionItems}
+            onToggle={handleToggleCollectionItem}
+            giftsDue={collectionGiftsDue}
+          />
+        )}
 
         <RewardSelector
           rewards={rewards}
@@ -392,9 +495,10 @@ export default function TransactionAmountScreen() {
         </ScrollView>
         {customer && (
           <StampActionBar
-            plan={plan}
-            currentStamps={currentStamps}
-            rewardTitle={selectedReward?.titre ?? null}
+            plan={success && submitted ? submitted.plan : plan}
+            currentStamps={success && submitted ? submitted.stamps : currentStamps}
+            visit={visitToggle}
+            collectionCount={collectionItems.length}
             loading={submitting}
             bottomInset={insets.bottom}
             onSubmit={handleSubmit}

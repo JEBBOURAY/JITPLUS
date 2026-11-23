@@ -116,6 +116,35 @@ describe('MerchantTransactionService enrollment rules', () => {
   });
 });
 
+describe('MerchantTransactionService stamps given from a booking', () => {
+  const booking = { id: 'b1', merchantId: MERCHANT_ID, clientId: CLIENT_ID, status: 'CONFIRMED', startsAt: new Date(), checkedInAt: null, checkInTransactionId: null };
+  const withBooking = (found: unknown) => {
+    const ctx = setup({ id: 'lc1', stamps: 2, deactivatedAt: null });
+    const bookingDb = { findFirst: jest.fn().mockResolvedValue(found), updateMany: jest.fn().mockResolvedValue({ count: 1 }) };
+    Object.assign(ctx.prisma, { booking: bookingDb });
+    const bookingService = { announceVisit: jest.fn(), checkInFromTransaction: jest.fn() };
+    Object.assign(ctx.service, { booking: bookingService });
+    return { ...ctx, bookingDb, bookingService };
+  };
+  const earn = (service: MerchantTransactionService, type: 'EARN_STAMPS' | 'REDEEM_REWARD' = 'EARN_STAMPS') =>
+    service.createTransaction(CLIENT_ID, MERCHANT_ID, type, 0, 1, undefined, undefined, undefined, undefined, { booking: { id: 'b1', complete: false } });
+
+  it('ties the transaction to the booking and skips the search for a nearby visit', async () => {
+    const { service, bookingDb, bookingService } = withBooking(booking);
+    await earn(service);
+    expect(bookingDb.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ checkInTransactionId: 'tx-1' }) }));
+    expect(bookingService.announceVisit).toHaveBeenCalledWith(expect.objectContaining({ id: 'b1', status: 'CHECKED_IN' }));
+    expect(bookingService.checkInFromTransaction).not.toHaveBeenCalled();
+  });
+
+  it('fails the whole transaction when the booking cannot take the stamps', async () => {
+    const { service, bookingService, eventsGateway } = withBooking({ ...booking, checkInTransactionId: 'tx-0' });
+    await expect(earn(service)).rejects.toThrow('error.booking.alreadyCredited');
+    expect(bookingService.announceVisit).not.toHaveBeenCalled();
+    expect(eventsGateway.emitStampsUpdated).not.toHaveBeenCalled();
+  });
+});
+
 describe('MerchantTransactionService PURCHASE (stamp-less wheel purchase)', () => {
   const purchase = (service: MerchantTransactionService, amount: number, stamps = 0) =>
     service.createTransaction(CLIENT_ID, MERCHANT_ID, 'PURCHASE', amount, stamps);
@@ -201,5 +230,112 @@ describe('MerchantTransactionService.adjustStamps', () => {
     const res = await service.adjustStamps(CLIENT_ID, MERCHANT_ID, 3);
     expect(res).toMatchObject({ previousStamps: 2, newStamps: 5 });
     expect(prisma.loyaltyCard.update).toHaveBeenCalledWith(expect.objectContaining({ data: { stamps: 5 } }));
+  });
+});
+
+// Security audit 2026-11-21: a typed phone number is no proof of consent, so
+// the card it opens keeps the client's details masked until they confirm.
+describe('MerchantTransactionService phone-enrolment consent', () => {
+  const earnWith = (service: MerchantTransactionService, options: Record<string, boolean>) =>
+    service.createTransaction(CLIENT_ID, MERCHANT_ID, 'EARN_STAMPS', 0, 1, undefined, undefined, undefined, undefined, options);
+
+  it('marks a card opened from a phone ticket as consentPending', async () => {
+    const { service, prisma } = setup(null);
+    await earnWith(service, { allowEnroll: true, allowReactivate: false, welcomeProof: false, consentPending: true });
+    expect(prisma.loyaltyCard.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ clientId: CLIENT_ID, merchantId: MERCHANT_ID, consentPending: true }),
+    }));
+  });
+
+  it('a QR-ticket enrolment is not pending', async () => {
+    const { service, prisma } = setup(null);
+    await earnWith(service, { allowEnroll: true, allowReactivate: true, welcomeProof: true });
+    expect(prisma.loyaltyCard.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ consentPending: false }),
+    }));
+  });
+
+  it("the client's own QR scan confirms a pending card", async () => {
+    const { service, prisma } = setup({ id: 'lc1', stamps: 1, deactivatedAt: null, consentPending: true } as never);
+    await earnWith(service, { allowEnroll: true, allowReactivate: true, welcomeProof: true });
+    expect(prisma.loyaltyCard.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'lc1' }, data: { consentPending: false },
+    }));
+  });
+
+  it('another phone-ticket transaction does not confirm a pending card', async () => {
+    const { service, prisma } = setup({ id: 'lc1', stamps: 1, deactivatedAt: null, consentPending: true } as never);
+    await earnWith(service, { allowEnroll: true, allowReactivate: false, welcomeProof: false, consentPending: true });
+    expect(prisma.loyaltyCard.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: { consentPending: false } }));
+  });
+});
+
+describe('MerchantTransactionService.getTransactions (history filters)', () => {
+  function history() {
+    const loyaltyCardRepo = { findMany: jest.fn().mockResolvedValue([{ clientId: 'c1' }, { clientId: 'c2' }]) };
+    const transactionRepo = {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 't1', type: 'EARN_STAMPS', client: { id: 'c1', prenom: 'Sara', nom: 'Alaoui', shareInfoMerchants: false } },
+      ]),
+      count: jest.fn().mockResolvedValue(1),
+      groupBy: jest.fn().mockResolvedValue([{ type: 'EARN_STAMPS', _count: 1, _sum: { stamps: 2, amount: 50 } }]),
+    };
+    const service = new MerchantTransactionService(
+      {} as any, {} as any, {} as any, loyaltyCardRepo as any, transactionRepo as any,
+      {} as any, {} as any, {} as any, {} as any, {} as any,
+    );
+    return { service, loyaltyCardRepo, transactionRepo };
+  }
+
+  it('without filters returns the whole history and the page-1 totals', async () => {
+    const { service, transactionRepo, loyaltyCardRepo } = history();
+    const res = await service.getTransactions(MERCHANT_ID, 1, 20);
+    expect(transactionRepo.findMany.mock.calls[0][0].where).toEqual({ merchantId: MERCHANT_ID, type: { not: 'LOYALTY_PROGRAM_CHANGE' } });
+    expect(loyaltyCardRepo.findMany).not.toHaveBeenCalled();
+    expect(res.summary).toEqual({ stampsGiven: 2, rewardsRedeemed: 0, revenue: 50 });
+    expect(res.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+    // Names stay masked for clients who don't share their info.
+    expect(res.transactions[0].client.prenom).toBe('S.');
+  });
+
+  it('resolves the search from this merchant cards only, then filters on those clients', async () => {
+    const { service, transactionRepo, loyaltyCardRepo } = history();
+    await service.getTransactions(MERCHANT_ID, 1, 20, { search: ' sara ', kind: 'stamps', staff: 'owner', from: '2026-11-01T00:00:00.000Z' });
+    const cardsArgs = loyaltyCardRepo.findMany.mock.calls[0][0];
+    expect(cardsArgs.where.merchantId).toBe(MERCHANT_ID);
+    expect(cardsArgs.where.client.OR).toEqual(expect.arrayContaining([{ prenom: { contains: 'sara', mode: 'insensitive' } }]));
+    expect(cardsArgs.take).toBeGreaterThan(0);
+    const where = transactionRepo.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({
+      merchantId: MERCHANT_ID,
+      clientId: { in: ['c1', 'c2'] },
+      type: { in: ['EARN_STAMPS', 'WELCOME_BONUS'] },
+      teamMemberId: null,
+      createdAt: { gte: new Date('2026-11-01T00:00:00.000Z') },
+    });
+    // Totals read the same filter, active rows only.
+    expect(transactionRepo.groupBy.mock.calls[0][0].where).toEqual({ ...where, status: 'ACTIVE' });
+  });
+
+  it('a search with no matching client answers empty without querying the history', async () => {
+    const { service, transactionRepo, loyaltyCardRepo } = history();
+    loyaltyCardRepo.findMany.mockResolvedValue([]);
+    const res = await service.getTransactions(MERCHANT_ID, 1, 20, { search: 'zzz' });
+    expect(transactionRepo.findMany).not.toHaveBeenCalled();
+    expect(res).toEqual({
+      transactions: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      summary: { stampsGiven: 0, rewardsRedeemed: 0, revenue: 0 },
+    });
+  });
+
+  it('skips the totals after page 1 and for cancelled rows', async () => {
+    const { service, transactionRepo } = history();
+    const page2 = await service.getTransactions(MERCHANT_ID, 2, 20);
+    const cancelled = await service.getTransactions(MERCHANT_ID, 1, 20, { kind: 'cancelled' });
+    expect(transactionRepo.groupBy).not.toHaveBeenCalled();
+    expect(page2.summary).toBeUndefined();
+    expect(cancelled.summary).toBeUndefined();
+    expect(transactionRepo.findMany.mock.calls[1][0].where.status).toBe('CANCELLED');
   });
 });

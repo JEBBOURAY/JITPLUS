@@ -7,7 +7,7 @@ import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import Skeleton from '@/components/Skeleton';
 import { useAppFonts } from '@/utils/fonts';
-import { getInitials } from '@/utils/profileCompletion';
+import { getFullName, getInitials } from '@/utils/profileCompletion';
 import { fontSize as FS, hp, ms, radius, wp } from '@/utils/responsive';
 import type { Client } from '@/types';
 
@@ -36,7 +36,7 @@ function ProfileHeader({ client, isLoading, onEdit }: ProfileHeaderProps) {
     }
   }, [createdAt, locale, t]);
 
-  const fullName = [client?.prenom, client?.nom].filter(Boolean).join(' ');
+  const fullName = getFullName(client);
   const contact = client?.email || client?.telephone || null;
   const contactVerified = client?.email ? !!client.emailVerified : !!client?.telephoneVerified;
 

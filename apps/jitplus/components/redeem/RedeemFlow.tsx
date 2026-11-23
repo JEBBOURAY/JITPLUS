@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from 'expo-router';
 import Animated, { FadeIn, Keyframe, LayoutAnimationConfig, useReducedMotion } from 'react-native-reanimated';
 import { AlertCircle, CheckCircle2, Clock, type LucideIcon } from 'lucide-react-native';
 import { Text } from '@/components/AppText';
@@ -51,11 +52,14 @@ export function useRedeemFlow<Result, ErrorKey extends string>(options: FlowOpti
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  // No hardware back while the request is in flight.
+  // No way back while the request is in flight: hardware back on Android,
+  // the swipe-back gesture on iOS (the credit would land unseen).
+  const navigation = useNavigation();
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => screen.kind === 'loading');
+    navigation.setOptions({ gestureEnabled: screen.kind !== 'loading' });
     return () => sub.remove();
-  }, [screen.kind]);
+  }, [screen.kind, navigation]);
 
   const run = useCallback(async () => {
     if (!tokenValid) {

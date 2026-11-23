@@ -1,13 +1,13 @@
 import { memo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   ActivityIndicator,
   RefreshControl,
   Platform,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check, X } from 'lucide-react-native';
 import { JitBell, JitClients, JitEye, JitMail, JitMessages } from '@/components/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

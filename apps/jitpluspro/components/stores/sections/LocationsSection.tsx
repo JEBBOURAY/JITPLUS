@@ -1,7 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -11,6 +10,7 @@ import {
   Platform,
   Image as RNImage,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image as ExpoImage } from 'expo-image';
 import {
   Plus,

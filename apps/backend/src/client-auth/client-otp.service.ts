@@ -1,21 +1,22 @@
-import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Logger, Inject, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, Logger, Inject, HttpException, HttpStatus } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomInt } from 'crypto';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
   OTP_REPOSITORY, type IOtpRepository,
 } from '../common/repositories';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS } from '../common/constants';
+import { OTP_MIN, OTP_MAX, CLIENT_OTP_EXPIRY_MS as OTP_EXPIRY_MS } from '../common/constants';
 import { CLIENT_AUTH_SELECT } from '../common/prisma-selects';
-import { checkOtpCode, otpDbOps, hashOtp, OtpRecord } from '../common/utils/otp.helper';
+import { checkOtpCode, otpDbOps, hashOtp, otpSentRecently, OtpRecord, OTP_DECOY_CODE } from '../common/utils/otp.helper';
 import { OtpSendLimiter } from '../common/coordination/otp-send-limiter.service';
 import { IMailProvider, MAIL_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { pickEmailLang } from '../mail/transactional-i18n';
+import type { AppLang } from '../common/utils/app-lang';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { maskEmail } from '../common/utils/pii-mask';
 import { ClientSessionService, type ClientAuthResponse } from './client-session.service';
-import { normalizePhone, isValidPhone } from './client-phone.util';
-import { releaseUnverifiedEmail } from './email-ownership.util';
+import { normalizePhone, isValidPhone, extractCountryCode } from './client-phone.util';
+import { releaseUnverifiedEmail, releaseUnverifiedPhone } from './email-ownership.util';
 
 /**
  * Client OTP flows: email OTP sign-in / sign-up, and the change-contact OTP
@@ -40,21 +41,37 @@ export class ClientOtpService {
    * checkOtpCode). Throws the user-facing error on any failure.
    */
   private async verifyOtpCode(otpRecord: OtpRecord | null, code: string, notFoundMessage: string): Promise<void> {
-    const result = await checkOtpCode(otpRecord, code, notFoundMessage, otpDbOps(this.otpRepo));
+    const result = await checkOtpCode(otpRecord, code, notFoundMessage, otpDbOps(this.otpRepo), {
+      expired: 'error.auth.otpExpired',
+      tooManyAttempts: 'error.auth.otpTooManyAttempts',
+    });
     if (!result.ok) {
-      const { remaining } = result;
-      throw new UnauthorizedException(
-        `Code invalide (${remaining} essai${remaining > 1 ? 's' : ''} restant${remaining > 1 ? 's' : ''})`,
-      );
+      // 400, not 401: the app answers a 401 by refreshing the session and replaying
+      // the request, which burned a second attempt on every wrong code.
+      throw new BadRequestException(result.remaining === 1 ? 'error.auth.otpInvalidLastTry' : 'error.auth.otpInvalid');
+    }
+  }
+
+  /** Daily cap, with the message of the client app (the limiter is shared with Pro). */
+  private async consumeSendQuota(identifier: string): Promise<void> {
+    try {
+      await this.otpSendLimiter.consume(identifier);
+    } catch (error) {
+      if (error instanceof HttpException && error.getStatus() === HttpStatus.TOO_MANY_REQUESTS) {
+        throw new HttpException('error.auth.otpDailyLimit', HttpStatus.TOO_MANY_REQUESTS);
+      }
+      throw error;
     }
   }
 
   // ── Email OTP ─────────────────────────────────────────
 
   /**
-   * Send OTP to email address
+   * Send OTP to email address.
+   * `codeSent` is for the caller's own bookkeeping (sign-up funnel) and must
+   * never reach the response: it tells whether the address has an account.
    */
-  async sendOtpEmail(email: string, isRegister = false): Promise<{ success: boolean; message: string }> {
+  async sendOtpEmail(email: string, isRegister = false, requestLang: AppLang = 'fr'): Promise<{ success: boolean; message: string; codeSent: boolean }> {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
@@ -63,37 +80,43 @@ export class ClientOtpService {
 
     // SECURITY: Anti-enumeration — return identical response regardless of account existence.
     // Silently skip OTP when account state doesn't match intent (register vs login),
-    // EXCEPT if the account exists but the profile was never completed (ghost account).
+    // EXCEPT if the profile was never completed (ghost account) or the account only
+    // claims this email without having verified it: verifyOtpEmail then lets the
+    // inbox owner finish signing up, so they must receive the code.
     const existingClient = await this.clientRepo.findUnique({
       where: { email: normalizedEmail },
-      select: { id: true, nom: true, prenom: true },
+      select: { id: true, prenom: true, emailVerified: true, language: true },
     });
 
-    const isGhostAccount = existingClient && (!existingClient.nom || !existingClient.prenom);
+    // The first name marks a finished sign-up (the last name is optional).
+    const isGhostAccount = existingClient && !existingClient.prenom;
     const GENERIC_OTP_MESSAGE = 'Si un compte correspond, un code a été envoyé par email.';
 
-    if (isRegister && existingClient && !isGhostAccount) {
-      // Valid account already exists — don't send OTP but return same success response
-      return { success: true, message: GENERIC_OTP_MESSAGE };
-    }
+    // Valid account on sign-up: its owner is told by email, the screen stays generic.
+    const accountExists = isRegister && !!existingClient?.emailVerified && !isGhostAccount;
+    // Nothing to send to an unknown address on the forgot-password path.
+    const nobodyToEmail = !isRegister && !existingClient;
 
-    if (!isRegister && !existingClient) {
-      // No account found — don't send OTP but return same success response
-      return { success: true, message: GENERIC_OTP_MESSAGE };
-    }
-
-    // Daily OTP send limit per email
-    await this.otpSendLimiter.consume(normalizedEmail);
-
-    // Per-identifier cooldown — prevent OTP spam even if IP changes
+    // Per-identifier cooldown — prevent OTP spam even if IP changes.
+    // Checked first: a refused request sends nothing and must not use up the daily quota.
     const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
-    if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
+    if (existingOtp && otpSentRecently(existingOtp)) {
       throw new HttpException('error.auth.otpWait', HttpStatus.TOO_MANY_REQUESTS);
     }
 
+    // Daily OTP send limit per email
+    await this.consumeSendQuota(normalizedEmail);
+
+    // Stored in every case, even when the code is never sent: the cooldown then
+    // answers the same whether or not the address has an account.
+    // Nothing is sent to an unknown address: a decoy, so Pro does not see a pending code.
     const code = randomInt(OTP_MIN, OTP_MAX).toString();
-    const codeHash = hashOtp(code);
+    const codeHash = nobodyToEmail ? OTP_DECOY_CODE : hashOtp(code);
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+
+    // Unknown address with a row already there: that row can be a pending Pro
+    // (merchant) code, since both apps share the table. Never overwrite it.
+    if (nobodyToEmail && existingOtp) return { success: true, message: GENERIC_OTP_MESSAGE, codeSent: false };
 
     // Upsert OTP by email (hash only — never store plaintext)
     await this.otpRepo.upsert({
@@ -107,26 +130,39 @@ export class ClientOtpService {
         code: codeHash,
         expiresAt,
         attempts: 0,
+        createdAt: new Date(),
       },
     });
 
+    if (nobodyToEmail) return { success: true, message: GENERIC_OTP_MESSAGE, codeSent: false };
+
     // Send OTP email — client-facing branding (JitPlus, not JitPlus Pro)
     try {
-      const existingClient = await this.clientRepo.findUnique({
-        where: { email: normalizedEmail },
-        select: { language: true },
-      });
-      const lang = pickEmailLang(existingClient?.language);
-      await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client', lang);
+      // No account yet on sign-up: the language of the app is all we know.
+      const lang = pickEmailLang(existingClient?.language ?? requestLang);
+      if (accountExists) {
+        await this.mailProvider.sendAccountExistsClient(normalizedEmail, lang);
+      } else {
+        // Login by code and forgot-password share isRegister=false: only sign-up can be named.
+        await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client', lang, isRegister ? 'register' : 'verification');
+      }
     } catch (error) {
       const err = error as { message?: string; stack?: string };
       this.logger.error(`OTP email delivery failed for ${maskEmail(normalizedEmail)}: ${err?.message}`, err?.stack);
+      await this.forgetUndeliveredOtp({ email: normalizedEmail });
       throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
     }
 
     this.logger.log(`OTP envoyé à ${maskEmail(normalizedEmail)}`);
 
-    return { success: true, message: GENERIC_OTP_MESSAGE };
+    return { success: true, message: GENERIC_OTP_MESSAGE, codeSent: !accountExists };
+  }
+
+  /** A code that never left must not hold the cooldown: the user is told to retry. */
+  private async forgetUndeliveredOtp(where: { email: string } | { telephone: string }): Promise<void> {
+    await this.otpRepo.deleteMany({ where }).catch((e: unknown) => {
+      this.logger.warn(`Could not remove undelivered OTP: ${String(e)}`);
+    });
   }
 
   /**
@@ -140,7 +176,7 @@ export class ClientOtpService {
       where: { email: normalizedEmail },
     });
 
-    await this.verifyOtpCode(otpRecord, code, 'Aucun code n\'a été envoyé à cet email');
+    await this.verifyOtpCode(otpRecord, code, 'error.auth.otpNotSentEmail');
 
     const [consumed, client] = await Promise.all([
       this.otpRepo.deleteMany({ where: { id: otpRecord!.id } }),
@@ -148,7 +184,7 @@ export class ClientOtpService {
     ]);
     // Single use: a concurrent request with the same code already consumed it.
     if (consumed.count !== 1) {
-      throw new BadRequestException('Code déjà utilisé. Veuillez redemander un code');
+      throw new BadRequestException('error.auth.otpAlreadyUsed');
     }
 
     let resolvedClient = client;
@@ -160,18 +196,20 @@ export class ClientOtpService {
     // create the owner's own account.
     if (resolvedClient && !resolvedClient.emailVerified) {
       if (!isRegister) {
-        throw new BadRequestException('Aucun compte n\'est associé à cet email. Veuillez vous inscrire.');
+        throw new BadRequestException('error.auth.noAccountForEmail');
       }
       await releaseUnverifiedEmail(this.clientRepo, resolvedClient.id, normalizedEmail);
       resolvedClient = null;
     }
 
-    const isNewUser = !resolvedClient || !resolvedClient.nom;
+    // Same definition as the ghost account of sendOtpEmail: a sign-up abandoned
+    // before the profile step resumes here instead of hitting "email exists".
+    const isNewUser = !resolvedClient || !resolvedClient.prenom;
 
     if (!resolvedClient) {
       // Login mode: reject if no account exists
       if (!isRegister) {
-        throw new BadRequestException('Aucun compte n\'est associé à cet email. Veuillez vous inscrire.');
+        throw new BadRequestException('error.auth.noAccountForEmail');
       }
       try {
         resolvedClient = await this.clientRepo.create({
@@ -188,8 +226,8 @@ export class ClientOtpService {
         }
         throw error;
       }
-    } else if (isRegister) {
-      // User tried to register but account already exists
+    } else if (isRegister && !isNewUser) {
+      // User tried to register but a complete account already exists
       throw new ConflictException('error.auth.emailExists');
     }
 
@@ -212,22 +250,23 @@ export class ClientOtpService {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
         throw new BadRequestException('error.auth.emailInvalid');
       }
-      const existing = await this.clientRepo.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
-      if (existing && existing.id !== clientId) {
-        throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
+      // An unverified claim does not hold the address: proving the inbox takes it over.
+      const existing = await this.clientRepo.findUnique({ where: { email: normalizedEmail }, select: { id: true, emailVerified: true } });
+      if (existing && existing.id !== clientId && existing.emailVerified) {
+        throw new ConflictException('error.auth.emailExists');
       }
-      await this.otpSendLimiter.consume(normalizedEmail);
       const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
-      if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
+      if (existingOtp && otpSentRecently(existingOtp)) {
         throw new HttpException('error.auth.otpWait', HttpStatus.TOO_MANY_REQUESTS);
       }
+      await this.consumeSendQuota(normalizedEmail);
       const code = randomInt(OTP_MIN, OTP_MAX).toString();
       const codeHash = hashOtp(code);
       const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
       await this.otpRepo.upsert({
         where: { email: normalizedEmail },
         create: { email: normalizedEmail, code: codeHash, expiresAt },
-        update: { code: codeHash, expiresAt, attempts: 0 },
+        update: { code: codeHash, expiresAt, attempts: 0, createdAt: new Date() },
       });
       if (process.env.NODE_ENV === 'development') {
         this.logger.debug(`[DEV] OTP changement email ${normalizedEmail}: ${code}`);
@@ -242,6 +281,7 @@ export class ClientOtpService {
       } catch (error) {
         const err = error as { message?: string; stack?: string };
         this.logger.error(`OTP email delivery failed for ${maskEmail(normalizedEmail)}: ${err?.message}`, err?.stack);
+        await this.forgetUndeliveredOtp({ email: normalizedEmail });
         throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
       }
       return { success: true, message: 'Code envoyé par email' };
@@ -250,33 +290,40 @@ export class ClientOtpService {
       if (!isValidPhone(normalizedPhone)) {
         throw new BadRequestException('error.auth.phoneInvalidFormat');
       }
-      const existing = await this.clientRepo.findUnique({ where: { telephone: normalizedPhone }, select: { id: true, isAnonymous: true } });
+      const existing = await this.clientRepo.findUnique({
+        where: { telephone: normalizedPhone },
+        select: { id: true, isAnonymous: true, telephoneVerified: true },
+      });
       if (existing && existing.id !== clientId) {
         if (existing.isAnonymous) {
           throw new ConflictException(
             await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
           );
         }
-        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
+        // Unverified on another account = typed, never proven: whoever receives
+        // the code may claim it (applied in verifyChangeContactOtp). A verified
+        // number stays with its owner.
+        if (existing.telephoneVerified) throw new ConflictException('error.auth.phoneExists');
       }
-      await this.otpSendLimiter.consume(normalizedPhone);
       const existingOtp = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
-      if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
+      if (existingOtp && otpSentRecently(existingOtp)) {
         throw new HttpException('error.auth.otpWait', HttpStatus.TOO_MANY_REQUESTS);
       }
+      await this.consumeSendQuota(normalizedPhone);
       const code = randomInt(OTP_MIN, OTP_MAX).toString();
       const codeHash = hashOtp(code);
       const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
       await this.otpRepo.upsert({
         where: { telephone: normalizedPhone },
         create: { telephone: normalizedPhone, code: codeHash, expiresAt },
-        update: { code: codeHash, expiresAt, attempts: 0 },
+        update: { code: codeHash, expiresAt, attempts: 0, createdAt: new Date() },
       });
       if (process.env.NODE_ENV === 'development') {
         this.logger.debug(`[DEV] OTP changement tél ${normalizedPhone}: ${code}`);
       }
       const sent = await this.smsProvider.sendWhatsAppOtp(normalizedPhone, code);
       if (!sent) {
+        await this.forgetUndeliveredOtp({ telephone: normalizedPhone });
         throw new HttpException('error.auth.whatsappFail', HttpStatus.SERVICE_UNAVAILABLE);
       }
       return { success: true, message: 'Code envoyé avec succès' };
@@ -295,33 +342,71 @@ export class ClientOtpService {
     if (type === 'email') {
       const normalizedEmail = value.trim().toLowerCase();
       const otpRecord = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
-      await this.verifyOtpCode(otpRecord, code, "Aucun code n'a été envoyé à cet email");
-      // Verify the client still has this email
+      await this.verifyOtpCode(otpRecord, code, 'error.auth.otpNotSentEmail');
       const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { email: true } });
-      if (!client || client.email !== normalizedEmail) {
-        await this.otpRepo.delete({ where: { id: otpRecord!.id } });
-        throw new BadRequestException('error.auth.profileEmailMismatch');
-      }
       await this.otpRepo.delete({ where: { id: otpRecord!.id } });
-      await this.clientRepo.update({
-        where: { id: clientId },
-        data: { emailVerified: true },
-      });
+      if (!client) throw new BadRequestException('error.auth.clientNotFound');
+      // A new address is applied only now, once proven: an account never ends up
+      // with an email its owner cannot use for "forgot password".
+      if (client.email !== normalizedEmail) {
+        const holder = await this.clientRepo.findUnique({
+          where: { email: normalizedEmail },
+          select: { id: true, emailVerified: true },
+        });
+        if (holder && (holder.emailVerified || !(await releaseUnverifiedEmail(this.clientRepo, holder.id, normalizedEmail)))) {
+          throw new ConflictException('error.auth.emailExists');
+        }
+      }
+      try {
+        await this.clientRepo.update({
+          where: { id: clientId },
+          data: { email: normalizedEmail, emailVerified: true },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('error.auth.emailExists');
+        }
+        throw error;
+      }
       return { success: true, message: 'Email vérifié avec succès' };
     } else {
       const normalizedPhone = normalizePhone(value);
       const otpRecord = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
-      await this.verifyOtpCode(otpRecord, code, "Aucun code n'a été envoyé à ce numéro");
+      await this.verifyOtpCode(otpRecord, code, 'error.auth.otpNotSentPhone');
       const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { telephone: true } });
-      if (!client || client.telephone !== normalizedPhone) {
-        await this.otpRepo.delete({ where: { id: otpRecord!.id } });
-        throw new BadRequestException('error.auth.profilePhoneMismatch');
-      }
       await this.otpRepo.delete({ where: { id: otpRecord!.id } });
-      await this.clientRepo.update({
-        where: { id: clientId },
-        data: { telephoneVerified: true },
-      });
+      if (!client) throw new BadRequestException('error.auth.clientNotFound');
+      // As for the email: the code is the proof, so a new number is applied only
+      // now. It is the one moment a number may leave another account, and only
+      // when that account never proved it (security review 2026-11-21: a plain
+      // profile update used to take it, with no proof at all).
+      if (client.telephone !== normalizedPhone) {
+        const holder = await this.clientRepo.findUnique({
+          where: { telephone: normalizedPhone },
+          select: { id: true, isAnonymous: true, telephoneVerified: true },
+        });
+        if (holder && holder.id !== clientId) {
+          if (holder.isAnonymous) {
+            throw new ConflictException(
+              await this.clientClaimService.buildAnonymousPhoneConflictPayload(holder.id),
+            );
+          }
+          if (holder.telephoneVerified || !(await releaseUnverifiedPhone(this.clientRepo, holder.id, normalizedPhone))) {
+            throw new ConflictException('error.auth.phoneExists');
+          }
+        }
+      }
+      try {
+        await this.clientRepo.update({
+          where: { id: clientId },
+          data: { telephone: normalizedPhone, countryCode: extractCountryCode(normalizedPhone), telephoneVerified: true },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('error.auth.phoneExists');
+        }
+        throw error;
+      }
       return { success: true, message: 'Numéro de téléphone vérifié avec succès' };
     }
   }

@@ -39,7 +39,7 @@ import { getScratchTexts } from './scratch-notif-i18n';
 
 type Tx = Prisma.TransactionClient;
 
-const COUPON_MERCHANT_SELECT = { id: true, nom: true, logoUrl: true, currency: true } as const;
+export const COUPON_MERCHANT_SELECT = { id: true, nom: true, logoUrl: true, currency: true } as const;
 
 /** Columns of a coupon returned to the apps. */
 export const COUPON_PUBLIC_SELECT = {
@@ -161,16 +161,7 @@ export class CouponService {
     },
   ) {
     const { card, reward, expiresAt, now } = params;
-    let code: string | null = null;
-    for (let i = 0; i < CODE_ATTEMPTS && !code; i++) {
-      const candidate = generateCouponCode();
-      const taken = await tx.coupon.findFirst({
-        where: { merchantId: card.merchantId, code: candidate, status: 'ACTIVE' },
-        select: { id: true },
-      });
-      if (!taken) code = candidate;
-    }
-    if (!code) throw new ConflictException('Impossible de générer un code de coupon, réessayez');
+    const code = await this.drawCode(tx, card.merchantId);
 
     return tx.coupon.create({
       data: {
@@ -192,6 +183,41 @@ export class CouponService {
         status: 'ACTIVE',
         validFrom: computeCouponValidFrom(now, reward.minDelayHours, expiresAt),
         expiresAt,
+      },
+      select: { ...COUPON_PUBLIC_SELECT, merchant: { select: COUPON_MERCHANT_SELECT } },
+    });
+  }
+
+  /** A 6-digit code no ACTIVE coupon of the merchant uses (the partial unique index settles races). */
+  private async drawCode(tx: Tx, merchantId: string): Promise<string> {
+    for (let i = 0; i < CODE_ATTEMPTS; i++) {
+      const candidate = generateCouponCode();
+      const taken = await tx.coupon.findFirst({
+        where: { merchantId, code: candidate, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!taken) return candidate;
+    }
+    throw new ConflictException('Impossible de générer un code de coupon, réessayez');
+  }
+
+  /** Creates the gift coupon of a completed collection (inside the till transaction). */
+  async createCollectionGift(
+    tx: Tx,
+    params: { clientId: string; merchantId: string; label: string; validFrom: Date; expiresAt: Date },
+  ) {
+    return tx.coupon.create({
+      data: {
+        source: 'COLLECTION',
+        clientId: params.clientId,
+        merchantId: params.merchantId,
+        code: await this.drawCode(tx, params.merchantId),
+        type: 'FREE_PRODUCT',
+        label: params.label,
+        conditions: { minPurchaseAmount: null, allowedWeekdays: null, allowedFromMin: null, allowedToMin: null },
+        status: 'ACTIVE',
+        validFrom: params.validFrom,
+        expiresAt: params.expiresAt,
       },
       select: { ...COUPON_PUBLIC_SELECT, merchant: { select: COUPON_MERCHANT_SELECT } },
     });

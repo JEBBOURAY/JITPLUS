@@ -17,6 +17,8 @@ function makePrisma() {
   const prisma: any = {
     deal,
     dealStore: { deleteMany: jest.fn(), createMany: jest.fn() },
+    dealDailyStat: { findMany: jest.fn().mockResolvedValue([]) },
+    dealOfferChange: { create: jest.fn() },
     store: { findMany: jest.fn().mockResolvedValue([STORE]), count: jest.fn().mockResolvedValue(1) },
     $executeRaw: jest.fn().mockResolvedValue(1),
   };
@@ -40,6 +42,8 @@ function row(overrides: Record<string, unknown> = {}) {
     percentOff: 30,
     buyQty: null,
     freeQty: null,
+    priceFrom: false,
+    priceUnit: null,
     allStores: true,
     cityKeys: ['casablanca'],
     startsAt: new Date(Date.now() - 86_400_000),
@@ -50,6 +54,8 @@ function row(overrides: Record<string, unknown> = {}) {
     linkClickCount: 0,
     directionsCount: 0,
     shareCount: 0,
+    callCount: 0,
+    claimCount: 0,
     createdAt: new Date(),
     stores: [],
     ...overrides,
@@ -167,6 +173,29 @@ describe('DealsMerchantService', () => {
       expect(data.endsAt.getTime()).toBeGreaterThan(existing.endsAt.getTime());
     });
 
+    it('keeps the former offer of a live deal whose price changes, not of an untouched one', async () => {
+      prisma.deal.findFirst.mockResolvedValue(row());
+      prisma.deal.update.mockResolvedValue(row());
+      await service.update(MERCHANT, 'deal-1', { type: 'PERCENT_OFF', percentOff: 30, title: 'Autre titre' });
+      expect(prisma.dealOfferChange.create).not.toHaveBeenCalled();
+
+      await service.update(MERCHANT, 'deal-1', { percentOff: 50 });
+      expect(prisma.dealOfferChange.create).toHaveBeenCalledWith({
+        data: {
+          dealId: 'deal-1',
+          before: expect.objectContaining({ percentOff: 30 }),
+          after: expect.objectContaining({ percentOff: 50 }),
+        },
+      });
+    });
+
+    it('does not log the edits of a deal that has not started', async () => {
+      prisma.deal.findFirst.mockResolvedValue(row({ startsAt: new Date(Date.now() + 86_400_000) }));
+      prisma.deal.update.mockResolvedValue(row());
+      await service.update(MERCHANT, 'deal-1', { percentOff: 50 });
+      expect(prisma.dealOfferChange.create).not.toHaveBeenCalled();
+    });
+
     it('deletes a replaced deal image once unused, never other images', async () => {
       const url = `https://cdn/deals/${MERCHANT}/a.webp`;
       prisma.deal.findFirst.mockResolvedValue(row({ imageUrl: url }));
@@ -209,10 +238,19 @@ describe('DealsMerchantService', () => {
     expect(data.endsAt.getTime() - Date.now()).toBeLessThan(9 * 86_400_000);
   });
 
-  it('get hides deleted or foreign deals', async () => {
+  it('get hides deleted or foreign deals, and never reads their figures', async () => {
     prisma.deal.findFirst.mockResolvedValue(null);
     await expect(service.get(MERCHANT, 'deal-x')).rejects.toThrow(NotFoundException);
     expect(prisma.deal.findFirst.mock.calls[0][0].where).toMatchObject({ merchantId: MERCHANT, status: { not: 'DELETED' } });
+    expect(prisma.dealDailyStat.findMany).not.toHaveBeenCalled();
+  });
+
+  it('get returns the figures day by day', async () => {
+    prisma.deal.findFirst.mockResolvedValue(row({ callCount: 2, claimCount: 3 }));
+    prisma.dealDailyStat.findMany.mockResolvedValue([{ day: new Date('2026-11-20'), views: 12, actions: 4, claims: 1 }]);
+    const deal = await service.get(MERCHANT, 'deal-1');
+    expect(deal.stats).toMatchObject({ calls: 2, claims: 3 });
+    expect(deal.daily).toEqual([{ day: '2026-11-20', views: 12, actions: 4, claims: 1 }]);
   });
 
   it('limits reports the counters and the located store', async () => {

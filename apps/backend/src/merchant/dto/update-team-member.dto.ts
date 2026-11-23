@@ -1,4 +1,5 @@
 import { IsOptional, IsString, IsBoolean, IsEmail, MinLength, MaxLength, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class UpdateTeamMemberDto {
   @IsOptional()
@@ -7,6 +8,7 @@ export class UpdateTeamMemberDto {
   nom?: string;
 
   @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toLowerCase() : value)
   @IsEmail({}, { message: 'Email invalide' })
   email?: string;
 

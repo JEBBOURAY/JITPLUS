@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Keyboard, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Keyboard, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, Globe, Maximize2, Navigation, X } from 'lucide-react-native';
 import { JitPin } from '@/components/icons';

@@ -4,17 +4,19 @@ import { PrismaService } from '../prisma/prisma.service';
 import { IStorageProvider, STORAGE_PROVIDER } from '../common/interfaces';
 import { deleteOwnedFiles } from '../storage/image-ownership';
 import { cronEnabledOnce } from '../common/tasks/cron-utils';
-import { MOROCCO_TZ } from '../common/utils/morocco-time';
+import { MOROCCO_TZ, moroccoYmd } from '../common/utils/morocco-time';
 import { errMsg } from '../common/utils';
 import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
 import {
   DEAL_DIGEST_AUDIENCE,
   DEAL_DIGEST_RETENTION_DAYS,
+  DEAL_EVENT_MARK_RETENTION_DAYS,
   DEAL_POPULAR_MIN_VIEWS,
   DEAL_POPULAR_TOP_SHARE,
   DEAL_PURGE_AFTER_DAYS,
 } from './deal-limits';
 import { dealEndedTexts } from './deal-notif-i18n';
+import { addDaysYmd } from './deal-rules';
 import { cityKeysOf, isDealImage } from './deals-merchant.service';
 import { MS_PER_DAY } from '../common/constants';
 
@@ -50,6 +52,7 @@ export class DealsMaintenanceService {
     await this.run('purge', () => this.purge());
     await this.run('city-keys', () => this.refreshCityKeys());
     await this.run('digest-entries', () => this.purgeDigestEntries());
+    await this.run('event-marks', () => this.purgeEventMarks());
   }
 
   private async run(name: string, job: () => Promise<number>) {
@@ -73,6 +76,8 @@ export class DealsMaintenanceService {
           viewCount: true,
           linkClickCount: true,
           directionsCount: true,
+          callCount: true,
+          claimCount: true,
           merchant: { select: { language: true } },
         },
         orderBy: { endsAt: 'asc' },
@@ -86,7 +91,11 @@ export class DealsMaintenanceService {
         });
         if (count !== 1) continue;
         ended++;
-        const msg = dealEndedTexts(d.merchant.language, d.title, d.viewCount, d.linkClickCount + d.directionsCount);
+        const msg = dealEndedTexts(d.merchant.language, d.title, {
+          views: d.viewCount,
+          actions: d.linkClickCount + d.directionsCount + d.callCount,
+          claims: d.claimCount,
+        });
         await this.inbox.record(d.merchantId, { category: 'ACTIVITY', title: msg.title, body: msg.body, action: 'open_deals' });
       }
       if (due.length < BATCH) break;
@@ -106,7 +115,7 @@ export class DealsMaintenanceService {
     const updated = await this.prisma.$executeRaw`
       WITH scored AS (
         SELECT id, view_count,
-          (view_count + 3 * (link_click_count + directions_count + share_count))::float
+          (view_count + 3 * (link_click_count + directions_count + call_count + share_count) + 5 * claim_count)::float
             / GREATEST(6, EXTRACT(EPOCH FROM (NOW() - starts_at)) / 3600) AS score,
           CASE WHEN scope = 'ONLINE' THEN '#online' ELSE COALESCE(city_keys[1], '#none') END AS grp
         FROM deals
@@ -154,6 +163,14 @@ export class DealsMaintenanceService {
   async purgeDigestEntries(now: Date = new Date()): Promise<number> {
     const { count } = await this.prisma.notification.deleteMany({
       where: { audience: DEAL_DIGEST_AUDIENCE, createdAt: { lt: new Date(now.getTime() - DEAL_DIGEST_RETENTION_DAYS * MS_PER_DAY) } },
+    });
+    return count;
+  }
+
+  /** A mark only de-duplicates the day it was written. */
+  async purgeEventMarks(now: Date = new Date()): Promise<number> {
+    const { count } = await this.prisma.dealEventMark.deleteMany({
+      where: { day: { lt: new Date(addDaysYmd(moroccoYmd(now), -DEAL_EVENT_MARK_RETENTION_DAYS)) } },
     });
     return count;
   }

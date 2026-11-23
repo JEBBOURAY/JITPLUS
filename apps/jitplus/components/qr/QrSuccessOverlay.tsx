@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, View, Pressable, TouchableOpacity, StyleSheet } from 'react-native';
+import { pluralKey } from '@jitplus/shared';
 import { Text } from '@/components/AppText';
 import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
@@ -102,7 +103,9 @@ export default React.memo(function QrSuccessOverlay({ event, goal, onDismiss, th
   useEffect(() => { goalRef.current = goal; }, [goal]);
 
   const hide = useCallback(() => {
-    Animated.timing(fade, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
+    Animated.timing(fade, { toValue: 0, duration: 180, useNativeDriver: true }).start(({ finished }) => {
+      // Interrupted by the next scan's overlay: that one owns the screen now.
+      if (!finished) return;
       setShown(null);
       onDismissRef.current();
     });
@@ -178,9 +181,10 @@ export default React.memo(function QrSuccessOverlay({ event, goal, onDismiss, th
     ? t('qr.successRedeemTitle')
     : t('qr.successEarnTitle', { count: Math.abs(ev.stamps) });
   const atMerchant = ev.merchantName ? t('qr.successAt', { merchant: ev.merchantName }) : '';
+  const welcomeLine = !isRedeem && ev.welcomeBonus ? t(pluralKey('qr.successWelcomeBonus', ev.welcomeBonus), { count: ev.welcomeBonus }) : '';
   const subtitle = isRedeem && ev.rewardTitle
     ? [ev.rewardTitle, ev.merchantName].filter(Boolean).join(' · ')
-    : atMerchant;
+    : [atMerchant, welcomeLine].filter(Boolean).join('\n');
 
   const stampTransform = [
     { scale: Animated.multiply(slam.interpolate({ inputRange: [0, 1], outputRange: [2.8, 1] }), bump) },
@@ -259,7 +263,7 @@ export default React.memo(function QrSuccessOverlay({ event, goal, onDismiss, th
         </View>
         <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]} accessibilityRole="header">{title}</Text>
         {!!subtitle && (
-          <Text style={[styles.subtitle, { color: theme.textSecondary, fontFamily: fonts.medium }]} numberOfLines={2}>{subtitle}</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary, fontFamily: fonts.medium }]} numberOfLines={3}>{subtitle}</Text>
         )}
 
         {grid && (

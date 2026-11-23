@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { toast } from '@/components/ui/Toast';
+import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check, Minus, Plus } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { JitGift } from '@/components/icons';
@@ -65,7 +67,7 @@ export function RewardStep({ merchant, registerSave }: StepProps) {
       hapticSuccess();
       return true;
     } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
+      toast.error(getErrorMessage(err, t('settingsPage.saveError')));
       return false;
     }
   }, [title, rewards.length, cost, slots, qc, t]);

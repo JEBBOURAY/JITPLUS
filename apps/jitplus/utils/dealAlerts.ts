@@ -1,4 +1,4 @@
-import { pluralKey } from '@jitplus/shared';
+import { normalizeSearch, pluralKey } from '@jitplus/shared';
 import {
   findMoroccoCity, MOROCCO_CITIES, moroccoCityLabel, nearestMoroccoCity,
   type DealAlertPreferences, type MoroccoCity,
@@ -64,13 +64,9 @@ export function isDealAlertNeedsCityError(error: unknown): boolean {
   return data?.code === DEAL_ALERT_NEEDS_CITY;
 }
 
-function fold(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-}
-
 /** Accent-insensitive search on the French, English and Arabic names. */
 export function searchMoroccoCities(query: string): readonly MoroccoCity[] {
-  const q = fold(query);
+  const q = normalizeSearch(query);
   if (!q) return MOROCCO_CITIES;
-  return MOROCCO_CITIES.filter((c) => [c.fr, c.en, c.ar, c.key.replace(/_/g, ' ')].some((name) => fold(name).includes(q)));
+  return MOROCCO_CITIES.filter((c) => [c.fr, c.en, c.ar, c.key.replace(/_/g, ' ')].some((name) => normalizeSearch(name).includes(q)));
 }

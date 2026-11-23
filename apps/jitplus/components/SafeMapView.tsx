@@ -4,7 +4,7 @@
  * - Expo Go SDK 51+: react-native-maps n'est plus inclus → graceful fallback
  */
 import React, { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, View, StyleSheet, NativeModules, Pressable } from 'react-native';
+import { Platform, View, StyleSheet, Pressable } from 'react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { Text } from '@/components/AppText';
 import { requireOptionalNativeModule } from 'expo';
@@ -112,9 +112,8 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
       }}
       onMapReady={() => {
         if (__DEV__) {
-          const locale = Platform.OS === 'ios'
-            ? NativeModules.SettingsManager?.settings?.AppleLocale ?? NativeModules.SettingsManager?.settings?.AppleLanguages?.[0]
-            : NativeModules.I18nManager?.localeIdentifier;
+          // NativeModules.I18nManager.localeIdentifier is undefined on the new architecture.
+          const locale = Intl.DateTimeFormat().resolvedOptions().locale;
           console.log(`[SafeMapView] ✓ Google Maps ready — device locale: ${locale}`);
           console.log(`[SafeMapView] ✓ Provider: PROVIDER_GOOGLE (${Platform.OS})`);
           if (Platform.OS === 'android' && configuredRenderer) {

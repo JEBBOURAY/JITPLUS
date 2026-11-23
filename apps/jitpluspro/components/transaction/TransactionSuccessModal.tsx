@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Modal, Pressable, StyleSheet, Animated } from 'react-native';
+import { View, Modal, Pressable, StyleSheet, Animated } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check } from 'lucide-react-native';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { font, icon } from '@/constants/design';

@@ -1,17 +1,16 @@
 import { useState, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
   Alert,
-  TextInput,
   Modal,
   Platform,
   KeyboardAvoidingView,
   I18nManager,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getErrorMessage } from '@/utils/error';
 import { useReferral, useUpdateMerchantProfile } from '@/hooks/useQueryHooks';
@@ -21,6 +20,7 @@ import { Check, X } from 'lucide-react-native';
 import { useAuthState, useAuthActions } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
+import { useGoBack } from '@/hooks/useGoBack';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { AppLocale } from '@/contexts/LanguageContext';
 import * as Updates from 'expo-updates';
@@ -45,7 +45,7 @@ export default function AccountScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { locale, setLocale, t } = useLanguage();
+  const { locale, setLocale, t, isRTL } = useLanguage();
   const media = useMerchantMedia();
 
   const { isPremium, hidePlan } = usePlanStatus(merchant);
@@ -126,10 +126,7 @@ export default function AccountScreen() {
   const goToDelete = useCallback(() => router.push('/security?tab=delete'), [router]);
 
   // Back to Accueil (Compte is a stack screen opened from the Home avatar).
-  const goBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/(tabs)');
-  }, [router]);
+  const goBack = useGoBack();
 
   const openTeamLuckyWheel = useCallback(() => router.push('/lucky-wheel'), [router]);
 
@@ -264,7 +261,7 @@ export default function AccountScreen() {
               textContentType="organizationName"
               maxFontSizeMultiplier={1.4}
             />
-            <View style={styles.nameModalActions}>
+            <View style={[styles.nameModalActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               <ActionButton
                 label={t('common.cancel')}
                 variant="secondary"
@@ -308,7 +305,7 @@ const styles = StyleSheet.create({
   nameModalCard: { borderRadius: radius.lg, padding: ms(20), gap: hp(16) },
   nameModalTitle: { fontSize: FS.lg, textAlign: 'center', fontFamily: font.semibold },
   nameModalInput: { fontSize: FS.md, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: wp(14), paddingVertical: hp(12), fontFamily: font.semibold },
-  nameModalActions: { flexDirection: 'row', gap: wp(10) },
+  nameModalActions: { gap: wp(10) },
   nameModalBtn: { flex: 1 },
   nameModalSave: { backgroundColor: palette.violet, borderColor: palette.violet },
 });

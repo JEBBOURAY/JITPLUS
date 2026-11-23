@@ -8,6 +8,8 @@ export { MIN_PASSWORD_LENGTH } from '@jitplus/shared/src/passwordStrength';
 export const SEARCH_DEBOUNCE_MS = 350;
 /** Days without a visit before a client counts as inactive (mirrors the backend). */
 export const INACTIVE_CLIENT_DAYS = 30;
+/** "Nouveaux" chip of the Clients tab: card opened within this many days (backend NEW_CLIENT_DAYS). */
+export const NEW_CLIENT_DAYS = 30;
 // AsyncStorage keys
 export const ASYNC_STORAGE_KEYS = {
   // Contextual reminder banner (messages) dismissal.
@@ -37,6 +39,12 @@ export const ASYNC_STORAGE_KEYS = {
   // Intro demo video: auto-played once per merchant account on this device
   // (first sign-in / sign-up). Suffixed with the merchant id.
   INTRO_DEMO_SEEN: 'intro_demo_seen',
+  // Accueil "Mes outils": JSON map { [toolKey]: { score, at } } of how often each
+  // tool is opened, to show the most used first. Suffixed with the merchant id.
+  TOOL_USAGE: 'tool_usage',
+  // Accueil: 'true' once the start guide was seen complete, so its card goes
+  // straight to the end on the next launch. Suffixed with the merchant id.
+  START_GUIDE_DONE: 'start_guide_done',
   // Scanner: first-visit guide modal, and the older "how it works" banner it replaces.
   FIRST_SCAN_GUIDE_DONE: '@jitpluspro_first_scan_guide',
   SCAN_HOW_IT_WORKS_DISMISSED: '@jitpluspro_scan_how_it_works_v2',
@@ -67,6 +75,13 @@ export const MAX_STAMP_CODES_PER_BATCH = 500;
 /** Store pages of the JitPlus client app (the one customers install). */
 export const CLIENT_APP_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.client';
 export const CLIENT_APP_IOS_URL = 'https://apps.apple.com/app/jitplus/id6762307929';
+
+/** Store pages of JitPlus Pro. The App Store id mirrors `ascAppId` in eas.json; the env var
+ *  is not set on EAS production, so an unset or unexpanded value falls back to it. */
+const envIosAppId = process.env.EXPO_PUBLIC_IOS_APP_ID ?? '';
+export const PRO_IOS_APP_ID = /^\d+$/.test(envIosAppId) ? envIosAppId : '6762308251';
+export const PRO_IOS_URL = `https://apps.apple.com/app/id${PRO_IOS_APP_ID}`;
+export const PRO_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.pro';
 
 /** Meta app id: Instagram and Facebook require it to accept a story. Mirrors app.config.js. */
 export const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID || '2706696686345947';

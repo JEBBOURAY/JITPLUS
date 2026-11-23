@@ -1,637 +1,455 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Alert,
   Animated,
-  Image,
+  Easing,
+  LayoutAnimation,
   ScrollView,
-  Keyboard, I18nManager,
+  Keyboard,
 } from 'react-native';
-import { goHomeAfterLogin } from '@/services/pendingDeal';
+import { Text, TextInput } from '@/components/AppText';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowRight, Mail, ChevronLeft, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react-native';
+import { useReducedMotion } from 'react-native-reanimated';
+import { Mail, Lock, ChevronDown } from 'lucide-react-native';
+import { goHomeAfterLogin } from '@/services/pendingDeal';
+import { flagHomeWelcome } from '@/hooks/useHomeBanners';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLaunchStore } from '@/stores/launchStore';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
-import { useAppFonts } from '@/utils/fonts';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { haptic } from '@/utils/haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
-import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
-import StarLoader from '@/components/StarLoader';
-import { GoogleLogo } from '@/components/GoogleLogo';
-import { AppleLogo } from '@/components/AppleLogo';
-import { SPRING_SMOOTH, rnSpring } from '@/utils/motion';
+import { PasswordField } from '@/components/PasswordField';
+import LoginBackdrop from '@jitplus/shared/src/login/LoginBackdrop';
+import LoginHeader from '@/components/login/LoginHeader';
+import KhatamDivider from '@/components/login/KhatamDivider';
+import PressScale from '@jitplus/shared/src/login/PressScale';
+import FadeSlideIn from '@jitplus/shared/src/login/FadeSlideIn';
+import SocialAuthButtons from '@/components/login/SocialAuthButtons';
+import AuthPrimaryButton from '@/components/login/AuthPrimaryButton';
+import { authStyles } from '@/components/login/authUi';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
-const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
+const EMAIL_ANIM_DURATION = 250;
+/** Google, Apple, divider, email, sign-up: staggered in that order. */
+const INTRO_ITEMS = 5;
+/** Start the intro anyway if the launch animation never reports that it opened. */
+const SPLASH_FALLBACK_MS = 3000;
 
-const SHOW_WELCOME_KEY = 'showWelcome';
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOGIN_LOCKOUT_MS = 2 * 60 * 1_000; // 2-minute lockout
-const LOGIN_COOLDOWN_MS = 3_000; // 3s between attempts
-const SS_LOGIN_LOCKOUT = 'login_lockout_until';
-const SS_LOGIN_ATTEMPTS = 'login_attempt_count';
+const LANGS = [
+  // Written names, not flags: a flag is a country, not a language (🇲🇦 for
+  // Arabic), and older Android phones render flags as plain letter pairs.
+  { code: 'fr' as const, short: 'FR', label: 'Français' },
+  { code: 'en' as const, short: 'EN', label: 'English' },
+  { code: 'ar' as const, short: 'ع', label: 'العربية' },
+];
 
-type LoginMethod = 'select' | 'email' | 'google';
+/** Layout-only ease (no create/delete), so it never fights the Animated fades. */
+const layoutEase = (duration: number) => ({
+  duration,
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+});
 
+/**
+ * Entry screen of every signed-out client (the old welcome carousel is gone):
+ * Google / Apple first, email unfolds below, then sign-up.
+ * Same layout and motion as the JitPlus Pro login.
+ */
 export default function LoginScreen() {
   const theme = useTheme();
-  const { t } = useLanguage();
-  const fonts = useAppFonts();
+  const { t, locale, setLocale } = useLanguage();
   const { loginWithEmail, sendOtpEmail } = useAuth();
-  const [method, setMethod] = useState<LoginMethod>('select');
+  const google = useGoogleAuth({ actionLabel: t('login.loginButton') });
+  const apple = useAppleAuth({ actionLabel: t('login.loginButton') });
+  const dark = theme.mode === 'dark';
+  const reduceMotion = useReducedMotion();
+
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  // Client-side login rate limiting
-  const loginAttemptsRef = useRef(0);
-  const lastLoginAttemptRef = useRef(0);
-  const loginLockoutRef = useRef(0);
-  // Animations
-  const logoAnim = useRef(new Animated.Value(0)).current;
-  const cardAnim = useRef(new Animated.Value(0)).current;
-  const footerAnim = useRef(new Animated.Value(0)).current;
+  // The password field tracks its own focus (PasswordField variant="auth").
+  const [emailFocused, setEmailFocused] = useState(false);
+  const onPasswordChange = useCallback((v: string) => { setPassword(v); setError(''); }, []);
+  const [formMounted, setFormMounted] = useState(false);
+  // A double tap would send two codes and open two code screens.
+  const codeRef = useRef(false);
+
+  // ── Intro, held until the launch animation opens onto this screen ──
+  const launchDone = useLaunchStore((s) => s.done);
+  const [launchTimedOut, setLaunchTimedOut] = useState(false);
+  const introStarted = launchDone || launchTimedOut;
+  useEffect(() => {
+    if (launchDone) return;
+    const timer = setTimeout(() => setLaunchTimedOut(true), SPLASH_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [launchDone]);
+
+  const [intro] = useState(() => ({
+    /** JS-driven: SVG stroke offset can't run on the native driver. */
+    draw: new Animated.Value(0),
+    reveal: new Animated.Value(0),
+    keystone: new Animated.Value(0),
+    text: new Animated.Value(0),
+    items: Array.from({ length: INTRO_ITEMS }, () => new Animated.Value(0)),
+    twinkle: new Animated.Value(0),
+  }));
+  const [compactAnim] = useState(() => new Animated.Value(0));
+  const [emailFormAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
-    const anim = Animated.stagger(150, [
-      Animated.spring(logoAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
-      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
-      Animated.timing(footerAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+    if (!introStarted) return;
+    const shown = [intro.reveal, intro.keystone, intro.text, ...intro.items];
+    if (reduceMotion) {
+      intro.draw.setValue(1);
+      const fade = Animated.parallel(shown.map((v) => Animated.timing(v, { toValue: 1, duration: 220, useNativeDriver: true })));
+      fade.start();
+      return () => fade.stop();
+    }
+    const after = (ms: number, anim: Animated.CompositeAnimation) => Animated.sequence([Animated.delay(ms), anim]);
+    const sequence = Animated.parallel([
+      Animated.timing(intro.draw, { toValue: 1, duration: 480, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+      after(160, Animated.spring(intro.reveal, { toValue: 1, speed: 12, bounciness: 6, useNativeDriver: true })),
+      after(280, Animated.timing(intro.text, { toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true })),
+      after(400, Animated.timing(intro.keystone, { toValue: 1, duration: 300, easing: Easing.out(Easing.back(1.7)), useNativeDriver: true })),
+      after(360, Animated.stagger(50, intro.items.map((v) => Animated.spring(v, { toValue: 1, speed: 16, bounciness: 5, useNativeDriver: true })))),
+      after(900, Animated.sequence([
+        Animated.timing(intro.twinkle, { toValue: 1, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(intro.twinkle, { toValue: 0, duration: 280, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
+      ])),
     ]);
-    anim.start();
-    return () => anim.stop();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    sequence.start();
+    return () => sequence.stop();
+  }, [introStarted, reduceMotion, intro]);
+
+  // Built once: recreating interpolations on each keystroke would re-attach native nodes.
+  const anim = useMemo(() => ({
+    items: intro.items.map((v) => ({
+      opacity: v,
+      transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+    })),
+    form: {
+      opacity: emailFormAnim,
+      transform: [{ translateY: emailFormAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+    },
+    chevron: {
+      transform: [{ rotate: emailFormAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }],
+    },
+  }), [intro, emailFormAnim]);
+
+  const greetingKey = useMemo(() => {
+    const h = new Date().getHours();
+    if (h >= 5 && h < 12) return 'login.greetingMorning';
+    if (h >= 18 || h < 5) return 'login.greetingEvening';
+    return 'login.greetingDay';
   }, []);
 
-  // Restore persisted login lockout state
-  useEffect(() => {
-    (async () => {
-      const [lockStr, attStr] = await Promise.all([
-        SecureStore.getItemAsync(SS_LOGIN_LOCKOUT),
-        SecureStore.getItemAsync(SS_LOGIN_ATTEMPTS),
-      ]);
-      if (lockStr) loginLockoutRef.current = Number(lockStr);
-      if (attStr) loginAttemptsRef.current = Number(attStr);
-    })().catch(() => {});
-  }, []);
+  // ── Email form unfolds under the email button ──
+  const openEmailForm = useCallback(() => {
+    if (formMounted) return;
+    if (!reduceMotion) LayoutAnimation.configureNext(layoutEase(EMAIL_ANIM_DURATION));
+    setFormMounted(true);
+    Animated.timing(compactAnim, {
+      toValue: 1, duration: reduceMotion ? 0 : EMAIL_ANIM_DURATION, easing: Easing.inOut(Easing.ease), useNativeDriver: true,
+    }).start();
+    requestAnimationFrame(() => {
+      Animated.timing(emailFormAnim, { toValue: 1, duration: EMAIL_ANIM_DURATION, useNativeDriver: true })
+        .start(({ finished }) => { if (finished) setTimeout(() => emailRef.current?.focus(), 10); });
+    });
+  }, [formMounted, emailFormAnim, compactAnim, reduceMotion]);
+
+  const closeEmailForm = useCallback(() => {
+    Keyboard.dismiss();
+    Animated.timing(emailFormAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(({ finished }) => {
+      if (!finished) return;
+      if (!reduceMotion) LayoutAnimation.configureNext(layoutEase(EMAIL_ANIM_DURATION));
+      setFormMounted(false);
+      Animated.timing(compactAnim, {
+        toValue: 0, duration: reduceMotion ? 0 : EMAIL_ANIM_DURATION, easing: Easing.inOut(Easing.ease), useNativeDriver: true,
+      }).start();
+    });
+  }, [emailFormAnim, compactAnim, reduceMotion]);
+
+  const toggleEmailForm = useCallback(() => {
+    if (formMounted) closeEmailForm();
+    else openEmailForm();
+  }, [formMounted, closeEmailForm, openEmailForm]);
 
   const emailValid = isValidEmail(email);
+  const canSubmit = emailValid && password.length > 0;
+  // One sign-in at a time: email, Google and Apple lock each other out.
+  const authBusy = isLoading || google.isLoading || apple.isLoading;
 
-  const handleBack = useCallback(() => {
-    setError('');
-    setMethod('select');
-    Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }).start();
-  }, [cardAnim]);
-
-  // Google auth — shared hook (no stale closures, no setTimeout)
-  const google = useGoogleAuth({ actionLabel: t('login.loginButton'), onCancel: handleBack });
-
-  // Apple auth — iOS only
-  const apple = useAppleAuth({ actionLabel: t('login.loginButton'), onCancel: handleBack });
-
-  // Sync google hook errors/loading into local state
-  useEffect(() => { if (google.error) setError(google.error); }, [google.error]);
-  useEffect(() => { if (method === 'google') setIsLoading(google.isLoading); }, [google.isLoading, method]);
-
-  const selectMethod = (m: LoginMethod) => {
-    setError('');
-    cardAnim.setValue(0);
-    setMethod(m);
-    Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }).start();
-  };
-
-  // ── Email + Password flow ──
-  const handleEmailContinue = useCallback(async () => {
-    if (!emailValid) {
-      setError(t('login.invalidEmail'));
-      return;
-    }
-    if (!password) {
-      setError(t('login.emptyPassword'));
-      return;
-    }
-
-    // Client-side rate limiting
-    const now = Date.now();
-    if (loginLockoutRef.current > now) {
-      const secsLeft = Math.ceil((loginLockoutRef.current - now) / 1000);
-      setError(t('login.tooManyAttempts', { seconds: secsLeft }));
-      return;
-    }
-    if (now - lastLoginAttemptRef.current < LOGIN_COOLDOWN_MS) {
-      setError(t('login.tooFast'));
-      return;
-    }
-    if (loginAttemptsRef.current >= MAX_LOGIN_ATTEMPTS) {
-      loginLockoutRef.current = now + LOGIN_LOCKOUT_MS;
-      loginAttemptsRef.current = 0;
-      SecureStore.setItemAsync(SS_LOGIN_LOCKOUT, String(loginLockoutRef.current)).catch(() => {});
-      SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, '0').catch(() => {});
-      setError(t('login.tooManyAttempts', { seconds: 120 }));
-      return;
-    }
-    loginAttemptsRef.current += 1;
-    lastLoginAttemptRef.current = now;
-    SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, String(loginAttemptsRef.current)).catch(() => {});
-
+  // ── Email + password ──
+  const handleLogin = useCallback(async () => {
+    if (authBusy) return;
+    if (!emailValid) { setError(t('login.invalidEmail')); return; }
+    if (!password) { setError(t('login.emptyPassword')); return; }
     Keyboard.dismiss();
     setIsLoading(true);
     setError('');
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const result = await loginWithEmail(normalizedEmail, password);
+    const result = await loginWithEmail(email.trim().toLowerCase(), password);
     setIsLoading(false);
     if (result.success) {
-      SecureStore.deleteItemAsync(SS_LOGIN_LOCKOUT).catch(() => {});
-      SecureStore.deleteItemAsync(SS_LOGIN_ATTEMPTS).catch(() => {});
-      await AsyncStorage.setItem(SHOW_WELCOME_KEY, '1');
+      await flagHomeWelcome('back');
       goHomeAfterLogin(router);
+    } else if (result.isNetworkError) {
+      Alert.alert(t('common.networkError'), result.error);
     } else {
-      // Show Alert for network errors, inline error for others
-      if (result.isNetworkError) Alert.alert(t('common.networkError'), result.error);
-      else setError(result.error || t('common.genericError'));
+      setError(result.error || t('common.genericError'));
     }
-  }, [emailValid, email, password, loginWithEmail, t]);
+  }, [authBusy, emailValid, password, email, loginWithEmail, t]);
 
-  // ── Forgot password flow ──
-  const handleForgotPassword = useCallback(async () => {
+  // ── Email code: forgot password, or a login without password ──
+  const sendCode = useCallback(async (mode: 'reset' | 'login') => {
+    if (codeRef.current || authBusy) return;
     if (!emailValid) {
-      setError(t('login.forgotPasswordPrompt'));
+      setError(t(mode === 'reset' ? 'login.forgotPasswordPrompt' : 'login.invalidEmail'));
+      emailRef.current?.focus();
       return;
     }
+    codeRef.current = true;
     setIsLoading(true);
     setError('');
     const normalizedEmail = email.trim().toLowerCase();
     const result = await sendOtpEmail(normalizedEmail, false);
+    codeRef.current = false;
     setIsLoading(false);
-    if (result.success) {
+    // otpWait: a code was sent less than a minute ago and is still valid.
+    if (result.success || result.code === 'error.auth.otpWait') {
       router.push({
         pathname: '/verify-otp',
-        params: { telephone: normalizedEmail, isEmail: '1', isForgotPassword: '1' },
+        params: { telephone: normalizedEmail, ...(mode === 'reset' ? { isForgotPassword: '1' } : {}) },
       });
     } else {
       setError(result.error || t('login.resetCodeError'));
     }
-  }, [emailValid, email, sendOtpEmail, t]);
+  }, [authBusy, emailValid, email, sendOtpEmail, t]);
 
-  // ── Render ──
-  const renderMethodSelect = () => (
-    <Animated.View style={[styles.methodSection, {
-      opacity: cardAnim,
-      transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
-    }]}>
-      {/* Google */}
-      <TouchableOpacity
-        style={[styles.socialBtn, { backgroundColor: theme.bgCard, borderColor: theme.inputBorder }]}
-        onPress={() => { haptic(); selectMethod('google'); google.promptGoogle(); }}
-        disabled={isLoading || google.isLoading}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={t('login.loginWithGoogle')}
-      >
-        <GoogleLogo size={ms(20)} />
-        <Text style={[styles.socialBtnText, { color: theme.text, fontFamily: fonts.semibold }]}>{t('login.loginWithGoogle')}</Text>
-      </TouchableOpacity>
-
-      {/* Apple — iOS only */}
-      {apple.isAvailable && (
-        <TouchableOpacity
-          style={[styles.socialBtn, { backgroundColor: '#000', borderColor: '#000' }]}
-          onPress={() => { haptic(); apple.promptApple(); }}
-          disabled={isLoading || apple.isLoading}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={t('login.loginWithApple')}
-        >
-          <AppleLogo size={ms(20)} color="#fff" />
-          <Text style={[styles.socialBtnText, { color: '#fff', fontFamily: fonts.semibold }]}>{t('login.loginWithApple')}</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Google error */}
-      {!!google.error && !google.noAccount && (
-        <FormError message={google.error} />
-      )}
-
-      {/* Google no-account banner — guide user to register */}
-      {google.noAccount && (
-        <View style={[styles.noAccountBanner, { backgroundColor: `${palette.violet}08`, borderColor: `${palette.violet}25` }]}>
-          <Text style={[styles.noAccountTitle, { color: theme.text }]}>
-            {t('googleAuth.noAccountTitle')}
-          </Text>
-          <Text style={[styles.noAccountMsg, { color: theme.textMuted }]}>
-            {t('googleAuth.noAccountAction')}
-          </Text>
-          <TouchableOpacity
-            onPress={() => {
-              google.dismissNoAccount();
-              router.push('/register');
-            }}
-            activeOpacity={0.85}
-            style={[styles.noAccountBtn, { backgroundColor: palette.violet }]}
-          >
-            <Text style={styles.noAccountBtnText}>{t('googleAuth.goToRegister')}</Text>
-            <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} style={DIR_FLIP} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Apple error */}
-      {!!apple.error && !apple.noAccount && (
-        <FormError message={apple.error} />
-      )}
-
-      {/* Apple no-account banner */}
-      {apple.noAccount && (
-        <View style={[styles.noAccountBanner, { backgroundColor: `${palette.violet}08`, borderColor: `${palette.violet}25` }]}>
-          <Text style={[styles.noAccountTitle, { color: theme.text }]}>
-            {t('appleAuth.noAccountTitle')}
-          </Text>
-          <Text style={[styles.noAccountMsg, { color: theme.textMuted }]}>
-            {t('appleAuth.noAccountAction')}
-          </Text>
-          <TouchableOpacity
-            onPress={() => {
-              apple.dismissNoAccount();
-              router.push('/register');
-            }}
-            activeOpacity={0.85}
-            style={[styles.noAccountBtn, { backgroundColor: palette.violet }]}
-          >
-            <Text style={styles.noAccountBtnText}>{t('appleAuth.goToRegister')}</Text>
-            <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} style={DIR_FLIP} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Other errors */}
-      {error && !google.error && !apple.error ? <FormError message={error} /> : null}
-
-      {/* Separator */}
-      <View style={styles.separator}>
-        <View style={[styles.separatorLine, { backgroundColor: theme.inputBorder }]} />
-        <Text style={[styles.separatorText, { color: theme.inputPlaceholder }]}>{t('common.or')}</Text>
-        <View style={[styles.separatorLine, { backgroundColor: theme.inputBorder }]} />
-      </View>
-
-      {/* Email */}
-      <TouchableOpacity
-        style={[styles.socialBtn, { backgroundColor: palette.violet }]}
-        onPress={() => selectMethod('email')}
-        activeOpacity={0.7}
-      >
-        <Mail size={ms(20)} color="#fff" strokeWidth={2} />
-        <Text style={[styles.socialBtnText, { color: '#fff', fontFamily: fonts.semibold }]}>{t('login.loginByEmail')}</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
-  const renderEmailForm = () => (
-    <Animated.View style={[styles.methodSection, {
-      opacity: cardAnim,
-      transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
-    }]}>
-      <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('common.back')}>
-        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} style={DIR_FLIP} />
-      </TouchableOpacity>
-
-      <View style={{ marginBottom: hp(24) }}>
-        <Text style={[styles.registerTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('login.emailLoginTitle')}</Text>
-        <Text style={[styles.registerSubtitle, { color: theme.inputPlaceholder, fontFamily: fonts.regular }]}>
-          {t('login.emailLoginSubtitle')}
-        </Text>
-      </View>
-
-      <View style={styles.inputContainer}>
-        <View style={[styles.inputWrapper, {
-          backgroundColor: theme.inputBg,
-          borderColor: error ? theme.danger : emailValid ? palette.violet : theme.inputBorder,
-          borderWidth: emailValid ? 2 : 1.5,
-        }]}>
-          <Mail size={ms(18)} color={emailValid ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
-          <TextInput
-            style={[styles.emailInput, { color: theme.text }]}
-            placeholder={t('login.emailPlaceholder')}
-            placeholderTextColor={theme.inputPlaceholder}
-            value={email}
-            onChangeText={(text) => { setEmail(text); setError(''); }}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            textContentType="emailAddress"
-            autoComplete="email"
-            importantForAutofill="yes"
-            maxLength={254}
-            autoFocus
-          />
-        </View>
-      </View>
-
-      <View style={styles.inputContainer}>
-        <View style={[styles.inputWrapper, {
-          backgroundColor: theme.inputBg,
-          borderColor: error ? theme.danger : password.length > 0 ? palette.violet : theme.inputBorder,
-          borderWidth: password.length > 0 ? 2 : 1.5,
-        }]}>
-          <Lock size={ms(18)} color={password.length > 0 ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
-          <TextInput
-            style={[styles.emailInput, { color: theme.text }]}
-            placeholder={t('login.password')}
-            placeholderTextColor={theme.inputPlaceholder}
-            value={password}
-            onChangeText={(text) => { setPassword(text); setError(''); }}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            autoCorrect={false}
-            textContentType="password"
-            autoComplete="password"
-            importantForAutofill="yes"
-            maxLength={128}
-          />
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={showPassword ? t('login.hidePassword') : t('login.showPassword')}>
-            {showPassword ? (
-              <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
-            ) : (
-              <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <FormError message={error} />
-
-      <TouchableOpacity onPress={handleForgotPassword} activeOpacity={0.7}>
-        <Text style={[styles.forgotPasswordText, { color: palette.violet }]}>{t('login.forgotPassword')}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={handleEmailContinue}
-        disabled={isLoading}
-        activeOpacity={0.85}
-        style={[styles.button, { backgroundColor: emailValid && password.length > 0 ? palette.violet : '#D4D0E8' }]}
-      >
-        {isLoading ? <ActivityIndicator color="#fff" /> : (
-          <>
-            <Text style={[styles.buttonText, { opacity: emailValid && password.length > 0 ? 1 : 0.5, fontFamily: fonts.semibold }]}>{t('login.loginButton')}</Text>
-            <ArrowRight size={ms(18)} color={emailValid && password.length > 0 ? '#fff' : 'rgba(255,255,255,0.5)'} style={DIR_FLIP} />
-          </>
-        )}
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
-  const renderGoogleLoading = () => (
-    <Animated.View style={[styles.methodSection, {
-      opacity: cardAnim,
-      transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
-    }]}>
-      <TouchableOpacity
-        onPress={handleBack}
-        disabled={isLoading || google.isSuccess}
-        style={[styles.backBtn, (isLoading || google.isSuccess) && { opacity: 0.3 }]}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={t('common.back')}
-      >
-        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} style={DIR_FLIP} />
-      </TouchableOpacity>
-
-      <View style={[styles.formHeader, { alignItems: 'center' }]}>
-        <View style={[styles.formIconBg, { backgroundColor: '#f5f5f5' }]}>
-          <GoogleLogo size={ms(32)} />
-        </View>
-        <Text style={[styles.cardTitle, { color: theme.text, textAlign: 'center' }]}>{t('login.googleLoginTitle')}</Text>
-        {isLoading ? (
-          <View style={{ alignItems: 'center', gap: hp(12), marginTop: hp(16) }}>
-            <StarLoader size={88} />
-            <Text style={[styles.cardSubtitle, { color: theme.textMuted, textAlign: 'center' }]}>{t('login.googleLoginInProgress')}</Text>
-          </View>
-        ) : google.isSuccess ? (
-          <View style={{ alignItems: 'center', gap: hp(10), marginTop: hp(16) }}>
-            <CheckCircle size={ms(52)} color="#34A853" strokeWidth={2} />
-            <Text style={{ color: '#34A853', fontWeight: '600', fontSize: fontSize.md }}>{t('googleAuth.success')}</Text>
-          </View>
-        ) : error ? (
-          <>
-            <Text style={[styles.errorText, { color: theme.danger, marginTop: hp(12) }]}>{error}</Text>
-            <TouchableOpacity
-              onPress={() => { haptic(); google.promptGoogle(); }}
-              activeOpacity={0.85}
-              style={[styles.button, { marginTop: hp(16), width: '100%', backgroundColor: palette.violet }]}
-            >
-              <Text style={styles.buttonText}>{t('common.retry')}</Text>
-            </TouchableOpacity>
-          </>
-        ) : null}
-      </View>
-    </Animated.View>
-  );
+  const socialError = google.error || apple.error;
+  // Red on the field at fault: the address while it is invalid, else the password.
+  const faultyField = !error ? null : emailValid ? 'password' : 'email';
+  const emailFieldStyle = [
+    authStyles.inputWrapper,
+    {
+      backgroundColor: theme.inputBg,
+      borderColor: faultyField === 'email' ? theme.danger : emailFocused ? palette.violet : theme.inputBorder,
+    },
+  ];
 
   return (
-    <View style={[styles.gradient, { backgroundColor: theme.bg }]}>
-      <SafeAreaView style={styles.container}>
+    <View style={[styles.screen, { backgroundColor: theme.bg }]}>
+      <LoginBackdrop dark={dark} />
+
+      {/* Language: chosen before anything else, as on the old welcome screen. */}
+      <SafeAreaView edges={['top']} style={styles.langBar} pointerEvents={introStarted ? 'auto' : 'none'}>
+        <View style={styles.langRow}>
+          {LANGS.map(({ code, short, label }) => {
+            const active = locale === code;
+            return (
+              <TouchableOpacity
+                key={code}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityState={{ selected: active }}
+                onPress={() => { if (code !== locale) void setLocale(code); }}
+                style={[styles.langBtn, {
+                  backgroundColor: active ? `${palette.violet}14` : theme.inputBg,
+                  borderColor: active ? palette.violet : theme.inputBorder,
+                }]}
+              >
+                <Text style={[styles.langShort, { color: active ? palette.violet : theme.textSecondary }]}>{short}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </SafeAreaView>
+
+      <SafeAreaView style={styles.flex1} edges={['bottom']} pointerEvents={introStarted ? 'auto' : 'none'}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
+          style={styles.flex1}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* ── Logo ── */}
-            {method === 'select' ? (
-              <Animated.View style={[styles.header, {
-                opacity: logoAnim,
-                transform: [{
-                  scale: logoAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }),
-                }],
-              }]}>
-              <View style={styles.brandRow}>
-                <Image
-                  source={require('@/assets/images/jitpluslogo-app.png')}
-                  style={styles.logoImage}
-                  resizeMode="contain"
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <LoginHeader
+              dark={dark}
+              anims={intro}
+              compact={compactAnim}
+              isCompact={formMounted}
+              greeting={t(greetingKey)}
+              tagline={t('login.tagline')}
+              subtitle={t('login.valueProp')}
+              taglineColor={theme.textMuted}
+            />
+
+            <View style={styles.formSection}>
+              <SocialAuthButtons
+                google={google}
+                apple={apple}
+                googleLabel={t('login.loginWithGoogle')}
+                appleLabel={t('login.loginWithApple')}
+                disabled={authBusy}
+                itemStyles={[anim.items[0], anim.items[1]]}
+              />
+
+              {!!socialError && <FormError message={socialError} />}
+
+              <Animated.View style={anim.items[2]}>
+                <KhatamDivider label={t('common.or')} lineColor={theme.inputBorder} textColor={theme.textMuted} dark={dark} twinkle={intro.twinkle} />
+              </Animated.View>
+
+              <PressScale style={anim.items[3]}>
+                {(press) => (
+                  <TouchableOpacity
+                    {...press}
+                    onPress={() => { haptic(); toggleEmailForm(); }}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: formMounted }}
+                    accessibilityLabel={t('login.continueWithEmail')}
+                    style={[styles.emailDisclosure, { borderColor: palette.violet, backgroundColor: theme.bgCard }]}
+                  >
+                    <View style={styles.emailIconWrap}>
+                      <Mail size={ms(16)} color={palette.violet} strokeWidth={1.75} />
+                    </View>
+                    <Text style={[styles.emailDisclosureText, { color: theme.text }]}>{t('login.continueWithEmail')}</Text>
+                    <Animated.View style={[styles.chevronWrap, anim.chevron]}>
+                      <ChevronDown size={ms(18)} color={palette.violet} strokeWidth={1.75} />
+                    </Animated.View>
+                  </TouchableOpacity>
+                )}
+              </PressScale>
+            </View>
+
+            {formMounted && (
+              <Animated.View style={[styles.formSection, styles.emailForm, anim.form]}>
+                <View style={styles.inputContainer}>
+                  <View style={emailFieldStyle}>
+                    <Mail size={ms(17)} color={palette.violet} strokeWidth={1.75} />
+                    <TextInput
+                      ref={emailRef}
+                      style={[authStyles.inputField, { color: theme.text }]}
+                      placeholder={t('login.emailPlaceholder')}
+                      placeholderTextColor={theme.inputPlaceholder}
+                      value={email}
+                      onChangeText={(v) => { setEmail(v); setError(''); }}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="email"
+                      textContentType="emailAddress"
+                      importantForAutofill="yes"
+                      maxLength={254}
+                      returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      editable={!isLoading}
+                      onFocus={() => setEmailFocused(true)}
+                      onBlur={() => setEmailFocused(false)}
+                    />
+                  </View>
+                </View>
+
+                <PasswordField
+                  variant="auth"
+                  inputRef={passwordRef}
+                  icon={Lock}
+                  placeholder={t('login.password')}
+                  value={password}
+                  onChangeText={onPasswordChange}
+                  invalid={faultyField === 'password'}
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
+                  editable={!isLoading}
                 />
-                <BrandText size={28} />
-              </View>
-              <Text style={styles.tagline}>{t('login.tagline')}</Text>
-            </Animated.View>
-          ) : (
-            <View style={styles.headerSmall}>
-              <View style={styles.brandRow}>
-                <Image
-                  source={require('@/assets/images/jitpluslogo-app.png')}
-                  style={styles.logoImageSmall}
-                  resizeMode="contain"
+
+                {!!error && <FadeSlideIn><FormError message={error} /></FadeSlideIn>}
+
+                <TouchableOpacity activeOpacity={0.7} onPress={() => { void sendCode('reset'); }} accessibilityRole="button">
+                  <Text style={[styles.forgotText, { color: palette.violet }]}>{t('login.forgotPassword')}</Text>
+                </TouchableOpacity>
+
+                <AuthPrimaryButton
+                  label={t('login.loginButton')}
+                  onPress={handleLogin}
+                  active={canSubmit}
+                  loading={isLoading}
+                  disabled={authBusy}
                 />
-                <BrandText size={16} />
-              </View>
-              </View>
+
+                {/* No password needed: accounts created without one sign in this way. */}
+                <TouchableOpacity onPress={() => { void sendCode('login'); }} activeOpacity={0.7} style={styles.codeLoginBtn} accessibilityRole="button">
+                  <Mail size={ms(16)} color={palette.violet} strokeWidth={2} />
+                  <Text style={[styles.codeLoginText, { color: palette.violet }]}>{t('login.codeLogin')}</Text>
+                </TouchableOpacity>
+              </Animated.View>
             )}
 
-            {/* ── Content ── */}
-            {method === 'select' && renderMethodSelect()}
-            {method === 'email' && renderEmailForm()}
-            {method === 'google' && renderGoogleLoading()}
+            <Animated.View style={anim.items[4]}>
+              <TouchableOpacity activeOpacity={0.75} onPress={() => router.push('/register')} style={styles.signupWrap} accessibilityRole="button">
+                <Text style={styles.signupText}>
+                  <Text style={{ color: theme.textMuted }}>{t('login.noAccount')} </Text>
+                  <Text style={[styles.signupLink, { color: palette.violet }]}>{t('login.signUp')}</Text>
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
-
-        {/* Footer – anchored at the bottom */}
-        {(method === 'select' || method === 'email') && (
-          <Animated.View style={[styles.footerContainer, { opacity: footerAnim }]}>
-            <Text style={styles.footerText}>{t('login.noAccount')}{' '}</Text>
-            <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/register')}>
-              <Text style={styles.footerLink}>{t('login.signUp')}</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
       </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: { flex: 1 },
-  container: { flex: 1 },
-  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: wp(24), paddingVertical: hp(20) },
+  screen: { flex: 1 },
+  flex1: { flex: 1 },
 
-  // Logo
-  header: { alignItems: 'center', marginBottom: hp(32) },
-  brandRow: { flexDirection: 'column', alignItems: 'center', gap: ms(6) },
-  logoImage: { width: ms(80), height: ms(80), borderRadius: ms(20) },
-  headerSmall: { alignItems: 'center', marginBottom: hp(16), marginTop: hp(8) },
-  logoImageSmall: { width: ms(40), height: ms(40), borderRadius: ms(10) },
-  tagline: {
-    fontSize: fontSize.sm, color: '#999', fontWeight: '500',
-    letterSpacing: 0.5, marginTop: hp(4),
-  },
-
-  // Section (no card)
-  methodSection: {
-    paddingHorizontal: wp(4),
-  },
-  cardTitle: { fontSize: fontSize['2xl'], fontWeight: '600', marginBottom: hp(6), letterSpacing: -0.3 },
-  cardSubtitle: { fontSize: fontSize.sm, lineHeight: ms(22), marginBottom: hp(20) },
-  registerTitle: {
-    fontSize: ms(26), fontWeight: '600', letterSpacing: -0.3,
-    marginBottom: hp(8),
-  },
-  registerSubtitle: {
-    fontSize: fontSize.sm, lineHeight: ms(22),
-    marginBottom: hp(24),
-  },
-
-  // Social buttons
-  socialBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    height: hp(54), borderRadius: radius.lg, gap: wp(10),
-    marginBottom: hp(12), borderWidth: 1.5, borderColor: 'transparent',
-  },
-  socialBtnText: { fontSize: fontSize.md, fontWeight: '600', letterSpacing: 0.2 },
-
-  // Separator
-  separator: {
-    flexDirection: 'row', alignItems: 'center',
-    marginVertical: hp(8), gap: wp(12),
-  },
-  separatorLine: { flex: 1, height: 1 },
-  separatorText: { fontSize: fontSize.sm, fontWeight: '500' },
-
-  // No-account banner (Google/Apple login → user doesn't exist yet)
-  noAccountBanner: {
-    borderWidth: 1.5,
-    borderRadius: 16,
-    paddingHorizontal: wp(16),
-    paddingVertical: hp(14),
-    marginBottom: hp(12),
-    gap: hp(6),
-  },
-  noAccountTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  noAccountMsg: {
-    fontSize: fontSize.sm,
-    lineHeight: ms(20),
-    fontFamily: 'Lexend_400Regular',
-  },
-  noAccountBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    height: hp(42),
-    gap: wp(6),
-    marginTop: hp(4),
-  },
-  noAccountBtnText: {
-    color: '#fff',
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-
-  // Footer
-  footerContainer: {
-    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    paddingTop: hp(12), paddingBottom: hp(32),
-  },
-  footerText: { fontSize: fontSize.sm, color: palette.gray400 },
-  footerLink: { fontSize: fontSize.sm, color: palette.violet, fontWeight: '600' },
-
-  // Form common
-  backBtn: {
-    width: ms(36), height: ms(36), borderRadius: ms(18),
+  langBar: { position: 'absolute', top: 0, end: 0, zIndex: 10, paddingEnd: wp(16) },
+  langRow: { flexDirection: 'row', gap: wp(7), paddingTop: hp(4) },
+  langBtn: {
+    minWidth: ms(42), minHeight: ms(42), borderRadius: radius.md, borderWidth: 1.5,
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: hp(8),
   },
-  formHeader: { marginBottom: hp(20) },
-  formIconBg: {
-    width: ms(52), height: ms(52), borderRadius: ms(16),
+  langShort: { fontSize: ms(14), fontWeight: '600' },
+
+  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: wp(24), paddingTop: hp(56), paddingBottom: hp(36) },
+  formSection: { paddingHorizontal: wp(4) },
+  emailForm: { marginTop: hp(14) },
+
+  emailDisclosure: {
+    flexDirection: 'row', minHeight: ms(52), borderRadius: radius.md, borderWidth: 1.5,
+    paddingHorizontal: wp(14), alignItems: 'center', gap: wp(10),
+  },
+  emailIconWrap: {
+    width: ms(24), height: ms(24), borderRadius: 8, backgroundColor: 'rgba(124,58,237,0.1)',
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: hp(14),
   },
+  emailDisclosureText: { flex: 1, fontSize: fontSize.md, fontWeight: '600' },
+  chevronWrap: { minWidth: ms(24), alignItems: 'center' },
 
-  // Input
-  inputContainer: { marginBottom: hp(16) },
-  inputWrapper: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: radius.lg, paddingHorizontal: wp(14), height: hp(58),
-  },
-  emailInput: { flex: 1, fontSize: fontSize.md, fontWeight: '500', marginLeft: wp(10) },
+  inputContainer: { marginBottom: hp(12) },
 
+  // alignSelf, not textAlign: flex-end follows the reading direction under forceRTL.
+  forgotText: { alignSelf: 'flex-end', fontSize: fontSize.sm, fontWeight: '600', marginBottom: hp(14) },
 
+  codeLoginBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(8), marginTop: hp(14), paddingVertical: hp(6) },
+  codeLoginText: { fontSize: fontSize.sm, fontWeight: '600' },
 
-  // Forgot password
-  forgotPasswordText: { fontSize: fontSize.sm, fontWeight: '600', textAlign: 'right', marginBottom: hp(20) },
-
-  // Button
-  button: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderRadius: radius.lg, height: hp(56), gap: wp(8),
-    paddingHorizontal: wp(20),
-  },
-  buttonText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '600' },
-  errorText: { fontSize: fontSize.sm, fontWeight: '500', textAlign: 'center' as const },
+  signupWrap: { marginTop: hp(22), marginBottom: hp(6) },
+  signupText: { fontSize: fontSize.sm, textAlign: 'center' },
+  signupLink: { fontWeight: '600' },
 
 });

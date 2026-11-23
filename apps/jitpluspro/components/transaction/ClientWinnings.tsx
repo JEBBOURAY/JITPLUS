@@ -1,7 +1,9 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
+import { toast } from '@/components/ui/Toast';
+import { View, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react-native';
-import { JitGames, JitGift, JitLock, JitTicket } from '@/components/icons';
+import { JitGames, JitGift, JitTicket } from '@/components/icons';
 import { randomUUID } from '@/utils/crypto';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -11,7 +13,7 @@ import { useRedeemCoupon } from '@/hooks/useScratchHooks';
 import { getErrorMessage } from '@/utils/error';
 import { font, icon } from '@/constants/design';
 import { ms, radius } from '@/utils/responsive';
-import { formatDate, formatDateTime } from '@/utils/date';
+import { formatDate } from '@/utils/date';
 import { MAX_AMOUNT_DIGITS } from '@/constants/app';
 import { computeStampsForAmount } from '@/utils/stamps';
 import { sanitizeAmountInput } from '@/utils/stampTransaction';
@@ -19,11 +21,8 @@ import { formatCurrency, getIntlLocale } from '@/config/currency';
 import { useCurrency, useMoney } from '@/hooks/useCurrency';
 import {
   computeCouponDiscount,
-  formatCouponCode,
   formatRewardValue,
-  minutesToTime,
   type ClientCouponAtTill,
-  type CouponCheck,
 } from '@jitplus/shared/src/scratch';
 import { Button, FieldLabel, Input, Notice } from '@/components/scratch/ScratchUI';
 import { cardSurface, cardStyles } from './ui';
@@ -33,7 +32,6 @@ type Selection = { kind: 'prize'; id: string } | { kind: 'coupon'; id: string } 
 interface Props {
   prizes: LuckyWheelPendingDraw[];
   coupons: ClientCouponAtTill[];
-  loading: boolean;
   clientId: string;
   /** Purchase amount already typed on the stamps screen, reused for the coupon. */
   defaultAmount?: string;
@@ -41,39 +39,17 @@ interface Props {
   onCouponRedeemed?: (purchaseAmount: number) => void;
 }
 
-type Translate = (key: string, opts?: Record<string, unknown>) => string;
-
-/** Why a coupon cannot be used right now, from the first failed server check. */
-function couponBlockedReason(checks: CouponCheck[], t: Translate, locale: string): string | null {
-  const failed = checks.find((c) => c.ok === false);
-  if (!failed) return null;
-  const d = failed.detail ?? {};
-  switch (failed.key) {
-    case 'dates':
-      return new Date(String(d.validFrom)).getTime() > Date.now()
-        ? t('scratch.validate.notStarted', { date: formatDateTime(String(d.validFrom), locale) })
-        : t('scratch.validate.expiredOn', { date: formatDateTime(String(d.expiresAt), locale) });
-    case 'weekday': {
-      const days = (Array.isArray(d.allowed) ? (d.allowed as number[]) : [])
-        .map((day) => t(`scratch.weekdayShort.${day}`))
-        .join(', ');
-      return t('scratch.validate.weekdayNo', { days });
-    }
-    case 'hours':
-      return t('scratch.validate.hoursNo', { from: minutesToTime(Number(d.from)), to: minutesToTime(Number(d.to)) });
-    default:
-      return t('scratch.validate.statusEXPIRED');
-  }
-}
-
-function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount = '', onCouponRedeemed }: Props) {
+function ClientWinningsBase({ prizes, coupons, clientId, defaultAmount = '', onCouponRedeemed }: Props) {
   const theme = useTheme();
   const { t, locale, isRTL } = useLanguage();
   const merchant = useAuthStore((s) => s.merchant);
   const isPerAmount = merchant?.stampEarningMode === 'PER_AMOUNT';
   const row = isRTL ? 'row-reverse' : 'row';
 
-  const [open, setOpen] = useState(false);
+  // Open by default when a collection gift is owed: the cashier sees it without an extra tap.
+  const hasCollectionGift = coupons.some((c) => c.coupon.source === 'COLLECTION');
+  const [openChoice, setOpenChoice] = useState<boolean | null>(null);
+  const open = openChoice ?? hasCollectionGift;
   const [selection, setSelection] = useState<Selection>(null);
   const [amount, setAmount] = useState(defaultAmount);
   // One key per selected coupon: a retry after a network failure replays safely.
@@ -132,7 +108,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
           fulfil.mutate(selectedPrize.id, {
             onSuccess: () => {
               setSelection(null);
-              Alert.alert(t('transactionAmount.givenPrizeTitle'), t('transactionAmount.givenPrizeSuccess'));
+              toast.success(t('transactionAmount.givenPrizeSuccess'));
             },
             onError: (err) => Alert.alert(t('common.error'), getErrorMessage(err, t('transactionAmount.giveError'))),
           }),
@@ -159,8 +135,12 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                   lines.push(t('scratch.validate.successDiscount', { amount: money(res.discountAmount) }));
                 }
                 const stamps = res.stampsEarned + res.bonusStamps;
-                if (stamps > 0) lines.push(t('scratch.validate.successStamps', { count: stamps }));
-                lines.push(t('scratch.validate.successBalance', { count: res.newBalance }));
+                // The balance only says something when the coupon added stamps (a gift without a ticket leaves it as is).
+                if (stamps > 0) {
+                  lines.push(t('scratch.validate.successStamps', { count: stamps }));
+                  lines.push(t('scratch.validate.successBalance', { count: res.newBalance }));
+                }
+                if (lines.length === 0) lines.push(t('transactionAmount.givenCouponDone', { label: coupon.label }));
                 Alert.alert(t('transactionAmount.givenCouponTitle'), lines.join('\n'));
               },
               onError: (err) => Alert.alert(t('common.error'), getErrorMessage(err, t('transactionAmount.giveError'))),
@@ -191,6 +171,22 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
     </View>
   );
 
+  // Collection gifts get their own group: the cashier sees where the gift comes from.
+  const couponGroups = [
+    {
+      key: 'scratch',
+      items: coupons.filter((c) => c.coupon.source !== 'COLLECTION'),
+      Icon: JitTicket,
+      title: t('transactionAmount.scratchSection'),
+    },
+    {
+      key: 'collection',
+      items: coupons.filter((c) => c.coupon.source === 'COLLECTION'),
+      Icon: JitGift,
+      title: t('collection.till.winningsSection'),
+    },
+  ];
+
   const count = prizes.length + coupons.length;
   const Chevron = open ? ChevronUp : ChevronDown;
 
@@ -198,7 +194,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
     <View style={[cardStyles.card, cardSurface(theme), styles.card, { borderColor: `${theme.warning}55` }]}>
       <TouchableOpacity
         style={[styles.header, { flexDirection: row }]}
-        onPress={() => setOpen((v) => !v)}
+        onPress={() => setOpenChoice(!open)}
         activeOpacity={0.75}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
@@ -208,38 +204,24 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
         </View>
         <View style={styles.info}>
           <Text style={[styles.title, { color: theme.text, textAlign }]}>
-            {loading && count === 0 ? t('stampScreen.winningsLoading') : t(count === 1 ? 'stampScreen.winningsTitle_one' : 'stampScreen.winningsTitle_other', { count })}
+            {t(count === 1 ? 'stampScreen.winningsTitle_one' : 'stampScreen.winningsTitle_other', { count })}
           </Text>
-          <Text style={[styles.meta, { color: theme.textMuted, textAlign }]}>{t('stampScreen.winningsSubtitle')}</Text>
         </View>
-        {loading && count === 0 ? (
-          <ActivityIndicator size="small" color={theme.warning} />
-        ) : (
-          <View style={[styles.chevron, { backgroundColor: `${theme.warning}1A` }]}>
-            <Chevron size={ms(18)} color={theme.warning} strokeWidth={icon.stroke} />
-          </View>
-        )}
+        <View style={[styles.chevron, { backgroundColor: `${theme.warning}1A` }]}>
+          <Chevron size={ms(18)} color={theme.warning} strokeWidth={icon.stroke} />
+        </View>
       </TouchableOpacity>
 
-      {!open ? null : loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="small" color={theme.primary} />
-        </View>
-      ) : (
+      {open && (
         <>
           <View style={[styles.divider, { backgroundColor: rowBorder }]} />
-          <Text style={[styles.hint, { color: theme.textMuted, textAlign }]}>{t('transactionAmount.winningsHint')}</Text>
           {prizes.length > 0 && (
             <View style={styles.group}>
               {renderGroupTitle(JitGames, theme.warning, t('transactionAmount.wheelSection'))}
               {prizes.map((draw) => {
                 const selected = selection?.kind === 'prize' && selection.id === draw.id;
-                const meta = [
-                  draw.ticket?.campaign?.name,
-                  draw.claimBefore ? t('transactionAmount.claimBefore', { date: formatDate(draw.claimBefore, locale) }) : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ');
+                // The group title already says "Roue de la chance": only the deadline is new.
+                const meta = draw.claimBefore ? t('transactionAmount.claimBefore', { date: formatDate(draw.claimBefore, locale) }) : null;
                 return (
                   <View
                     key={draw.id}
@@ -273,6 +255,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                       <View style={styles.panel}>
                         <Button
                           label={t('transactionAmount.giveAction')}
+                          variant="secondary"
                           icon={JitGift}
                           onPress={givePrize}
                           loading={fulfil.isPending}
@@ -286,16 +269,14 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
             </View>
           )}
 
-          {coupons.length > 0 && (
-            <View style={styles.group}>
-              {renderGroupTitle(JitTicket, theme.primary, t('transactionAmount.scratchSection'))}
-              {coupons.map((item) => {
+          {couponGroups.map((group) => group.items.length > 0 && (
+            <View key={group.key} style={styles.group}>
+              {renderGroupTitle(group.Icon, theme.primary, group.title)}
+              {group.items.map((item) => {
                 const { coupon } = item;
                 const selected = selection?.kind === 'coupon' && selection.id === coupon.id;
-                const blocked = item.canRedeem
-                  ? null
-                  : couponBlockedReason(item.checks, t, locale) ?? t('scratch.validate.anonymous');
-                const value = formatRewardValue(coupon, t, textMoney);
+                // The merchant's own wording first (what the client saw); the generic value only as a fallback.
+                const title = coupon.label.trim() || formatRewardValue(coupon, t, textMoney);
                 return (
                   <View
                     key={coupon.id}
@@ -304,45 +285,33 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                       selected
                         ? { borderColor: theme.primary, backgroundColor: theme.primaryBg }
                         : { borderColor: rowBorder, backgroundColor: theme.bg },
-                      { opacity: blocked ? 0.6 : 1 },
                     ]}
                   >
                     <TouchableOpacity
                       style={[styles.row, { flexDirection: row }]}
                       onPress={() => select({ kind: 'coupon', id: coupon.id })}
-                      disabled={!!blocked}
                       activeOpacity={0.75}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected, disabled: !!blocked }}
+                      accessibilityState={{ selected }}
                     >
                       <View style={[styles.itemIcon, { backgroundColor: theme.primaryBg }]}>
-                        <JitTicket size={ms(18)} color={theme.primary} strokeWidth={icon.stroke} />
+                        <group.Icon size={ms(18)} color={theme.primary} strokeWidth={icon.stroke} />
                       </View>
                       <View style={styles.info}>
-                        <Text style={[styles.name, { color: theme.text, textAlign }]}>{value}</Text>
-                        {coupon.label.trim() !== value && (
-                          <Text style={[styles.meta, { color: theme.textSecondary, textAlign }]}>{coupon.label}</Text>
-                        )}
+                        <Text style={[styles.name, { color: theme.text, textAlign }]}>{title}</Text>
                         <Text style={[styles.meta, { color: theme.textMuted, textAlign }]}>
-                          {t('transactionAmount.couponCode', { code: formatCouponCode(coupon.code) })} ·{' '}
                           {t('transactionAmount.couponExpires', { date: formatDate(coupon.expiresAt, locale) })}
                         </Text>
-                        {!!blocked && (
-                          <View style={[styles.blocked, { flexDirection: row, alignSelf: isRTL ? 'flex-end' : 'flex-start', backgroundColor: `${theme.danger}14` }]}>
-                            <JitLock size={ms(11)} color={theme.danger} strokeWidth={icon.strokeSmall} />
-                            <Text style={[styles.blockedText, { color: theme.danger, textAlign }]}>{blocked}</Text>
-                          </View>
-                        )}
                       </View>
-                      {!blocked && renderIndicator(selected)}
+                      {renderIndicator(selected)}
                     </TouchableOpacity>
 
                     {selected && couponRules && (
                       <View style={[styles.panel, styles.couponPanel]}>
                         <FieldLabel
-                          text={`${t('scratch.validate.amountLabel')} (${
+                          text={`${t('scratch.validate.amountLabel')} · ${
                             couponRules.required ? t('scratch.validate.amountRequired') : t('scratch.validate.amountOptional')
-                          })`}
+                          }`}
                         />
                         <Input
                           value={amount}
@@ -396,6 +365,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                         <Notice text={t('transactionAmount.couponRecordsPurchase')} />
                         <Button
                           label={t('transactionAmount.giveAction')}
+                          variant="secondary"
                           icon={JitTicket}
                           onPress={giveCoupon}
                           loading={redeem.isPending}
@@ -407,7 +377,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                 );
               })}
             </View>
-          )}
+          ))}
         </>
       )}
     </View>
@@ -423,8 +393,6 @@ const styles = StyleSheet.create({
   chevron: { width: ms(32), height: ms(32), borderRadius: ms(16), alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: ms(15), fontFamily: font.semibold },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
-  hint: { fontSize: ms(13), lineHeight: ms(18), fontFamily: font.regular },
-  loading: { paddingVertical: 20, alignItems: 'center' },
   group: { gap: 8, marginTop: 4 },
   groupHeader: { alignItems: 'center', gap: 6, marginTop: 2 },
   groupTitle: { fontSize: ms(12), fontFamily: font.semibold },
@@ -434,8 +402,6 @@ const styles = StyleSheet.create({
   info: { flex: 1, gap: 2 },
   name: { fontSize: ms(15), fontFamily: font.semibold },
   meta: { fontSize: ms(13), fontFamily: font.regular },
-  blocked: { alignItems: 'center', gap: 5, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginTop: 4 },
-  blockedText: { flexShrink: 1, fontSize: ms(12), fontFamily: font.medium },
   indicator: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   panel: { paddingHorizontal: 12, paddingBottom: 12 },
   couponPanel: { gap: 10 },

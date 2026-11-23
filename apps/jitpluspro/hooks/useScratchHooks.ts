@@ -5,7 +5,6 @@ import type {
   AudienceEstimate,
   CancelPreview,
   ClientCouponAtTill,
-  CouponCheckResult,
   CouponRedeemResult,
   MerchantCouponsPage,
   ScratchAudienceType,
@@ -16,6 +15,7 @@ import type {
   ScratchClientWithoutApp,
 } from '@jitplus/shared/src/scratch';
 import { queryKeys, STALE } from './queries/keys';
+import { invalidateAfterTransaction, markLocalTransaction } from './queries/transactionCache';
 
 export const scratchKeys = {
   campaigns: ['scratch', 'campaigns'] as const,
@@ -37,6 +37,8 @@ function useInvalidateCampaign() {
   const qc = useQueryClient();
   return (id?: string) => {
     qc.invalidateQueries({ queryKey: scratchKeys.campaigns });
+    // Campaign counts of the Statistics screen: refetched when it next opens.
+    qc.invalidateQueries({ queryKey: queryKeys.dashboardGames, refetchType: 'none' });
     if (id) {
       qc.invalidateQueries({ queryKey: scratchKeys.campaign(id) });
       qc.invalidateQueries({ queryKey: scratchKeys.stats(id) });
@@ -190,48 +192,45 @@ export function useReshareClaim() {
   });
 }
 
-export function useCheckCoupon() {
-  return useMutation({
-    mutationFn: async (input: { token?: string; code?: string }) =>
-      (await api.post<CouponCheckResult>(`${BASE}/coupons/check`, input)).data,
-  });
+export async function fetchClientCouponsAtTill(clientId: string): Promise<ClientCouponAtTill[]> {
+  const res = await api.get(`${BASE}/clients/${clientId}/coupons`);
+  return Array.isArray(res.data) ? res.data : [];
+}
+
+export function prefetchClientCouponsAtTill(qc: QueryClient, clientId: string) {
+  return qc.prefetchQuery({ queryKey: scratchKeys.clientCoupons(clientId), queryFn: () => fetchClientCouponsAtTill(clientId), staleTime: STALE.TILL });
 }
 
 export function useClientCouponsAtTill(clientId: string | undefined) {
   return useQuery<ClientCouponAtTill[]>({
     queryKey: scratchKeys.clientCoupons(clientId ?? ''),
-    queryFn: async () => {
-      const res = await api.get(`${BASE}/clients/${clientId}/coupons`);
-      return Array.isArray(res.data) ? res.data : [];
-    },
+    queryFn: () => fetchClientCouponsAtTill(clientId!),
     enabled: !!clientId,
-    staleTime: 0,
+    staleTime: STALE.TILL,
   });
 }
 
 export function useRedeemCoupon() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ couponId, purchaseAmount, idempotencyKey }: {
+    mutationFn: async ({ couponId, purchaseAmount, clientId, idempotencyKey }: {
       couponId: string;
       purchaseAmount: number;
       clientId?: string;
       idempotencyKey?: string;
-    }) =>
-      (await api.post<CouponRedeemResult>(
+    }) => {
+      if (clientId) markLocalTransaction(clientId);
+      return (await api.post<CouponRedeemResult>(
         `${BASE}/coupons/${couponId}/redeem`,
         { purchaseAmount },
         { headers: { 'Idempotency-Key': idempotencyKey ?? randomUUID() } },
-      )).data,
+      )).data;
+    },
+    // The redemption is recorded as a transaction (with the coupon's stamps).
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: scratchKeys.couponsAll });
       qc.invalidateQueries({ queryKey: scratchKeys.campaigns });
-      qc.invalidateQueries({ queryKey: queryKeys.transactions });
-      qc.invalidateQueries({ queryKey: queryKeys.homeStats });
-      if (vars.clientId) {
-        qc.invalidateQueries({ queryKey: queryKeys.clientDetail(vars.clientId) });
-        qc.invalidateQueries({ queryKey: queryKeys.clientStatus(vars.clientId) });
-      }
+      invalidateAfterTransaction(qc, vars.clientId);
     },
   });
 }

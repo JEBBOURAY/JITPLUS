@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
-import { View, Text, TextInput, Switch, Pressable, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react-native';
 import { JitGames, JitStamp } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -15,8 +16,6 @@ interface Props {
   mode: EarningMode;
   amount: string;
   onAmountChange: (text: string) => void;
-  countVisit: boolean;
-  onCountVisitChange: (value: boolean) => void;
   plan: StampPlan;
   /** Price of one stamp, already formatted (PER_AMOUNT). */
   amountPerStampLabel: string;
@@ -34,8 +33,6 @@ function EarnSectionBase({
   mode,
   amount,
   onAmountChange,
-  countVisit,
-  onCountVisitChange,
   plan,
   amountPerStampLabel,
   wheelMinSpend,
@@ -48,56 +45,25 @@ function EarnSectionBase({
   const { t, isRTL } = useLanguage();
   const currency = useCurrency();
   const row = isRTL ? 'row-reverse' : 'row';
-  const textAlign = isRTL ? 'right' : 'left';
   const [focused, setFocused] = useState(false);
   const amountNum = parseFloat(amount) || 0;
   const isPerAmount = mode === 'PER_AMOUNT';
-  const visitOn = countVisit && !plan.atLimit;
+  // The "count this visit" switch lives in the action bar, next to the button it changes.
   // A stamp-less purchase can still give a spin, so the amount stays reachable without the visit stamp.
-  const showAmount = isPerAmount || (wheelMinSpend > 0 && visitOn) || purchaseMinSpend > 0;
+  const showAmount = isPerAmount || (wheelMinSpend > 0 && plan.earnStamps > 0) || purchaseMinSpend > 0;
+  const showWheelNotice = plan.purchaseOnly || (wheelMinSpend > 0 && plan.earnStamps > 0);
+  const hasNotice =
+    plan.perTxCapped ||
+    (accumulationLimit != null && (plan.atLimit || plan.limitTrimmed)) ||
+    showWheelNotice ||
+    purchaseRecordedByCoupon;
+  // Nothing to type and nothing to warn about: no empty card.
+  if (!showAmount && !hasNotice) return null;
   const amountLabel = isPerAmount ? t('stampScreen.amountLabel') : t('stampScreen.wheelAmountLabel');
   const inputBorder = focused ? theme.primary : amountNum > 0 ? `${theme.primary}66` : 'transparent';
 
   return (
     <View style={[cardStyles.card, cardSurface(theme), styles.card]}>
-      {!isPerAmount && (
-        <Pressable
-          style={({ pressed }) => [
-            styles.visitRow,
-            {
-              flexDirection: row,
-              backgroundColor: visitOn ? theme.primaryBg : theme.bgInput,
-              borderColor: visitOn ? `${theme.primary}55` : 'transparent',
-              opacity: pressed ? 0.85 : 1,
-            },
-          ]}
-          onPress={() => onCountVisitChange(!countVisit)}
-          disabled={plan.atLimit}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: visitOn, disabled: plan.atLimit }}
-          accessibilityLabel={t('stampScreen.visitTitle')}
-        >
-          <View style={[styles.visitIcon, { backgroundColor: visitOn ? theme.primary : theme.bgCard }]}>
-            <JitStamp size={ms(22)} color={visitOn ? '#fff' : theme.textMuted} strokeWidth={icon.stroke} />
-          </View>
-          <View style={styles.visitText}>
-            <Text style={[styles.title, { color: theme.text, textAlign }]}>{t('stampScreen.visitTitle')}</Text>
-            <Text style={[styles.subtitle, { color: visitOn ? theme.primary : theme.textMuted, textAlign }]}>
-              {visitOn ? t('stampScreen.visitOn') : t('stampScreen.visitOff')}
-            </Text>
-          </View>
-          <Switch
-            value={visitOn}
-            onValueChange={onCountVisitChange}
-            disabled={plan.atLimit}
-            trackColor={{ false: theme.border, true: theme.primary }}
-            thumbColor="#fff"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          />
-        </Pressable>
-      )}
-
       {showAmount && (
         <View style={styles.amountBlock}>
           <Text style={[styles.amountCaption, { color: theme.textSecondary }]}>{amountLabel}</Text>
@@ -213,11 +179,6 @@ export const EarnSection = memo(EarnSectionBase);
 
 const styles = StyleSheet.create({
   card: { marginTop: 14, gap: 12 },
-  visitRow: { alignItems: 'center', gap: 12, borderRadius: radius.lg, borderWidth: 1.5, padding: 12, minHeight: ms(68) },
-  visitIcon: { width: ms(44), height: ms(44), borderRadius: ms(22), alignItems: 'center', justifyContent: 'center' },
-  visitText: { flex: 1, gap: 2 },
-  title: { fontSize: ms(15), fontFamily: font.semibold },
-  subtitle: { fontSize: ms(13), fontFamily: font.semibold },
   amountBlock: { gap: 10, alignItems: 'center' },
   amountCaption: { fontSize: ms(13), fontFamily: font.medium, textAlign: 'center' },
   inputWrap: { alignSelf: 'stretch', justifyContent: 'center', borderRadius: radius.lg, borderWidth: 2 },

@@ -1,4 +1,5 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ChevronRight, X, type LucideIcon } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { palette } from '@/contexts/ThemeContext';

@@ -8,7 +8,7 @@ import {
 } from '../common/repositories';
 import { LoginDto } from './dto/login.dto';
 import { USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER } from '../common/constants';
-import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
+import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps, prismaLockoutOps } from '../common/utils/login-lockout.helper';
 import { MERCHANT_LOGIN_SELECT, MERCHANT_PROFILE_SELECT } from '../common/prisma-selects';
 import { MerchantSessionService } from './merchant-session.service';
 import { type AuthResult, merchantLockoutOps } from './auth-shared';
@@ -47,18 +47,7 @@ export class AuthService {
 
   /** Lockout DB ops for TeamMember model */
   private get teamMemberLockoutOps(): LockoutDbOps {
-    return {
-      incrementFailedAttempts: (id, newAttempts, lockedUntil) =>
-        this.teamMemberRepo.update({
-          where: { id },
-          data: { failedLoginAttempts: newAttempts, ...(lockedUntil && { lockedUntil }) },
-        }).then(() => {}),
-      resetFailedAttempts: (id) =>
-        this.teamMemberRepo.update({
-          where: { id },
-          data: { failedLoginAttempts: 0, lockedUntil: null },
-        }).then(() => {}),
-    };
+    return prismaLockoutOps(this.teamMemberRepo);
   }
 
   async login(loginDto: LoginDto, ipAddress?: string): Promise<AuthResult> {

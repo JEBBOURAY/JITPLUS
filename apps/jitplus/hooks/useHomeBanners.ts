@@ -9,8 +9,18 @@ import {
 } from '@/constants';
 
 const WELCOME_FLAG_KEY = 'showWelcome';
-/** Value of the welcome flag for a just-created account (any other '1' means a returning user). */
-export const WELCOME_FLAG_NEW = 'new';
+const WELCOME_FLAG_NEW = 'new';
+const WELCOME_FLAG_BACK = '1';
+
+/**
+ * Asks the home screen to greet the client once: new account, or welcome back.
+ * Never rejects: callers await it right before leaving the sign-in screens, and
+ * a storage failure (full disk) must not keep a signed-in client stuck there.
+ */
+export function flagHomeWelcome(kind: 'new' | 'back'): Promise<void> {
+  return AsyncStorage.setItem(WELCOME_FLAG_KEY, kind === 'new' ? WELCOME_FLAG_NEW : WELCOME_FLAG_BACK)
+    .catch(() => { /* only the greeting banner is lost */ });
+}
 
 export function useHomeBanners(
   notifData: { pages: { notifications?: ClientNotification[] }[] } | undefined,
@@ -47,7 +57,7 @@ export function useHomeBanners(
   useFocusEffect(
     useCallback(() => {
       AsyncStorage.getItem(WELCOME_FLAG_KEY).then((val) => {
-        if (val !== '1' && val !== WELCOME_FLAG_NEW) return;
+        if (val !== WELCOME_FLAG_BACK && val !== WELCOME_FLAG_NEW) return;
         AsyncStorage.removeItem(WELCOME_FLAG_KEY).catch(() => {});
         setWelcomeKind(val === WELCOME_FLAG_NEW ? 'new' : 'back');
         welcomeAnim.setValue(0);
@@ -79,7 +89,8 @@ export function useHomeBanners(
         Animated.timing(rewardBannerAnim, { toValue: 1, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
         Animated.delay(REWARD_BANNER_VISIBLE_MS),
         Animated.timing(rewardBannerAnim, { toValue: 0, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
-      ]).start(() => { setRewardBannerNotif(null); });
+      // An interrupted run (a newer reward restarted the banner) must not hide the new one.
+      ]).start(({ finished }) => { if (finished) setRewardBannerNotif(null); });
     }, [notifData, rewardBannerAnim])
   );
 

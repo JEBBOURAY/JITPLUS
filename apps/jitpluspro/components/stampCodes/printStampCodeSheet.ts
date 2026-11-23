@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -160,13 +161,22 @@ function sheetFileName(label: string): string {
  * mail, Drive…), e.g. to send it to a printer shop or the shipping team.
  * Returns false when sharing isn't available on the device.
  */
+/**
+ * iOS ignores the CSS `@page { size: A4; margin: 8mm }` and renders US Letter
+ * with no margin, so labels touched the edge and page breaks drifted.
+ * A4 = 595×842 pt, 8 mm ≈ 23 pt.
+ */
+const IOS_A4_PAGE = Platform.OS === 'ios'
+  ? { width: 595, height: 842, margins: { top: 23, right: 23, bottom: 23, left: 23 } }
+  : {};
+
 export async function shareStampCodeSheet(input: SheetInput, label: string): Promise<boolean> {
   if (!(await Sharing.isAvailableAsync())) return false;
   const html = await buildStampCodeSheetHtml(input);
   // base64: the PDF bytes come back in memory, so we never have to read the
   // print engine's own output folder (outside the app sandbox on Android /
   // Expo Go, where expo-sharing refuses it: "Not allowed to read file under given URL").
-  const { uri, base64 } = await Print.printToFileAsync({ html, base64: true });
+  const { uri, base64 } = await Print.printToFileAsync({ html, base64: true, ...IOS_A4_PAGE });
   const file = await writeShareableCopy(base64, label);
   FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
   await Sharing.shareAsync(file, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: label });

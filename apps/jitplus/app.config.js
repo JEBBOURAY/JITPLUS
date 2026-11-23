@@ -14,6 +14,11 @@ module.exports = ({ config }) => {
   if (process.env.EAS_BUILD_PLATFORM === 'android' && !GOOGLE_MAPS_KEY_ANDROID) {
     throw new Error('Android EAS build has no Google Maps key: set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY or EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID.');
   }
+  // Same on iOS: without a key the plugin skips the Google Maps pod while
+  // SafeMapView forces provider="google".
+  if (process.env.EAS_BUILD_PLATFORM === 'ios' && !GOOGLE_MAPS_KEY_IOS) {
+    throw new Error('iOS EAS build has no Google Maps key: set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY or EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS.');
+  }
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   // e.g. "com.googleusercontent.apps.XXXXXXX-YYYYYYY"
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
@@ -41,7 +46,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.5.6',
+    version: '1.5.7',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -49,7 +54,11 @@ module.exports = ({ config }) => {
     updates: {
       url: 'https://u.expo.dev/cdecb51f-65ff-4e38-a180-bd20563d997c'
     },
-    runtimeVersion: '2.5.0',
+    // Tied to the app version (like JitPlus Pro): a fixed string let an OTA built
+    // on Expo SDK 58 reach binaries still on SDK 54 with the same '2.5.0' runtime.
+    runtimeVersion: {
+      policy: 'appVersion',
+    },
     // Publicly accessible privacy policy URL — required by both stores
     privacyPolicyUrl: PRIVACY_POLICY_URL,
     splash: {
@@ -58,11 +67,13 @@ module.exports = ({ config }) => {
       backgroundColor: '#FFFFFF',
     },
     ios: {
-      supportsTablet: false,
+      // Native iPad app: phones stay in portrait, iPads rotate (withTabletRotation below).
+      supportsTablet: true,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '60',
-      // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
+      buildNumber: '61',
+      // Full screen only on iPad: no Split View / Slide Over, so layouts only meet
+      // the four full-screen sizes.
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
       googleServicesFile: './GoogleService-Info.plist',
@@ -80,9 +91,16 @@ module.exports = ({ config }) => {
           "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
         LSApplicationQueriesSchemes: ['instagram', 'whatsapp', 'fb'],
 
-        // Google Sign-In redirect — reversed iOS client ID
+        // Google Sign-In redirect — reversed iOS client ID. Setting CFBundleURLTypes
+        // makes Expo ignore `scheme`, so the app scheme must be re-declared here:
+        // without it jitplus:// links (smart-redirect pages, OAuth) never open the app.
         ...(IOS_GOOGLE_CLIENT_ID
-          ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
+          ? {
+              CFBundleURLTypes: [
+                { CFBundleURLSchemes: ['jitplus', 'com.jitplus.client'] },
+                { CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] },
+              ],
+            }
           : {}),
       },
       // Deep links: Universal Links for shared merchant URLs (backend) and
@@ -93,7 +111,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 69,
+      versionCode: 70,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -250,6 +268,8 @@ module.exports = ({ config }) => {
       '../../packages/shared/expo-plugins/withMoroccoRegion',
       // Enable RTL support on Android — required for Arabic/Darija layout
       '../../packages/shared/expo-plugins/withSupportsRTL',
+      // Tablets rotate (iPad + Android >= 600 dp), phones stay in portrait
+      '../../packages/shared/expo-plugins/withTabletRotation',
       // Force modular headers for GoogleUtilities/RecaptchaInterop so Swift pod
       // AppCheckCore (pulled in by GoogleSignIn 9) can import them.
       '../../packages/shared/expo-plugins/withGoogleModularHeaders',

@@ -1,5 +1,5 @@
 import { IsEmail, IsOptional, IsString, IsUrl, MaxLength, MinLength, Matches, IsArray, ArrayMaxSize, IsEnum, IsIn, IsObject, ValidateNested, IsBoolean, ArrayUnique } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { MerchantCategory } from '@prisma/client';
 import { SocialLinksDto } from './social-links.dto';
 
@@ -70,6 +70,9 @@ export class UpdateProfileDto {
   @IsOptional()
   phoneNumber?: string;
 
+  // Normalized like LoginDto: login lowercases its input, so a mixed-case
+  // stored email would never match.
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail({}, { message: 'Adresse email invalide' })
   @IsString()
   @MaxLength(255, { message: 'Email trop long' })
@@ -146,7 +149,7 @@ export class UpdateProfileDto {
   badges?: string[];
 
   @IsArray()
-  @ArrayMaxSize(5, { message: 'Maximum 5 photos dans la galerie' })
+  @ArrayMaxSize(6, { message: 'Maximum 6 photos dans la galerie' })
   @IsString({ each: true })
   @Matches(/^(https?:\/\/|\/uploads\/).+/i, { each: true, message: 'URL de photo invalide' })
   @IsOptional()

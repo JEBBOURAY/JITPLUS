@@ -10,6 +10,7 @@ import {
 import { createHash, randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { withRetry } from '../../common/utils/retry-transaction.helper';
+import { canStartWelcomeBonus, hasWelcomeBonusHistory } from '../utils/welcome-bonus';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
@@ -18,6 +19,7 @@ import {
 } from '../../common/repositories';
 import { MerchantTransactionService } from './merchant-transaction.service';
 import { reassignScratchDataInTx } from '../../scratch-card/scratch-merge';
+import { reassignCollectionProgressInTx } from '../../collections/collection-merge';
 import { toE164Phone } from '../../common/utils/phone';
 import { buildPublicWebUrl } from '../../common/utils/public-web-url';
 import { MS_PER_DAY } from '../../common/constants';
@@ -310,12 +312,33 @@ export class ClientClaimService {
       for (const card of anonCards) {
         const existing = await tx.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId: realClientId, merchantId: card.merchantId } },
-          select: { id: true, stamps: true, deactivatedAt: true, lastVisitAt: true },
+          select: {
+            id: true,
+            stamps: true,
+            deactivatedAt: true,
+            lastVisitAt: true,
+            welcomeBonusReservedAt: true,
+            welcomeBonusCreditedAt: true,
+          },
         });
         if (existing) {
+          // One welcome gift per client: the anonymous reservation only moves
+          // to a real card that never had one and never earned anything here.
+          // A reservation is outside `stamps`, so the sum below cannot double it.
+          const inheritsWelcomeBonus =
+            !!card.welcomeBonusReservedAt &&
+            !card.welcomeBonusCreditedAt &&
+            canStartWelcomeBonus(existing) &&
+            !(await hasWelcomeBonusHistory(tx, realClientId, card.merchantId));
           await tx.loyaltyCard.update({
             where: { id: existing.id },
             data: {
+              ...(inheritsWelcomeBonus
+                ? {
+                    welcomeBonusReservedStamps: card.welcomeBonusReservedStamps,
+                    welcomeBonusReservedAt: card.welcomeBonusReservedAt,
+                  }
+                : {}),
               stamps: existing.stamps + card.stamps,
               lastVisitAt: card.lastVisitAt > existing.lastVisitAt ? card.lastVisitAt : existing.lastVisitAt,
               // Re-activate if the real client had previously left the program
@@ -347,6 +370,7 @@ export class ClientClaimService {
       // Scratch cards / coupons cascade on hard delete only: without this the
       // card would stay on the soft-deleted ghost and never be seen.
       const pendingScratchCards = await reassignScratchDataInTx(tx, anonymousId, realClientId, new Date(), merchantId);
+      await reassignCollectionProgressInTx(tx, anonymousId, realClientId, merchantId);
 
       // 3) Mark the claim consumed (single-use)
       await tx.clientClaim.update({
@@ -392,65 +416,27 @@ export class ClientClaimService {
   }
 
   /**
-   * List every un-consumed claim attached to an anonymous client (one per
-   * merchant who used Quick-Add on this phone). Used by the auth flow to
-   * surface a helpful message when a real user tries to register with a phone
-   * that’s already attached to one or more merchant-created anonymous claims.
-   */
-  async findPendingClaimsForClient(clientId: string): Promise<Array<{ merchantId: string; merchantName: string | null; createdAt: Date }>> {
-    const claims = await this.txRunner.run(async (tx) => {
-      return tx.clientClaim.findMany({
-        where: { clientId, consumedAt: null },
-        orderBy: { createdAt: 'desc' },
-        include: { merchant: { select: { id: true, nom: true } } },
-      });
-    });
-    // Deduplicate by merchant just in case (one row per merchant is the norm).
-    const seen = new Set<string>();
-    const out: Array<{ merchantId: string; merchantName: string | null; createdAt: Date }> = [];
-    for (const c of claims) {
-      if (seen.has(c.merchantId)) continue;
-      seen.add(c.merchantId);
-      out.push({
-        merchantId: c.merchantId,
-        merchantName: (c as any).merchant?.nom ?? null,
-        createdAt: c.createdAt,
-      });
-    }
-    return out;
-  }
-
-  /**
    * Build the structured 409 payload used by the client-auth flow when a real
    * user tries to claim a phone number already attached to an anonymous
-   * Quick-Add account. Lists every merchant who has a pending link so the
-   * client knows exactly whom to ask.
+   * Quick-Add account.
+   *
+   * Every caller runs BEFORE the requester has proven the number (profile edit,
+   * complete-profile, sending the change-contact OTP), so the payload must not
+   * name the merchants: typing any number would otherwise reveal which shops
+   * its owner visits. The real owner already has the merchant's WhatsApp link.
+   * `merchantName` / `merchantNames` stay in the shape for older app builds.
    */
-  async buildAnonymousPhoneConflictPayload(anonymousClientId: string): Promise<{
+  async buildAnonymousPhoneConflictPayload(_anonymousClientId: string): Promise<{
     errorCode: 'ANONYMOUS_PHONE_NEEDS_CLAIM';
     merchantName: string | null;
     merchantNames: string[];
     message: string;
   }> {
-    const pending = await this.findPendingClaimsForClient(anonymousClientId);
-    const names = pending.map((p) => p.merchantName).filter((n): n is string => !!n);
-    const primary = names[0] ?? null;
-
-    let message: string;
-    if (names.length === 0) {
-      message = "Ce numéro est déjà lié à une carte de fidélité créée par un commerçant sur WhatsApp. Pour l’utiliser, tu dois d’abord ouvrir le lien WhatsApp qu’il t’a envoyé et cliquer sur « Récupérer mes tampons ». Si tu as supprimé le message, demande-lui de te renvoyer le lien.";
-    } else if (names.length === 1) {
-      message = `Ce numéro est déjà lié à une carte de fidélité créée par ${names[0]} sur WhatsApp. Pour activer ton compte avec ce numéro, tu dois d’abord ouvrir le lien WhatsApp envoyé par ${names[0]} et cliquer sur « Récupérer mes tampons ». Si tu as supprimé le message, demande à ${names[0]} de te renvoyer le lien.`;
-    } else {
-      const list = names.slice(0, -1).join(', ') + ' et ' + names[names.length - 1];
-      message = `Ce numéro est déjà lié à plusieurs cartes de fidélité créées sur WhatsApp par : ${list}. Pour récupérer tes tampons, ouvre le lien WhatsApp de chacun d’eux et clique sur « Récupérer mes tampons ». Si tu as supprimé les messages, demande-leur de te renvoyer le lien.`;
-    }
-
     return {
       errorCode: 'ANONYMOUS_PHONE_NEEDS_CLAIM',
-      merchantName: primary,
-      merchantNames: names,
-      message,
+      merchantName: null,
+      merchantNames: [],
+      message: "Ce numéro est déjà lié à une carte de fidélité créée par un commerçant sur WhatsApp. Pour l’utiliser, tu dois d’abord ouvrir le lien WhatsApp qu’il t’a envoyé et cliquer sur « Récupérer mes tampons ». Si tu as supprimé le message, demande-lui de te renvoyer le lien.",
     };
   }
 }

@@ -10,7 +10,7 @@ import { AppleLoginMerchantDto } from './dto/apple-login-merchant.dto';
 import { AppleRegisterMerchantDto } from './dto/apple-register-merchant.dto';
 import { USER_TYPE_MERCHANT } from '../common/constants';
 import { AppleTokenError, AppleTokenVerifier, MERCHANT_APPLE_ERRORS, type AppleTokenPayload } from '../common/apple/apple-token-verifier.service';
-import { checkLockout, resetLoginAttempts } from '../common/utils/login-lockout.helper';
+import { resetLoginAttempts } from '../common/utils/login-lockout.helper';
 import { MERCHANT_LOGIN_SELECT } from '../common/prisma-selects';
 import { MerchantSessionService } from './merchant-session.service';
 import { MerchantSignupService } from './merchant-signup.service';
@@ -111,8 +111,10 @@ export class MerchantOAuthService {
         throw new UnauthorizedException('Votre compte a été désactivé. Veuillez contacter le support.');
       }
 
-      // Check lockout
-      checkLockout(merchant);
+      // No password lockout here: the provider just proved the identity, and
+      // applying it would let anyone who knows the email lock the owner out of
+      // Google/Apple sign-in too, by sending 5 wrong passwords every 15 min.
+      // A successful provider login clears the counter.
       await resetLoginAttempts(merchant, merchantLockoutOps(this.merchantRepo));
 
       const { password: _, failedLoginAttempts: _fa, lockedUntil: _lu, ...merchantData } = merchant;
@@ -344,7 +346,10 @@ export class MerchantOAuthService {
         throw new UnauthorizedException('Votre compte a été désactivé. Veuillez contacter le support.');
       }
 
-      checkLockout(merchant);
+      // No password lockout here: the provider just proved the identity, and
+      // applying it would let anyone who knows the email lock the owner out of
+      // Google/Apple sign-in too, by sending 5 wrong passwords every 15 min.
+      // A successful provider login clears the counter.
       await resetLoginAttempts(merchant, merchantLockoutOps(this.merchantRepo));
 
       const { password: _, failedLoginAttempts: _fa, lockedUntil: _lu, ...merchantData } = merchant;

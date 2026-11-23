@@ -92,6 +92,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
+    // Validation messages may be keys too (client sign-up forms).
+    if (Array.isArray(message)) {
+      const lang = requestLang(request.headers);
+      message = (message as unknown[]).map((m) => (typeof m === 'string' ? resolveErrorKey(m, lang) ?? m : m));
+    }
+
     // Capture unexpected server errors in Sentry (5xx only — skip expected 4xx)
     if (status >= 500) {
       Sentry.captureException(exception);

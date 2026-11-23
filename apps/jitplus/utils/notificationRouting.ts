@@ -4,7 +4,7 @@ import { isEntityId } from '@/utils/ids';
 export type NotificationData = Record<string, string> | undefined;
 
 /** The in-app feed: where a notification with no target of its own lands. */
-export const NOTIFICATIONS_FEED: Href = '/(tabs)/notifications';
+export const NOTIFICATIONS_FEED: Href = '/notifications';
 const FEED = NOTIFICATIONS_FEED;
 
 /**
@@ -44,6 +44,8 @@ export function resolveNotificationRoute(data: NotificationData): Href {
     case 'open_deal':
       return isEntityId(data.dealId) ? { pathname: '/deal/[id]', params: { id: data.dealId } } : '/(tabs)/deals';
     case 'open_deals': return '/(tabs)/deals';
+    case 'open_booking':
+      return isEntityId(data.bookingId) ? { pathname: '/bookings/[id]', params: { id: data.bookingId } } : '/bookings';
     case undefined:
     case '':
       break;

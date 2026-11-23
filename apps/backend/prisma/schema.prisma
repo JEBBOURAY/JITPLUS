@@ -15,57 +15,64 @@ datasource db {
 }
 
 model Merchant {
-  id                   String             @id @default(uuid())
-  nom                  String             @db.VarChar(255)
-  email                String             @unique @db.VarChar(255)
-  password             String             @db.VarChar(255)
-  googleId             String?            @unique @map("google_id") @db.VarChar(255)
-  appleId              String?            @unique @map("apple_id") @db.VarChar(255)
-  pushToken            String?            @map("push_token") @db.VarChar(512)
-  language             String             @default("fr") @db.VarChar(5)
-  termsAccepted        Boolean            @default(false) @map("terms_accepted")
+  id                   String              @id @default(uuid())
+  nom                  String              @db.VarChar(255)
+  email                String              @unique @db.VarChar(255)
+  password             String              @db.VarChar(255)
+  googleId             String?             @unique @map("google_id") @db.VarChar(255)
+  appleId              String?             @unique @map("apple_id") @db.VarChar(255)
+  pushToken            String?             @map("push_token") @db.VarChar(512)
+  language             String              @default("fr") @db.VarChar(5)
+  termsAccepted        Boolean             @default(false) @map("terms_accepted")
   categorie            MerchantCategory
-  secondaryCategories  MerchantCategory[] @default([]) @map("secondary_categories")
-  description          String?            @db.VarChar(1000)
-  tagline              String?            @db.VarChar(120)
-  badges               String[]           @default([])
-  gallery              String[]           @default([])
-  openingHours         Json?              @map("opening_hours")
-  ville                String?            @db.VarChar(100)
-  quartier             String?            @db.VarChar(100)
-  adresse              String?            @db.VarChar(500)
+  secondaryCategories  MerchantCategory[]  @default([]) @map("secondary_categories")
+  description          String?             @db.VarChar(1000)
+  tagline              String?             @db.VarChar(120)
+  badges               String[]            @default([])
+  gallery              String[]            @default([])
+  openingHours         Json?               @map("opening_hours")
+  ville                String?             @db.VarChar(100)
+  quartier             String?             @db.VarChar(100)
+  adresse              String?             @db.VarChar(500)
   latitude             Float?
   longitude            Float?
-  countryCode          String             @default("MA") @map("country_code") @db.VarChar(5)
-  phoneNumber          String?            @map("phone_number") @db.VarChar(20)
-  logoUrl              String?            @map("logo_url")
-  coverUrl             String?            @map("cover_url")
-  themeColor           String?            @map("theme_color") @db.VarChar(7) // hex color #RRGGBB
-  themeIcon            String?            @map("theme_icon") @db.VarChar(32) // lucide icon slug
-  cardBackgroundUrl    String?            @map("card_background_url") // optional image bg for loyalty card
-  cardBackgroundColor  String?            @map("card_background_color") @db.VarChar(7) // optional solid hex bg #RRGGBB
-  cardTextColor        String?            @map("card_text_color") @db.VarChar(5) // 'LIGHT' or 'DARK'
-  socialLinks          Json?              @map("social_links") // {instagram, facebook, tiktok, website, snapchat, youtube}
-  profileViews         Int                @default(0) @map("profile_views")
+  countryCode          String              @default("MA") @map("country_code") @db.VarChar(5)
+  phoneNumber          String?             @map("phone_number") @db.VarChar(20)
+  logoUrl              String?             @map("logo_url")
+  coverUrl             String?             @map("cover_url")
+  themeColor           String?             @map("theme_color") @db.VarChar(7) // hex color #RRGGBB
+  themeIcon            String?             @map("theme_icon") @db.VarChar(32) // lucide icon slug
+  cardBackgroundUrl    String?             @map("card_background_url") // optional image bg for loyalty card
+  cardBackgroundColor  String?             @map("card_background_color") @db.VarChar(7) // optional solid hex bg #RRGGBB
+  cardTextColor        String?             @map("card_text_color") @db.VarChar(5) // 'LIGHT' or 'DARK'
+  socialLinks          Json?               @map("social_links") // {instagram, facebook, tiktok, website, snapchat, youtube}
+  profileViews         Int                 @default(0) @map("profile_views")
   /// Purchase amount (currency units) that earns one stamp in PER_AMOUNT mode
-  amountPerStamp       Float              @default(10) @map("amount_per_stamp")
-  stampsForReward      Int                @default(10) @map("stamps_for_reward")
-  stampEarningMode     StampEarningMode   @default(PER_VISIT) @map("stamp_earning_mode")
-  accumulationLimit    Int?               @map("accumulation_limit")
+  amountPerStamp       Float               @default(10) @map("amount_per_stamp")
+  stampsForReward      Int                 @default(10) @map("stamps_for_reward")
+  stampEarningMode     StampEarningMode    @default(PER_VISIT) @map("stamp_earning_mode")
+  accumulationLimit    Int?                @map("accumulation_limit")
   /// Stamps are reset after this many days without a visit (null = never expire)
-  stampValidityDays    Int?               @map("stamp_validity_days")
+  stampValidityDays    Int?                @map("stamp_validity_days")
   /// Last change of stampValidityDays: the expiry countdown never starts before it
-  stampValiditySince   DateTime?          @map("stamp_validity_since")
-  activeRewardId       String?            @map("active_reward_id")
+  stampValiditySince   DateTime?           @map("stamp_validity_since")
+  activeRewardId       String?             @map("active_reward_id")
+  /// Welcome gift: bonus stamps for a new client, credited on card add or at their first scan
+  welcomeBonusEnabled  Boolean             @default(false) @map("welcome_bonus_enabled")
+  welcomeBonusStamps   Int                 @default(1) @map("welcome_bonus_stamps")
+  welcomeBonusTrigger  WelcomeBonusTrigger @default(CARD_OR_SCAN) @map("welcome_bonus_trigger")
+  /// Days a client has to come after the reservation
+  /// Last moment the offer can be reserved (null = no end date)
+  welcomeBonusEndsAt   DateTime?           @map("welcome_bonus_ends_at")
   /// ISO 4217 code of the currency amounts are expressed in (MAD, XAF, XOF…)
-  currency             String             @default("MAD") @db.VarChar(3)
+  currency             String              @default("MAD") @db.VarChar(3)
   // Plan Freemium — les nouveaux marchands démarrent en FREE (le flow d'inscription attribue un essai PREMIUM via getTrialData())
-  plan                 MerchantPlan       @default(FREE)
-  planExpiresAt        DateTime?          @map("plan_expires_at")
-  planActivatedByAdmin Boolean            @default(false) @map("plan_activated_by_admin")
-  trialStartedAt       DateTime?          @map("trial_started_at")
+  plan                 MerchantPlan        @default(FREE)
+  planExpiresAt        DateTime?           @map("plan_expires_at")
+  planActivatedByAdmin Boolean             @default(false) @map("plan_activated_by_admin")
+  trialStartedAt       DateTime?           @map("trial_started_at")
   /// One of the first FOUNDING_MEMBERS_LIMIT sign-ups: permanent free PREMIUM, the Pro app hides every plan/Premium surface
-  foundingMember       Boolean            @default(false) @map("founding_member")
+  foundingMember       Boolean             @default(false) @map("founding_member")
 
   isActive            Boolean   @default(true) @map("is_active")
   emailVerified       Boolean   @default(false) @map("email_verified")
@@ -94,6 +101,7 @@ model Merchant {
 
   loyaltyCards    LoyaltyCard[]
   transactions    Transaction[]
+  welcomeBonusClaims WelcomeBonusClaim[]
   rewards         Reward[]
   notifications   Notification[]
   teamMembers     TeamMember[]
@@ -137,6 +145,9 @@ model Merchant {
   scratchCampaigns ScratchCampaign[]
   coupons          Coupon[]
 
+  // Collection game (buy every product of a set, win a chosen gift)
+  collections Collection[]
+
   // Public promotions ("bons plans")
   deals Deal[]
 
@@ -151,6 +162,13 @@ model Merchant {
   followUp             MerchantFollowUp?
   followUpNotes        MerchantFollowUpNote[]
   subscriptionPayments MerchantSubscriptionPayment[]
+
+  // ── Booking ──
+  bookingSettings        BookingSettings?
+  bookableServices       BookableService[]
+  bookingResources       BookingResource[]
+  availabilityExceptions AvailabilityException[]
+  bookings               Booking[]
 
   @@index([deletedAt])
   // Discovery queries filter by category + city — composite index avoids full table scans
@@ -195,6 +213,8 @@ model Store {
   merchant   Merchant    @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   dealStores DealStore[]
 
+  bookingResources BookingResource[]
+
   // Active store lookups by merchant (discovery + nearby)
   @@index([merchantId, isActive])
   // Geospatial store queries for nearby search
@@ -210,6 +230,9 @@ model Admin {
   role                AdminRole @default(ADMIN)
   isActive            Boolean   @default(true) @map("is_active")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  /// Admin JWTs issued before this instant are rejected (logout). Stored in the
+  /// database so revocation holds on every instance and survives restarts.
+  tokensValidAfter    DateTime? @map("tokens_valid_after")
   lockedUntil         DateTime? @map("locked_until")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
@@ -310,6 +333,20 @@ enum AuditActorType {
   MERCHANT
 }
 
+// ── Sign-up funnel (JitPlus client app) ───────────────────────
+/// One counter per day (Morocco time), step, sign-up method and platform.
+/// Holds no personal data: it only says how many people reached each step.
+model SignupFunnelDaily {
+  day      DateTime @db.Date
+  step     String   @db.VarChar(32)
+  method   String   @db.VarChar(10)
+  platform String   @db.VarChar(10)
+  count    Int      @default(0)
+
+  @@id([day, step, method, platform])
+  @@map("signup_funnel_daily")
+}
+
 // ── Audit log table ───────────────────────────────────────────
 model AuditLog {
   id          String          @id @default(uuid())
@@ -355,6 +392,13 @@ enum StampEarningMode {
   PER_AMOUNT
 }
 
+enum WelcomeBonusTrigger {
+  /// Reserved when the client adds the card from the merchant page, or at the first scan
+  CARD_OR_SCAN
+  /// Reserved at the first scan only
+  FIRST_SCAN
+}
+
 model Client {
   id                    String    @id @default(uuid())
   prenom                String?   @db.VarChar(255)
@@ -371,6 +415,9 @@ model Client {
   refreshTokenHash      String?   @unique @map("refresh_token_hash")
   refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
   termsAccepted         Boolean   @default(false) @map("terms_accepted")
+  /// Proof of consent: when the terms were accepted and which version. Null on accounts older than these columns.
+  termsAcceptedAt       DateTime? @map("terms_accepted_at")
+  termsVersion          String?   @map("terms_version") @db.VarChar(20)
   shareInfoMerchants    Boolean   @default(true) @map("share_info_merchants")
   notifPush             Boolean   @default(true) @map("notif_push")
   notifEmail            Boolean   @default(true) @map("notif_email")
@@ -411,9 +458,13 @@ model Client {
   clientClaims         ClientClaim[]
   scratchCards         ScratchCard[]
   coupons              Coupon[]
-  sessions             ClientSession[]
+  collectionProgress   CollectionProgress[]
+  sessions            ClientSession[]
   dealReports          DealReport[]
+  dealClaims           DealClaim[]
+  dealSaves            DealSave[]
   stampCodes           StampCode[]
+  bookings             Booking[]
 
   @@index([nom])
   // Client search is ILIKE '%term%' (buildClientSearchFilter): only trigram indexes serve it
@@ -431,6 +482,23 @@ model Client {
   // Daily deal digest: subscribers of a city, read in id order batch by batch
   @@index([dealAlertsEnabled, dealAlertCityKey, id])
   @@map("clients")
+}
+
+/// One row per welcome gift and verified client identity (email, phone, Google,
+/// Apple), so the gift stays "already received" after the account is deleted
+/// and recreated (a new client id has no transaction history). Only a keyed
+/// HMAC of the identity is stored, never the identity itself, and rows are not
+/// linked to the client: deleting the account still removes its personal data.
+model WelcomeBonusClaim {
+  id           String   @id @default(uuid())
+  merchantId   String   @map("merchant_id")
+  identityHash String   @map("identity_hash") @db.Char(64)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, identityHash])
+  @@map("welcome_bonus_claims")
 }
 
 model Otp {
@@ -519,17 +587,26 @@ model ClientClaim {
 }
 
 model LoyaltyCard {
-  id                   String    @id @default(uuid())
-  clientId             String    @map("client_id")
-  merchantId           String    @map("merchant_id")
-  stamps               Int       @default(0)
+  id                         String    @id @default(uuid())
+  clientId                   String    @map("client_id")
+  merchantId                 String    @map("merchant_id")
+  stamps                     Int       @default(0)
   /// Last EARN_STAMPS / REDEEM_REWARD / PURCHASE: reference for stamp expiry
-  lastVisitAt          DateTime  @default(now()) @map("last_visit_at")
+  lastVisitAt                DateTime  @default(now()) @map("last_visit_at")
   /// Set when the "stamps expire soon" push was sent; cleared on the next visit
-  expiryReminderSentAt DateTime? @map("expiry_reminder_sent_at")
-  deactivatedAt        DateTime? @map("deactivated_at")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  expiryReminderSentAt       DateTime? @map("expiry_reminder_sent_at")
+  /// Welcome gift reserved by a till entry without proof of the client. Kept out of `stamps`
+  /// until their first scan credits it. Each date is written once, never cleared.
+  welcomeBonusReservedStamps Int       @default(0) @map("welcome_bonus_reserved_stamps")
+  welcomeBonusReservedAt     DateTime? @map("welcome_bonus_reserved_at")
+  welcomeBonusCreditedAt     DateTime? @map("welcome_bonus_credited_at")
+  /// Card created by the merchant from a typed phone number (no proof of the client's
+  /// consent): the client's name/email/phone stay masked until the client confirms
+  /// (QR scan, joining in the app, e-commerce code, booking).
+  consentPending             Boolean   @default(false) @map("consent_pending")
+  deactivatedAt              DateTime? @map("deactivated_at")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
 
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
@@ -605,6 +682,9 @@ enum TransactionType {
   PURCHASE
   /// Coupon used at the till (stamps = bonus stamps for BONUS_STAMPS coupons, 0 otherwise)
   COUPON_REDEEM
+  /// Welcome gift credited on card add or at the first scan. At most one per client and merchant
+  /// (partial unique index transactions_welcome_bonus_unique, raw SQL migration).
+  WELCOME_BONUS
 }
 
 enum TransactionStatus {
@@ -636,6 +716,8 @@ model TeamMember {
 
   merchant     Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+
+  bookingResource BookingResource?
 
   @@index([merchantId])
   @@map("team_members")
@@ -805,15 +887,19 @@ model DeviceSession {
 // One row per logged-in client device, so several devices can stay signed in
 // at once. The refresh token is rotated in place on every refresh.
 model ClientSession {
-  id               String   @id @default(uuid())
-  clientId         String   @map("client_id")
-  refreshTokenHash String   @unique @map("refresh_token_hash")
-  expiresAt        DateTime @map("expires_at")
-  lastUsedAt       DateTime @default(now()) @map("last_used_at")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                       String    @id @default(uuid())
+  clientId                 String    @map("client_id")
+  refreshTokenHash         String    @unique @map("refresh_token_hash")
+  expiresAt                DateTime  @map("expires_at")
+  lastUsedAt               DateTime  @default(now()) @map("last_used_at")
+  createdAt                DateTime  @default(now()) @map("created_at")
   /// Set when the session was opened by an email OTP login: proof of inbox
   /// ownership that authorises ONE password reset shortly after (consumed).
-  otpVerifiedAt    DateTime? @map("otp_verified_at")
+  otpVerifiedAt            DateTime? @map("otp_verified_at")
+  /// Token replaced by the last rotation, accepted a few seconds after `rotatedAt`
+  /// in case the answer to that refresh never reached the app.
+  previousRefreshTokenHash String?   @unique @map("previous_refresh_token_hash")
+  rotatedAt                DateTime? @map("rotated_at")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
@@ -1089,6 +1175,8 @@ enum CouponSource {
   SCRATCH_CARD
   LUCKY_WHEEL
   MANUAL
+  /// Gift of a completed collection
+  COLLECTION
 }
 
 model ScratchCampaign {
@@ -1225,6 +1313,8 @@ model Coupon {
   scratchCard ScratchCard? @relation(fields: [scratchCardId], references: [id], onDelete: SetNull)
   client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   merchant    Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  /// Set for a COLLECTION coupon: the completed cycle that won it
+  collectionProgress CollectionProgress?
 
   @@index([clientId, status])
   @@index([merchantId, status])
@@ -1279,6 +1369,10 @@ model Deal {
   percentOff      Int?       @map("percent_off")
   buyQty          Int?       @map("buy_qty")
   freeQty         Int?       @map("free_qty")
+  /// "À partir de" in front of the price
+  priceFrom       Boolean    @default(false) @map("price_from")
+  /// PIECE | KG | PERSON | HOUR | NIGHT | MONTH: what the price counts for
+  priceUnit       String?    @map("price_unit") @db.VarChar(10)
   /// true = every active store of the merchant, now and later
   allStores       Boolean    @default(true) @map("all_stores")
   /// MOROCCO_CITIES keys of the stores concerned (empty for ONLINE)
@@ -1290,6 +1384,8 @@ model Deal {
   /// EXPIRED | STOPPED | AUTO_REPORTS | moderation reason typed by an admin
   endedReason     String?    @map("ended_reason") @db.VarChar(200)
   alertSentAt     DateTime?  @map("alert_sent_at")
+  /// Set once the clients holding the merchant's loyalty card were told about the deal
+  cardAlertSentAt DateTime?  @map("card_alert_sent_at")
   /// Recomputed every 15 min by DealsMaintenanceService
   isPopular       Boolean    @default(false) @map("is_popular")
   reportCount     Int        @default(0) @map("report_count")
@@ -1297,12 +1393,20 @@ model Deal {
   linkClickCount  Int        @default(0) @map("link_click_count")
   directionsCount Int        @default(0) @map("directions_count")
   shareCount      Int        @default(0) @map("share_count")
+  callCount       Int        @default(0) @map("call_count")
+  /// Clients who tapped "J'en profite" (one DealClaim each)
+  claimCount      Int        @default(0) @map("claim_count")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  merchant Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  stores   DealStore[]
-  reports  DealReport[]
+  merchant     Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  stores       DealStore[]
+  reports      DealReport[]
+  claims       DealClaim[]
+  saves        DealSave[]
+  dailyStats   DealDailyStat[]
+  eventMarks   DealEventMark[]
+  offerChanges DealOfferChange[]
 
   @@index([status, endsAt])
   @@index([scope, status, endsAt])
@@ -1340,6 +1444,83 @@ model DealReport {
   @@unique([dealId, clientId])
   @@index([clientId])
   @@map("deal_reports")
+}
+
+/// "J'en profite": the client shows the pass at the till. One per client and deal.
+model DealClaim {
+  dealId    String   @map("deal_id")
+  clientId  String   @map("client_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([dealId, clientId])
+  @@index([clientId])
+  @@map("deal_claims")
+}
+
+/// Deal bookmarked by a client ("Enregistrés" tab, reminder the day before it ends)
+model DealSave {
+  clientId   String    @map("client_id")
+  dealId     String    @map("deal_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  /// Set when the "ends tomorrow" push was sent
+  remindedAt DateTime? @map("reminded_at")
+
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, dealId])
+  @@index([dealId, remindedAt])
+  @@map("deal_saves")
+}
+
+/// Figures of a deal for one Morocco day (the merchant's chart)
+model DealDailyStat {
+  dealId  String   @map("deal_id")
+  day     DateTime @db.Date
+  views   Int      @default(0)
+  /// Link clicks, directions and calls
+  actions Int      @default(0)
+  claims  Int      @default(0)
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@id([dealId, day])
+  @@map("deal_daily_stats")
+}
+
+/// Proof that a viewer's view or click was counted that day, shared by every
+/// instance. viewerKey is the client id, or a keyed hash of a guest's IP.
+/// Purged after DEAL_EVENT_MARK_RETENTION_DAYS.
+model DealEventMark {
+  dealId    String   @map("deal_id")
+  viewerKey String   @map("viewer_key") @db.VarChar(64)
+  /// VIEW | LINK_CLICK | DIRECTIONS | SHARE | CALL
+  kind      String   @db.VarChar(12)
+  day       DateTime @db.Date
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@id([dealId, viewerKey, kind, day])
+  @@index([day])
+  @@map("deal_event_marks")
+}
+
+/// Offer of a published deal before and after an edit (prices, discount, type),
+/// for the moderation of "misleading" reports
+model DealOfferChange {
+  id        String   @id @default(uuid())
+  dealId    String   @map("deal_id")
+  before    Json
+  after     Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId, createdAt])
+  @@map("deal_offer_changes")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1478,4 +1659,321 @@ model MerchantSubscriptionPayment {
   @@index([merchantId, paidAt(sort: Desc)])
   @@index([paidAt(sort: Desc)])
   @@map("merchant_subscription_payments")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Booking (appointments taken from the JitPlus app, open to every plan) ─────
+// ══════════════════════════════════════════════════════════════════════════════
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED_CLIENT
+  CANCELLED_MERCHANT
+  DECLINED
+  EXPIRED
+  NO_SHOW
+}
+
+enum BookingSource {
+  APP
+  MERCHANT
+}
+
+enum AvailabilityExceptionType {
+  CLOSED
+  OPEN
+}
+
+/// One row per merchant once booking has been set up
+model BookingSettings {
+  merchantId          String   @id @map("merchant_id")
+  enabled             Boolean  @default(false)
+  /// false = every request waits for the merchant (PENDING)
+  autoConfirm         Boolean  @default(true) @map("auto_confirm")
+  minNoticeMinutes    Int      @default(60) @map("min_notice_minutes")
+  maxAdvanceDays      Int      @default(30) @map("max_advance_days")
+  cancelDeadlineHours Int      @default(2) @map("cancel_deadline_hours")
+  slotStepMinutes     Int      @default(15) @map("slot_step_minutes")
+  /// After this many NO_SHOW at this merchant, the client's requests need approval
+  noShowLimit         Int      @default(3) @map("no_show_limit")
+  /// Bookings taken at the same time (1-10): extra seats copy the main calendar's hours and services.
+  capacity            Int      @default(1)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@map("booking_settings")
+}
+
+/// Admin-managed catalogue of service names per category. No duration, no
+/// price: the merchant always sets those on his own BookableService.
+model ServiceTemplate {
+  id          String           @id @default(uuid())
+  category    MerchantCategory
+  nom         String           @db.VarChar(120)
+  description String?          @db.VarChar(500)
+  order       Int              @default(0)
+  isActive    Boolean          @default(true) @map("is_active")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  services BookableService[]
+
+  @@unique([category, nom])
+  @@index([category, isActive, order])
+  @@map("service_templates")
+}
+
+/// A service the merchant offers. templateId null = custom service created by the merchant.
+model BookableService {
+  id          String    @id @default(uuid())
+  merchantId  String    @map("merchant_id")
+  templateId  String?   @map("template_id")
+  nom         String    @db.VarChar(120)
+  description String?   @db.VarChar(500)
+  /// Set by the merchant, never by the catalogue
+  durationMin Int       @map("duration_min")
+  /// Cleaning / preparation time blocked after the service
+  bufferMin   Int       @default(0) @map("buffer_min")
+  priceFrom   Decimal?  @map("price_from") @db.Decimal(10, 2)
+  isActive    Boolean   @default(true) @map("is_active")
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  merchant  Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  template  ServiceTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  resources ServiceResource[]
+  bookings  Booking[]
+
+  @@index([merchantId, deletedAt, isActive])
+  @@index([templateId])
+  @@map("bookable_services")
+}
+
+/// Who can be booked: the owner (teamMemberId null) or a team member
+model BookingResource {
+  id           String   @id @default(uuid())
+  merchantId   String   @map("merchant_id")
+  teamMemberId String?  @unique @map("team_member_id")
+  storeId      String?  @map("store_id")
+  nom          String   @db.VarChar(120)
+  isActive     Boolean  @default(true) @map("is_active")
+  order        Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  merchant     Merchant                @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  teamMember   TeamMember?             @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
+  store        Store?                  @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  services     ServiceResource[]
+  workingHours WorkingHours[]
+  exceptions   AvailabilityException[]
+  bookings     Booking[]
+
+  @@index([merchantId, isActive])
+  @@map("booking_resources")
+}
+
+model ServiceResource {
+  serviceId  String @map("service_id")
+  resourceId String @map("resource_id")
+
+  service  BookableService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  resource BookingResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([serviceId, resourceId])
+  @@index([resourceId])
+  @@map("service_resources")
+}
+
+/// Weekly hours of a resource, in the merchant's local wall-clock time.
+/// Several rows on one weekday = breaks between them.
+model WorkingHours {
+  id         String @id @default(uuid())
+  resourceId String @map("resource_id")
+  /// 1 = Monday … 7 = Sunday
+  weekday    Int
+  /// Minutes since local midnight
+  startMin   Int    @map("start_min")
+  endMin     Int    @map("end_min")
+
+  resource BookingResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, weekday])
+  @@map("working_hours")
+}
+
+/// Holidays, closures (CLOSED) or extra opening (OPEN). resourceId null = whole merchant.
+model AvailabilityException {
+  id         String                    @id @default(uuid())
+  merchantId String                    @map("merchant_id")
+  resourceId String?                   @map("resource_id")
+  type       AvailabilityExceptionType @default(CLOSED)
+  startsAt   DateTime                  @map("starts_at")
+  endsAt     DateTime                  @map("ends_at")
+  reason     String?                   @db.VarChar(200)
+  createdAt  DateTime                  @default(now()) @map("created_at")
+
+  merchant Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  resource BookingResource? @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, startsAt])
+  @@index([resourceId, startsAt])
+  @@map("availability_exceptions")
+}
+
+model Booking {
+  id                    String        @id @default(uuid())
+  merchantId            String        @map("merchant_id")
+  serviceId             String        @map("service_id")
+  resourceId            String        @map("resource_id")
+  /// null = walk-in / phone booking typed by the merchant without a JitPlus account
+  clientId              String?       @map("client_id")
+  clientName            String?       @map("client_name") @db.VarChar(120)
+  clientPhone           String?       @map("client_phone") @db.VarChar(20)
+  startsAt              DateTime      @map("starts_at")
+  endsAt                DateTime      @map("ends_at")
+  /// endsAt + bufferMin: the range the no-overlap constraint protects
+  blockedUntil          DateTime      @map("blocked_until")
+  status                BookingStatus
+  source                BookingSource @default(APP)
+  /// Max 200 chars, never medical information
+  note                  String?       @db.VarChar(200)
+  serviceNameSnapshot   String        @map("service_name_snapshot") @db.VarChar(120)
+  priceSnapshot         Decimal?      @map("price_snapshot") @db.Decimal(10, 2)
+  idempotencyKey        String?       @map("idempotency_key") @db.VarChar(64)
+  confirmedAt           DateTime?     @map("confirmed_at")
+  checkedInAt           DateTime?     @map("checked_in_at")
+  checkInTransactionId  String?       @unique @map("check_in_transaction_id")
+  cancelledAt           DateTime?     @map("cancelled_at")
+  cancelReason          String?       @map("cancel_reason") @db.VarChar(200)
+  reminderDaySentAt     DateTime?     @map("reminder_day_sent_at")
+  reminderHourSentAt    DateTime?     @map("reminder_hour_sent_at")
+  /// Merchant reminded that this request is about to expire unanswered
+  pendingReminderSentAt DateTime?     @map("pending_reminder_sent_at")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  merchant Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  service  BookableService @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  resource BookingResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  client   Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, idempotencyKey])
+  @@index([merchantId, startsAt])
+  @@index([resourceId, startsAt])
+  @@index([clientId, startsAt])
+  @@index([status, startsAt])
+  @@map("bookings")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Collection game: buy every product of a set, win the gift the merchant chose
+// ══════════════════════════════════════════════════════════════════════════════
+enum CollectionStatus {
+  DRAFT
+  ACTIVE
+  ENDED
+}
+
+/// A set of products / services to buy (items) and the gift offered once all
+/// of them are collected. One ACTIVE collection per merchant (partial unique
+/// index collections_one_active_per_merchant, raw SQL migration).
+model Collection {
+  id                 String           @id @default(uuid())
+  merchantId         String           @map("merchant_id")
+  name               String           @db.VarChar(80)
+  /// The gift, chosen by the merchant ("celui-ci est offert"). Copied on the coupon.
+  giftLabel          String           @map("gift_label") @db.VarChar(80)
+  /// Optional photo of the gift. Deleted from storage when the collection ends, like the product photos.
+  giftImageUrl       String?          @map("gift_image_url") @db.VarChar(500)
+  status             CollectionStatus @default(DRAFT)
+  /// true = at most one item per client and per day (Morocco time)
+  onePerVisit        Boolean          @default(false) @map("one_per_visit")
+  /// true = a new cycle starts after the gift is won
+  repeatable         Boolean          @default(true)
+  /// Days the gift coupon stays usable once won
+  couponValidityDays Int              @default(30) @map("coupon_validity_days")
+  /// Hours after completion before the gift can be used ("next visit")
+  giftDelayHours     Int              @default(0) @map("gift_delay_hours")
+  /// Optional end (end of day, Morocco time). Progress stops, coupons already won stay valid.
+  endsAt             DateTime?        @map("ends_at")
+  startedAt          DateTime?        @map("started_at")
+  endedAt            DateTime?        @map("ended_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  merchant Merchant             @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  items    CollectionItem[]
+  progress CollectionProgress[]
+
+  @@index([merchantId, status])
+  @@map("collections")
+}
+
+/// One product / service to collect. The set is frozen once the collection is ACTIVE (labels only).
+model CollectionItem {
+  id           String   @id @default(uuid())
+  collectionId String   @map("collection_id")
+  label        String   @db.VarChar(60)
+  /// Optional photo of the product. Deleted from storage when the collection ends.
+  imageUrl     String?  @map("image_url") @db.VarChar(500)
+  position     Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  collection Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  checks     CollectionCheck[]
+
+  @@index([collectionId, position])
+  @@map("collection_items")
+}
+
+/// One cycle of a client on a collection. A repeatable collection opens cycle n+1 after the gift.
+model CollectionProgress {
+  id           String    @id @default(uuid())
+  collectionId String    @map("collection_id")
+  clientId     String    @map("client_id")
+  /// Denormalised for merchant-scoped queries
+  merchantId   String    @map("merchant_id")
+  cycle        Int       @default(1)
+  completedAt  DateTime? @map("completed_at")
+  /// Gift coupon created when the cycle was completed
+  couponId     String?   @unique @map("coupon_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  collection Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  client     Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  coupon     Coupon?           @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  checks     CollectionCheck[]
+
+  @@unique([collectionId, clientId, cycle])
+  @@index([clientId, merchantId])
+  @@map("collection_progress")
+}
+
+/// An item ticked at the till for a client. Unique per cycle: ticking twice is a no-op.
+model CollectionCheck {
+  id              String   @id @default(uuid())
+  progressId      String   @map("progress_id")
+  itemId          String   @map("item_id")
+  /// Who ticked it (null = the owner)
+  teamMemberId    String?  @map("team_member_id")
+  performedByName String?  @map("performed_by_name") @db.VarChar(255)
+  /// Idempotency-Key of the till request that ticked it: a retry is recognised
+  /// even after the cycle was completed and a new one could start.
+  requestKey      String?  @map("request_key") @db.VarChar(64)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  progress CollectionProgress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+  item     CollectionItem     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([progressId, itemId])
+  @@index([itemId])
+  @@index([requestKey])
+  @@map("collection_checks")
 }

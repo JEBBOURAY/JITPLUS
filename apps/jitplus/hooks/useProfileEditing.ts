@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { api } from '@/services/api';
 import { isValidEmail } from '@/utils/validation';
-import { extractErrorMessage } from '@/utils/errorMessage';
+import { extractErrorCode, extractErrorMessage } from '@/utils/errorMessage';
 import { toIsoDate, isoDtoDmy } from '@/utils/dateInput';
 import { DRAFT_PERSIST_DEBOUNCE_MS, OTP_RESEND_COOLDOWN_S } from '@/constants';
 import { DEFAULT_COUNTRY, COUNTRY_CODES, isValidPhoneForCountry, type CountryCode } from '@/utils/countryCodes';
@@ -118,8 +118,9 @@ export function useProfileEditing(
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         const f = fieldsRef.current;
-        // AsyncStorage: drafts can exceed SecureStore's 2048-byte limit
-        AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ ...f, phoneCountry: f.phoneCountry.code })).catch(() => {});
+        // AsyncStorage is unencrypted: keep only the names. Email, phone and birth
+        // date are refetched from the server, like the offline profile cache.
+        AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ prenom: f.prenom, nom: f.nom })).catch(() => {});
       }, DRAFT_PERSIST_DEBOUNCE_MS);
     });
     return () => {
@@ -181,6 +182,17 @@ export function useProfileEditing(
     try {
       await api.verifyChangeContactOtp(otpTarget.type, otpTarget.value, otpCode);
       setShowOtpModal(false);
+      // The server applied the new address: it is no longer an unsaved change.
+      if (otpTarget.type === 'email') {
+        setInitialFields((prev) => ({ ...prev, email: fieldsRef.current.email }));
+      } else {
+        // A number claimed with its WhatsApp code is applied by the server too.
+        setInitialFields((prev) => ({
+          ...prev,
+          phoneLocal: fieldsRef.current.phoneLocal,
+          phoneCountry: fieldsRef.current.phoneCountry,
+        }));
+      }
       await refreshProfile?.();
       const fieldLabel = otpTarget.type === 'email' ? t('profile.email') : t('profile.phone');
       Alert.alert(t('common.success'), t('profile.otpContactUpdated', { field: fieldLabel }));
@@ -215,7 +227,7 @@ export function useProfileEditing(
   /** Validates and saves. Resolves to `true` on success so the screen can close. */
   const saveProfile = useCallback(async (): Promise<boolean> => {
     const { prenom, nom, email, phoneLocal, phoneCountry, dateNaissance } = fields;
-    if (!prenom.trim() || !nom.trim()) {
+    if (!prenom.trim()) {
       Alert.alert(t('common.error'), t('profile.nameRequired'));
       return false;
     }
@@ -241,30 +253,62 @@ export function useProfileEditing(
       dateNaissancePayload = iso;
     }
 
+    // A new email is applied by the server once its code is verified, never before.
+    const newEmail = emailTrimmed.toLowerCase();
+    const emailChanged = !!newEmail && newEmail !== (client?.email ?? '').toLowerCase();
+
+    const telephone = phoneTrimmed
+      ? (phoneTrimmed.startsWith('+') ? phoneTrimmed : `${phoneCountry.dial}${phoneTrimmed}`)
+      : null;
+    const withoutPhone = {
+      prenom: prenom.trim(),
+      nom: nom.trim(),
+      // Only when edited: a form seeded without the birth date must not erase it.
+      ...(dateNaissance !== initialFields.dateNaissance ? { dateNaissance: dateNaissancePayload } : {}),
+    };
+
     setIsSaving(true);
     haptic(HapticStyle.Medium);
     try {
-      await api.updateProfile({
-        prenom: prenom.trim(),
-        nom: nom.trim(),
-        ...(emailTrimmed ? { email: emailTrimmed } : {}),
-        ...(phoneTrimmed
-          ? { telephone: phoneTrimmed.startsWith('+') ? phoneTrimmed : `${phoneCountry.dial}${phoneTrimmed}` }
-          : {}),
-        // Only when edited: a form seeded without the birth date must not erase it.
-        ...(dateNaissance !== initialFields.dateNaissance ? { dateNaissance: dateNaissancePayload } : {}),
-      });
+      await api.updateProfile({ ...withoutPhone, ...(telephone ? { telephone } : {}) });
       await refreshProfile?.();
       discardDraft();
+      if (emailChanged) {
+        // The rest is saved; the screen stays open for the code.
+        setInitialFields({ ...fields, email: client?.email ?? '' });
+        await startOtpFlow({ type: 'email', value: newEmail });
+        return false;
+      }
       return true;
     } catch (error) {
+      // The number is on another account. Typing it proves nothing, so the
+      // server never moves it on a save: its owner claims it with the WhatsApp
+      // code. (A number verified elsewhere is refused again when the code is sent.)
+      if (telephone && extractErrorCode(error) === 'error.auth.phoneExists') {
+        Alert.alert(t('profile.phoneTakenTitle'), t('profile.phoneTakenMessage'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('profile.phoneTakenVerify'),
+            onPress: async () => {
+              // Save the rest first; the number follows once its code is verified.
+              try {
+                await api.updateProfile(withoutPhone);
+                await refreshProfile?.();
+                setInitialFields((prev) => ({ ...prev, prenom: fields.prenom, nom: fields.nom, dateNaissance: fields.dateNaissance }));
+              } catch { /* the names stay unsaved; the save button is still there */ }
+              await startOtpFlow({ type: 'telephone', value: telephone });
+            },
+          },
+        ]);
+        return false;
+      }
       if (__DEV__) console.error('Update profile error:', error);
       Alert.alert(t('common.error'), extractErrorMessage(error));
       return false;
     } finally {
       setIsSaving(false);
     }
-  }, [fields, initialFields, refreshProfile, discardDraft, t]);
+  }, [fields, initialFields, client?.email, refreshProfile, discardDraft, startOtpFlow, t]);
 
   return {
     fields,

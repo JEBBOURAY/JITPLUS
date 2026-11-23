@@ -1,5 +1,6 @@
 import React, { RefObject, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { Eye, EyeOff, Check, Circle } from 'lucide-react-native';
 import { JitLock } from '@/components/icons';
 import { MIN_PASSWORD_LENGTH } from '@/constants/app';

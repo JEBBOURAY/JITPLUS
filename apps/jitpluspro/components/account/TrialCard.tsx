@@ -1,5 +1,6 @@
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Clock, ChevronRight } from 'lucide-react-native';
 import { JitPremium } from '@/components/icons';
 import { Card } from '@/components/ui/Card';

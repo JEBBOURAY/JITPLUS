@@ -1,20 +1,19 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { toast } from '@/components/ui/Toast';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   Share,
-  Alert,
   Pressable,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ArrowLeft,
   Copy,
   Share2,
   Check,
@@ -36,14 +35,10 @@ import { formatDate } from '@/utils/date';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
-import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
+import { ScreenHeader } from '@/components/scratch/ScratchUI';
 import { getApiBaseUrl } from '@/services/api';
 
-const PRO_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.pro';
-const PRO_IOS_APP_ID = process.env.EXPO_PUBLIC_IOS_APP_ID ?? '';
-const PRO_IOS_URL = PRO_IOS_APP_ID
-  ? `https://apps.apple.com/app/id${PRO_IOS_APP_ID}`
-  : 'https://apps.apple.com/search?term=jitplus+pro';
+import { PRO_ANDROID_URL, PRO_IOS_URL } from '@/constants/app';
 
 const REFERRAL_STEPS = [
   { icon: Share2, titleKey: 'referral.step1Title', descKey: 'referral.step1Desc' },
@@ -75,7 +70,7 @@ export default function ReferralScreen() {
       clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), 2000);
     } catch {
-      Alert.alert(t('common.error'), t('referralScreen.copyError'));
+      toast.error(t('referralScreen.copyError'));
     }
   }, [referralCode, t]);
 
@@ -92,7 +87,7 @@ export default function ReferralScreen() {
         title: t('referral.shareCode'),
       });
     } catch {
-      Alert.alert(t('common.error'), t('referralScreen.shareError'));
+      toast.error(t('referralScreen.shareError'));
     }
   }, [referralCode, t]);
 
@@ -106,19 +101,7 @@ export default function ReferralScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.headerBar, { flexDirection: dir.row, paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <ArrowLeft size={22} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('referral.title')}</Text>
-        <DemoVideoButton id="forfait" variant="header" />
-      </View>
+      <ScreenHeader title={t('referral.title')} />
 
       {loading ? (
         <View style={styles.center}>
@@ -324,27 +307,6 @@ export default function ReferralScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 12,
-    gap: 10,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontFamily: font.semibold,
-    letterSpacing: -0.5,
-    flex: 1,
-  },
 
   center: {
     flex: 1,

@@ -15,9 +15,20 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Modal, View, Text, StyleSheet, Pressable, ScrollView, StatusBar, Platform, Animated, useWindowDimensions,
-  type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent,
+  Modal,
+  View,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  Platform,
+  Animated,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +37,7 @@ import {
 } from 'lucide-react-native';
 import {
   MIN_MEMBERS_SHOWN, formatCompactCount, getCategoryEmoji, getFicheContacts, getFicheRewards, getFicheTabs, getKnownBadges,
-  getOpenStatus, getSocialProfiles, describeOpenStatus, hasOpeningHours, type FicheContact,
+  getOpenStatus, getSocialProfiles, describeOpenStatus, type FicheContact,
 } from '@jitplus/shared';
 import { openDirections, openFirst } from '@jitplus/shared/src/openLinks';
 import { palette } from '@/contexts/ThemeContext';
@@ -40,13 +51,13 @@ import { font } from '@/constants/design';
 import { getCategoryLabel } from '@/constants/categories';
 import { hapticLight } from '@/utils/haptics';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
+import { MERCHANT_ICON_MAP } from '@jitplus/shared/src/merchantIcons';
 import { wp, hp, ms } from '@/utils/responsive';
 import type { Merchant, Store } from '@/types';
 import { useClientTheme } from '@/components/fichePreview/clientTheme';
 import {
-  FicheAbout, FicheGallery, FicheHours, FicheInfoSummary, FicheLocations, FicheLoyalty, FicheLoyaltySummary,
-  FicheLuckyWheel, FicheTabs, TAB_BAR_HEIGHT, type FicheWheel, type PreviewTab,
+  FicheAbout, FicheGallery, FicheLoyalty, FicheLuckyWheel, FicheShopInfo, FicheTabs, TAB_BAR_HEIGHT,
+  type FicheWheel, type PreviewTab,
 } from '@/components/fichePreview/FicheSections';
 
 // Same metrics as jitplus MerchantHero, MerchantStickyHeader and MerchantBottomBar.
@@ -147,8 +158,8 @@ function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Pro
     () => getFicheTabs({ hasDeals: false, photoCount: gallery.length }).filter((k): k is PreviewTab => k !== 'deals'),
     [gallery.length],
   );
-  const [tab, setTab] = useState<PreviewTab>('overview');
-  const activeTab = tabs.includes(tab) ? tab : 'overview';
+  const [tab, setTab] = useState<PreviewTab>('shop');
+  const activeTab = tabs.includes(tab) ? tab : 'shop';
 
   // Same pinned tab bar as the client page (translateY on the native driver).
   const { height: windowHeight } = useWindowDimensions();
@@ -167,6 +178,18 @@ function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Pro
       translateY: scrollY.interpolate({ inputRange: [pinAt, pinAt + 1], outputRange: [0, 1], extrapolateLeft: 'clamp' }),
     }],
   }), [scrollY, pinAt]);
+  const onTabsLayout = useCallback((e: LayoutChangeEvent) => setTabsY(e.nativeEvent.layout.y), []);
+  const recordOffset = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    offsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+  const selectTab = useCallback((next: PreviewTab) => {
+    setTab(next);
+    // Past the pin point, start the new tab at its top instead of somewhere in the middle.
+    if (pinAt != null && offsetRef.current > pinAt) {
+      scrollRef.current?.scrollTo({ y: pinAt, animated: false });
+      offsetRef.current = pinAt;
+    }
+  }, [pinAt]);
   // The solid bar and its title fade in once the hero scrolls away; the preview pill fades out.
   const { headerBarOpacity, pillOpacity } = useMemo(() => {
     const end = HERO_HEIGHT - insets.top - HEADER_BUTTON;
@@ -189,21 +212,6 @@ function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Pro
       { scale: scrollY.interpolate({ inputRange: [-HERO_HEIGHT, 0], outputRange: [2, 1], extrapolateRight: 'clamp' }) },
     ],
   }), [scrollY]);
-
-  const onTabsLayout = useCallback((e: LayoutChangeEvent) => setTabsY(e.nativeEvent.layout.y), []);
-  const recordOffset = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    offsetRef.current = e.nativeEvent.contentOffset.y;
-  }, []);
-  const selectTab = useCallback((next: PreviewTab) => {
-    setTab(next);
-    // Past the pin point, start the new tab at its top instead of somewhere in the middle.
-    if (pinAt != null && offsetRef.current > pinAt) {
-      scrollRef.current?.scrollTo({ y: pinAt, animated: false });
-      offsetRef.current = pinAt;
-    }
-  }, [pinAt]);
-  const openLoyaltyTab = useCallback(() => selectTab('loyalty'), [selectTab]);
-  const openInfoTab = useCallback(() => selectTab('info'), [selectTab]);
 
   const headerButtonBg = theme.mode === 'dark' ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.94)';
 
@@ -340,30 +348,19 @@ function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Pro
 
         {/* Tall enough for the tab bar to pin even when the active tab is short. */}
         <View style={[s.sections, { minHeight: windowHeight - pinOffset - TAB_BAR_HEIGHT }]}>
-          {activeTab === 'overview' && (
+          {/* The shop, as the merchant describes it (no booking or collection in the preview). */}
+          {activeTab === 'shop' && (
             <>
-              <FicheLoyaltySummary rewards={rewards} earnLine={earnLine} wheelEndsAt={wheel?.endsAt} onOpen={openLoyaltyTab} />
-              <FicheInfoSummary
-                hours={merchant.openingHours}
-                status={openStatus}
-                store={activeStores[0]}
-                merchantName={merchant.nom}
-                onOpen={openInfoTab}
-              />
+              <FicheAbout description={merchant.description?.trim() ?? ''} badges={[]} profiles={[]} />
+              <FicheShopInfo stores={activeStores} hours={merchant.openingHours} merchantName={merchant.nom} />
+              <FicheAbout description="" badges={badges} profiles={profiles} />
             </>
           )}
+          {/* The loyalty program and its games. */}
           {activeTab === 'loyalty' && (
             <>
               <FicheLoyalty rewards={rewards} earnLine={earnLine} validityDays={merchant.stampValidityDays} />
               {wheel && <FicheLuckyWheel wheel={wheel} />}
-            </>
-          )}
-          {activeTab === 'info' && (
-            <>
-              {/* Same order as the overview: where, when, then who. */}
-              <FicheLocations stores={activeStores} merchantName={merchant.nom} />
-              {hasOpeningHours(merchant.openingHours) && <FicheHours hours={merchant.openingHours} />}
-              <FicheAbout description={merchant.description?.trim() ?? ''} badges={badges} profiles={profiles} />
             </>
           )}
           {activeTab === 'photos' && <FicheGallery images={gallery} />}

@@ -11,16 +11,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 // touch-down and cancels scrolling only while the finger is on the coating.
 import { ScrollView } from 'react-native-gesture-handler';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { AlertCircle, Clock, RefreshCw, X } from 'lucide-react-native';
+import { AlertCircle, Clock, RefreshCw } from 'lucide-react-native';
 
 import { palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
+import { wp, hp, ms } from '@/utils/responsive';
 import { useAppFonts } from '@/utils/fonts';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { useScratchSession } from '@/hooks/useScratchSession';
 import { getScratchDesign, rewardDisplay } from '@jitplus/shared/src/scratch';
 import { ScratchCardFace, getScratchZone, scratchCardHeight } from '@jitplus/shared/src/scratch/ScratchCardFace';
+import { GAME_STAGE_GRADIENT, GameHeader } from '@/components/GameStage';
 import ScratchCardInfo from '@/components/scratch/ScratchCardInfo';
 import ScratchCoating from '@/components/scratch/ScratchCoating';
 import ScratchConfetti from '@/components/scratch/ScratchConfetti';
@@ -31,7 +32,6 @@ import { scratchSharedStyles as shared } from '@/components/scratch/scratchStyle
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-const BG_GRADIENT = ['#24104A', '#150830', '#0B0418'] as const;
 
 export default function ScratchScreen() {
   const router = useRouter();
@@ -60,7 +60,11 @@ export default function ScratchScreen() {
     : null;
   const rewardText = reward?.headline ?? null;
 
-  const goBack = useCallback(() => { router.back(); }, [router]);
+  // Opened from a claim link at cold start there is no history: X did nothing.
+  const goBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  }, [router]);
   const openMyCard = useCallback(() => { router.dismissTo('/(tabs)/qr'); }, [router]);
 
   const merchantName = card?.merchant.nom ?? '';
@@ -170,24 +174,9 @@ export default function ScratchScreen() {
   };
 
   return (
-    <LinearGradient colors={BG_GRADIENT} style={styles.root}>
+    <LinearGradient colors={GAME_STAGE_GRADIENT} style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <View style={[styles.header, { paddingTop: insets.top + hp(8) }]}>
-        <TouchableOpacity
-          onPress={goBack}
-          activeOpacity={0.7}
-          style={styles.iconBtn}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.close')}
-        >
-          <X size={ms(20)} color="#fff" strokeWidth={2} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { fontFamily: fonts.bold }]} numberOfLines={1} accessibilityRole="header">
-          {t('scratch.card.title')}
-        </Text>
-        <View style={styles.iconBtnSpacer} />
-      </View>
+      <GameHeader title={t('scratch.card.title')} isRTL={isRTL} topInset={insets.top} fonts={fonts} t={t} onClose={goBack} />
       {renderBody()}
       {revealed && !reduceMotion && (
         <ScratchConfetti progress={confettiProgress} screenW={screenW} accent={design.accent} />
@@ -196,29 +185,8 @@ export default function ScratchScreen() {
   );
 }
 
-const ICON_BTN = ms(40);
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: wp(16),
-    paddingBottom: hp(8),
-  },
-  headerTitle: { flex: 1, color: '#fff', fontSize: FS.lg, textAlign: 'center', marginHorizontal: ms(8) },
-  iconBtn: {
-    width: ICON_BTN,
-    height: ICON_BTN,
-    borderRadius: ICON_BTN / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  iconBtnSpacer: { width: ICON_BTN, height: ICON_BTN },
 
   scroll: { alignItems: 'center', paddingTop: hp(10), paddingHorizontal: wp(20) },
 

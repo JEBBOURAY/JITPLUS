@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ChevronRight, Plus } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -90,7 +91,9 @@ export default function StampCodesScreen() {
       {canManage && quotaReached && quota.data?.limit != null && (
         <View style={styles.quotaBox}>
           <Notice tone="warning" text={t('stampCodes.list.quotaReached', { limit: quota.data.limit })} />
-          <Button variant="secondary" label={t('stampCodes.list.upgrade')} onPress={goPlan} />
+          {Platform.OS !== 'ios' && (
+            <Button variant="secondary" label={t('stampCodes.list.upgrade')} onPress={goPlan} />
+          )}
         </View>
       )}
     </View>
@@ -104,7 +107,7 @@ export default function StampCodesScreen() {
           <DemoHeaderActions id="qrcolis">
             {canManage && !empty ? (
               <View style={quotaReached ? styles.dimmed : undefined}>
-                <HeaderAddButton label={t('stampCodes.list.create')} onPress={quotaReached ? goPlan : create} />
+                <HeaderAddButton label={t('stampCodes.list.create')} onPress={quotaReached && Platform.OS !== 'ios' ? goPlan : create} />
               </View>
             ) : null}
           </DemoHeaderActions>

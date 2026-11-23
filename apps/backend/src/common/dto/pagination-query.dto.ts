@@ -50,17 +50,27 @@ class SearchPaginationQueryDto extends PaginationQueryDto {
   search?: string;
 }
 
-export const MERCHANT_CLIENT_VIEWS = ['reward', 'loyal', 'inactive'] as const;
+/** `loyal` is kept for app versions before the sort menu (it equals sort=stamps). */
+export const MERCHANT_CLIENT_VIEWS = ['reward', 'almost', 'new', 'loyal', 'inactive'] as const;
 export type MerchantClientView = (typeof MERCHANT_CLIENT_VIEWS)[number];
 
+export const MERCHANT_CLIENT_SORTS = ['recent', 'lastVisit', 'stamps', 'name'] as const;
+export type MerchantClientSort = (typeof MERCHANT_CLIENT_SORTS)[number];
+
 /**
- * Merchant's own client list — search + optional view (omitted = newest first).
+ * Merchant's own client list — search + optional view (omitted = everyone) and sort
+ * (omitted = the view's own order).
  */
 export class MerchantClientsQueryDto extends SearchPaginationQueryDto {
   @ApiPropertyOptional({ enum: MERCHANT_CLIENT_VIEWS })
   @IsOptional()
   @IsIn(MERCHANT_CLIENT_VIEWS)
   view?: MerchantClientView;
+
+  @ApiPropertyOptional({ enum: MERCHANT_CLIENT_SORTS })
+  @IsOptional()
+  @IsIn(MERCHANT_CLIENT_SORTS)
+  sort?: MerchantClientSort;
 }
 
 /**

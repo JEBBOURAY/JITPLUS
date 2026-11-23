@@ -1,9 +1,7 @@
 // ── Scratch cards & coupons — limits shared by both apps ─────────────────────
 // The backend DTOs enforce the same limits (apps/backend/src/scratch-card/dto).
 
-export const COUPON_CODE_LENGTH = 6;
-
-/** Prefix of the QR content shown on a coupon: jitplus://coupon/<token> */
+/** Prefix of the coupon QR shown by older client apps (jitplus://coupon/<token>); Pro only recognises it. */
 export const COUPON_QR_PREFIX = 'jitplus://coupon/';
 
 export const SCRATCH_LIMITS = {

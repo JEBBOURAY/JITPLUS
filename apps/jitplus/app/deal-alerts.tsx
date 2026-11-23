@@ -2,15 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertCircle, ArrowLeft, BellOff, BellRing, Clock, Globe, MapPin } from 'lucide-react-native';
+import { AlertCircle, BellOff, BellRing, Clock, Globe, MapPin } from 'lucide-react-native';
 import { moroccoCityLabel } from '@jitplus/shared/src/deals';
 import { Text } from '@/components/AppText';
-import GuestGuard from '@/components/GuestGuard';
+import { HeaderBackButton, ScreenHeader } from '@/components/ScreenHeader';
 import Skeleton from '@/components/Skeleton';
 import CityPickerModal from '@/components/deals/CityPickerModal';
 import SettingsGroup from '@/components/profile/SettingsGroup';
 import SettingsRow from '@/components/profile/SettingsRow';
-import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
@@ -29,17 +28,11 @@ const ALERT_CATEGORIES = CATEGORIES.filter((c) => c.id !== 'all');
 const CATEGORY_SAVE_DELAY_MS = 800;
 
 export default function DealAlertsScreen() {
-  const { isGuest } = useAuth();
-  if (isGuest) return <GuestGuard />;
-  return <DealAlertsSettings />;
-}
-
-function DealAlertsSettings() {
   const theme = useTheme();
   const fonts = useAppFonts();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { t, locale, isRTL } = useLanguage();
+  const { t, locale } = useLanguage();
   const notifPush = useAuthStore((s) => s.client?.notifPush ?? true);
   const { toggle: togglePreference, savingKey } = usePreferenceToggle();
   const { data: prefs, isLoading, isError, refetch } = useDealAlerts();
@@ -221,22 +214,14 @@ function DealAlertsSettings() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.header, { paddingTop: insets.top + hp(10), backgroundColor: theme.bg }]}>
+      <ScreenHeader>
         <View style={styles.titleRow}>
-          <Pressable
-            onPress={goBack}
-            hitSlop={12}
-            style={[styles.backBtn, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.back')}
-          >
-            <ArrowLeft size={ms(20)} color={theme.text} strokeWidth={2} style={isRTL ? styles.flip : undefined} />
-          </Pressable>
+          <HeaderBackButton onPress={goBack} />
           <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]} accessibilityRole="header" numberOfLines={1}>
             {t('deals.alerts.title')}
           </Text>
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -275,10 +260,7 @@ function CategoryChip({ label, selected, onPress, fontFamily }: ChipProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: wp(20), paddingBottom: hp(12) },
   titleRow: { minHeight: ms(46), flexDirection: 'row', alignItems: 'center', gap: wp(12) },
-  backBtn: { width: ms(40), height: ms(40), borderRadius: ms(20), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  flip: { transform: [{ scaleX: -1 }] },
   title: { flex: 1, fontSize: FS['2xl'], letterSpacing: -0.4, textAlign: 'left' },
   content: { paddingHorizontal: wp(16), paddingTop: hp(4) },
   intro: { fontSize: FS.sm, lineHeight: ms(20), marginBottom: hp(16), marginHorizontal: wp(4), textAlign: 'left' },

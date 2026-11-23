@@ -75,30 +75,14 @@ export const s = StyleSheet.create({
   input: { flex: 1, fontSize: fontSize.md, fontWeight: '500' },
 
   // Info box
+  skipLink: { alignSelf: 'center', paddingVertical: hp(8) },
+  skipLinkText: { fontSize: fontSize.sm, fontWeight: '600' },
   infoBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: wp(10),
     paddingHorizontal: wp(14), paddingVertical: hp(12),
     borderRadius: radius.md, marginTop: hp(4), marginBottom: hp(4),
   },
   infoText: { flex: 1, fontSize: fontSize.xs, lineHeight: ms(18) },
-
-  // Birthday card
-  birthdayCard: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: wp(12),
-    padding: wp(16), borderRadius: radius.lg, borderWidth: 1,
-    marginBottom: hp(12),
-  },
-  birthdayTitle: { fontSize: fontSize.sm, fontWeight: '600', marginBottom: hp(4) },
-  birthdayDesc: { fontSize: fontSize.xs, lineHeight: ms(18) },
-
-  // No password block
-  noPasswordBlock: { alignItems: 'center', paddingVertical: hp(20) },
-  noPasswordIcon: {
-    width: ms(64), height: ms(64), borderRadius: ms(32),
-    alignItems: 'center', justifyContent: 'center', marginBottom: hp(14),
-  },
-  noPasswordTitle: { fontSize: fontSize.lg, fontWeight: '600', marginBottom: hp(6) },
-  noPasswordDesc: { fontSize: fontSize.sm, textAlign: 'center', lineHeight: ms(20) },
 
   // Terms checkbox
   termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: wp(10), marginTop: hp(12) },

@@ -28,7 +28,7 @@ const MerchantLogo = memo(function MerchantLogo({
         source={resolveImageUrl(logoUrl)}
         style={style}
         contentFit="cover"
-        cachePolicy="disk"
+        cachePolicy="memory-disk"
         recyclingKey={logoUrl}
         onError={() => setError(true)}
         accessibilityLabel={merchantName || 'Merchant logo'}

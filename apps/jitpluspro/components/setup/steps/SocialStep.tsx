@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react';
-import { Alert } from 'react-native';
+import { toast } from '@/components/ui/Toast';
+import {  } from 'react-native';
 import { Share2 } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthActions } from '@/contexts/AuthContext';
@@ -22,7 +23,7 @@ export function SocialStep({ merchant, registerSave }: StepProps) {
   const save = useCallback(async (): Promise<boolean> => {
     if (!dirty) return true;
     if (invalid.length > 0) {
-      Alert.alert(t('common.error'), t('storesHub.socialInvalid'));
+      toast.error(t('storesHub.socialInvalid'));
       return false;
     }
     try {
@@ -32,7 +33,7 @@ export function SocialStep({ merchant, registerSave }: StepProps) {
       hapticSuccess();
       return true;
     } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err));
+      toast.error(getErrorMessage(err));
       return false;
     }
   }, [dirty, invalid.length, toLinks, reset, update, updateMerchant, t]);

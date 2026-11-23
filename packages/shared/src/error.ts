@@ -15,10 +15,17 @@ export function sanitizeErrorMessage(msg: string, fallback: string): string {
   if (msg === 'Bad Request') {
     return fallback;
   }
-  const internalPatterns =
-    /Error:|Exception|at\s+\w|SELECT|INSERT|UPDATE|DELETE|prisma|TypeError|Cannot read|stack.*trace/i;
-  if (internalPatterns.test(msg)) return fallback;
+  if (isInternalErrorMessage(msg)) return fallback;
   return msg;
+}
+
+const INTERNAL_PATTERNS =
+  /Error:|Exception|at\s+\w|SELECT|INSERT|UPDATE|DELETE|prisma|TypeError|Cannot read|stack.*trace|ECONNREFUSED|\bport\b.*\d{4}/i;
+const SOURCE_PATH = /\/[\w-]+\/[\w-]+\.(js|ts)|\\[\w-]+\\[\w-]+\.(js|ts)/i;
+
+/** True for stack traces, SQL, ORM or socket internals and source file paths: never shown to users. */
+export function isInternalErrorMessage(msg: string): boolean {
+  return INTERNAL_PATTERNS.test(msg) || SOURCE_PATH.test(msg);
 }
 
 /**

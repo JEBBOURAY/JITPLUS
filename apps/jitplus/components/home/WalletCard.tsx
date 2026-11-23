@@ -8,7 +8,6 @@ import { palette } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
 import type { LoyaltyCard } from '@/types';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { timeAgo } from '@/utils/date';
 import { getFontFamily } from '@/utils/fonts';
 import { getCardProgress } from '@/utils/cardProgress';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
@@ -39,9 +38,6 @@ interface Props {
   height: number;
   t: (scope: string, options?: Record<string, unknown>) => string;
   locale: string;
-  /** Still passed by the carousel; the pass no longer animates on focus. */
-  isActive: boolean;
-  reduceMotion: boolean;
 }
 
 /** Full-bleed loyalty "pass" shown in the wallet carousel. */
@@ -92,7 +88,6 @@ export default memo(function WalletCard({ card, width, height, t, locale }: Prop
   const dotGap = Math.max(4, Math.round(width * 0.018));
   const dotSize = Math.min(ms(26), Math.floor((innerW - dotGap * (firstRow - 1)) / firstRow));
 
-  const lastVisit = timeAgo(card.updatedAt || card.createdAt, locale);
   const categoryLabel = merchant?.categorie ? t(`categories.${merchant.categorie}`, { defaultValue: '' }) : '';
   const fontBold = getFontFamily(locale, 'bold');
   const fontSemi = getFontFamily(locale, 'semibold');
@@ -201,16 +196,11 @@ export default memo(function WalletCard({ card, width, height, t, locale }: Prop
             </View>
           )}
 
-          {/* Footer: progression discrète + dernière visite */}
+          {/* Footer: what is left before the reward */}
           <View style={styles.footer}>
             {!isUnavailable && (
               <Text style={[styles.footerProgress, { color: c.sub, fontFamily: fontSemi }]} numberOfLines={1}>
                 {isComplete ? t('home.rewardReadyHint') : t('home.stampsLeft', { count: remaining })}
-              </Text>
-            )}
-            {!!lastVisit && !isUnavailable && (
-              <Text style={[styles.footerValue, { color: c.sub, fontFamily: fontMedium }]} numberOfLines={1}>
-                {lastVisit}
               </Text>
             )}
           </View>
@@ -263,5 +253,4 @@ const styles = StyleSheet.create({
 
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: wp(10) },
   footerProgress: { fontSize: ms(11), flexShrink: 1 },
-  footerValue: { fontSize: ms(11) },
 });

@@ -1,8 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   View, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
-  ScrollView, Keyboard, I18nManager,
+  ScrollView, Keyboard,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { router } from 'expo-router';
@@ -17,10 +17,9 @@ import { PasswordField, PasswordStrengthBar } from '@/components/PasswordField';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { getPasswordStrength, isValidPassword as checkPassword } from '@/utils/passwordStrength';
+import { DIR_FLIP } from '@/utils/rtl';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
-const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 export default function ChangePasswordScreen() {
   const theme = useTheme();
@@ -33,10 +32,7 @@ export default function ChangePasswordScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Redirect unauthenticated users
-  useEffect(() => {
-    if (!client?.id) router.replace('/login');
-  }, [client]);
+  // Unauthenticated users are sent to welcome by the root layout.
 
   const newRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
@@ -127,6 +123,7 @@ export default function ChangePasswordScreen() {
 
             <PasswordField
               inputRef={newRef}
+              isNew
               icon={Lock}
               label={t('changePassword.newPassword')}
               value={newPassword}
@@ -142,6 +139,7 @@ export default function ChangePasswordScreen() {
 
             <PasswordField
               inputRef={confirmRef}
+              isNew
               icon={CheckCircle2}
               label={t('changePassword.confirmPassword')}
               value={confirmPassword}

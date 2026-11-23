@@ -20,6 +20,7 @@ const Icons = {
   news: 'M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2M18 14h-8M15 18h-5M10 6h8v4h-8z',
   referrals: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6',
   deals: 'M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01',
+  booking: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zM9 16l2 2 4-4',
   audit: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M16 13H8M16 17H8M10 9H8',
   logout: 'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
   search: 'M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z',
@@ -66,6 +67,7 @@ const NAV: { title: string; items: { to: string; label: string; icon: keyof type
     items: [
       { to: '/referrals', label: 'Parrainages', icon: 'referrals' },
       { to: '/deals', label: 'Bons plans', icon: 'deals' },
+      { to: '/booking', label: 'Réservations', icon: 'booking' },
       { to: '/audit-logs', label: 'Journal', icon: 'audit' },
     ],
   },

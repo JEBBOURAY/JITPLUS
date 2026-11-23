@@ -7,9 +7,12 @@ import en from '@/i18n/locales/en';
 import ar from '@/i18n/locales/ar';
 
 const mockPush = jest.fn();
+const mockBack = jest.fn();
+const mockReplace = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, back: mockBack, replace: mockReplace, canGoBack: mockCanGoBack }),
 }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 24, bottom: 16, left: 0, right: 0 }),
@@ -48,6 +51,12 @@ describe('GamesScreen', () => {
     expect(getByText('games.scratchDescription')).toBeTruthy();
   });
 
+  it('lists the collection game and opens it', () => {
+    const { getByRole } = render(<GamesScreen />);
+    fireEvent.press(getByRole('button', { name: 'games.collectionTitle, games.collectionDescription, common.pro' }));
+    expect(mockPush).toHaveBeenCalledWith('/collections');
+  });
+
   it('opens the existing lucky wheel screen', () => {
     const { getByRole } = render(<GamesScreen />);
     fireEvent.press(getByRole('button', { name: 'games.wheelTitle, games.wheelDescription, common.pro' }));
@@ -62,9 +71,29 @@ describe('GamesScreen', () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
-  it('has no back arrow: the system back gesture is the way out', () => {
-    const { queryByRole } = render(<GamesScreen />);
-    expect(queryByRole('button', { name: 'common.back' })).toBeNull();
+  it('goes back to the previous screen with the back arrow', () => {
+    mockCanGoBack.mockReturnValue(true);
+    const { getByRole } = render(<GamesScreen />);
+    fireEvent.press(getByRole('button', { name: 'common.back' }));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('counts a double tap on the back arrow only once', () => {
+    mockCanGoBack.mockReturnValue(true);
+    const { getByRole } = render(<GamesScreen />);
+    const arrow = getByRole('button', { name: 'common.back' });
+    fireEvent.press(arrow);
+    fireEvent.press(arrow);
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes to the home tab when there is no previous screen', () => {
+    mockCanGoBack.mockReturnValue(false);
+    const { getByRole } = render(<GamesScreen />);
+    fireEvent.press(getByRole('button', { name: 'common.back' }));
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
   });
 
   it('does not show protected content while authentication is pending', () => {

@@ -1,44 +1,45 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
-  View, Pressable, Share, Alert, Animated, StyleSheet, Platform, useWindowDimensions,
+  View, Share, Alert, Animated, StyleSheet, Platform, useWindowDimensions,
   type ScrollView, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
-import { Text } from '@/components/AppText';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
-import { AlertCircle, Ban, Flag } from 'lucide-react-native';
+import { savePendingMerchant, takePendingAutoJoin } from '@/services/pendingDeal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ban, Flag } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import Skeleton from '@/components/Skeleton';
 import ActionSheet, { type ActionSheetOption } from '@/components/ActionSheet';
-import { queryKeys, useMerchantById } from '@/hooks/useQueryHooks';
+import DetailErrorState from '@/components/DetailErrorState';
+import { useMerchantById } from '@/hooks/useQueryHooks';
 import { useMerchantDeals } from '@/hooks/useDealHooks';
+import { useMerchantCollection } from '@/hooks/useCollectionHooks';
 import { useKnownLocation } from '@/hooks/useKnownLocation';
-import { api, getServerBaseUrl } from '@/services/api';
+import { useBlockMerchant, useJoinMerchant, useLeaveMerchant, useReportMerchant } from '@/hooks/useMerchantActions';
+import { usePromptLogin } from '@/hooks/usePromptLogin';
+import { getServerBaseUrl } from '@/services/api';
+import type { MerchantReportReason } from '@/services/api/merchants';
 import { haptic, hapticSuccess } from '@/utils/haptics';
-import { useAppFonts } from '@/utils/fonts';
 import { getMerchantAccent } from '@/utils/merchantAccent';
-import { getFicheTabs, getOpenStatus, hasOpeningHours, type FicheTab } from '@jitplus/shared';
+import { getFicheTabs, getOpenStatus, type FicheTab } from '@jitplus/shared';
 import { withDistances } from '@/utils/merchantStores';
-import { wp, hp, ms } from '@/utils/responsive';
-import type { Merchant } from '@/types';
+import { wp, hp, ms, radius } from '@/utils/responsive';
+import { isNotFoundError } from '@/utils/errorMessage';
 import { isEntityId } from '@/utils/ids';
 import {
   HERO_HEIGHT, TAB_BAR_HEIGHT, getStickyHeaderHeight, useMerchantLoyalty,
-  MerchantHero, MerchantStickyHeader, MerchantQuickActions, MerchantTabs, MerchantLoyaltySummary, MerchantInfoSummary,
-  MerchantLoyaltyCard, MerchantDeals, MerchantLuckyWheel, MerchantAbout, MerchantGallery, MerchantOpeningHours,
-  MerchantLocations, MerchantBottomBar,
+  MerchantHero, MerchantStickyHeader, MerchantQuickActions, MerchantTabs, MerchantShopInfo,
+  MerchantLoyaltyCard, MerchantDeals, MerchantLuckyWheel, MerchantCollection, MerchantAbout, MerchantGallery,
+  MerchantBottomBar, WelcomeGiftSheet,
 } from '@/components/merchant';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-type ReportReason = 'inappropriate' | 'spam' | 'fraud' | 'closed' | 'wrong_info' | 'other';
-type SheetMode = 'none' | 'more' | 'report';
+type SheetMode = 'more' | 'report';
 
-const REPORT_REASONS: { reason: ReportReason; labelKey: string }[] = [
+const REPORT_REASONS: { reason: MerchantReportReason; labelKey: string }[] = [
   { reason: 'inappropriate', labelKey: 'merchant.reportReasonInappropriate' },
   { reason: 'spam', labelKey: 'merchant.reportReasonSpam' },
   { reason: 'fraud', labelKey: 'merchant.reportReasonFraud' },
@@ -47,32 +48,30 @@ const REPORT_REASONS: { reason: ReportReason; labelKey: string }[] = [
   { reason: 'other', labelKey: 'merchant.reportReasonOther' },
 ];
 
-/** Room for the fixed bottom bar so the last section stays reachable. */
-const BOTTOM_BAR_SPACE = hp(96);
-const OVERVIEW_DEALS = 2;
+/** Room for the fixed bottom bar (join, or member badge and leave) so the last section stays reachable. */
+const BOTTOM_BAR_SPACE = hp(104);
 
 export default function MerchantDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // tab=loyalty: opened from the client's own card (home, collections), straight to the progress.
+  const { id, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: string }>();
   const { isAuthenticated } = useAuth();
   const theme = useTheme();
   const { t } = useLanguage();
-  const fonts = useAppFonts();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const queryClient = useQueryClient();
 
   // A malformed deep-link id falls through to the "not found" state without a request.
   const validId = isEntityId(id);
-  const { data: merchant, isLoading, error, refetch } = useMerchantById(id, validId);
+  const { data: merchant, isLoading, error, refetch, isStale } = useMerchantById(id, validId);
   const userLocation = useKnownLocation();
 
   // The query already fetches on mount; refresh only when coming back to the screen.
   const hasFocusedRef = useRef(false);
   useFocusEffect(useCallback(() => {
-    if (hasFocusedRef.current) refetch();
+    if (hasFocusedRef.current && isStale) refetch({ cancelRefetch: false });
     hasFocusedRef.current = true;
-  }, [refetch]));
+  }, [refetch, isStale]));
 
   const [scrollY] = useState(() => new Animated.Value(0));
   const onScroll = useMemo(
@@ -80,25 +79,32 @@ export default function MerchantDetailScreen() {
     [scrollY],
   );
 
-  const [sheet, setSheet] = useState<SheetMode>('none');
-  const [joinLoading, setJoinLoading] = useState(false);
-  const [leaveLoading, setLeaveLoading] = useState(false);
-  const busyRef = useRef(false);
-
-  const pageBg = theme.bg;
+  // Open state and content apart: the content must not flip back to the menu
+  // while the sheet slides out after a report reason was picked.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheet, setSheet] = useState<SheetMode>('more');
+  const [welcomeGift, setWelcomeGift] = useState(0);
+  const { mutate: joinMerchant, isPending: joinPending } = useJoinMerchant(id);
+  const { mutate: leaveMerchant, isPending: leavePending } = useLeaveMerchant(id);
+  const { mutate: blockMerchant, isPending: blockPending } = useBlockMerchant(id);
+  const { mutate: reportMerchant, isPending: reportPending } = useReportMerchant(id);
 
   const stores = useMemo(() => withDistances(merchant?.stores, userLocation), [merchant?.stores, userLocation]);
   const openStatus = useMemo(() => getOpenStatus(merchant?.openingHours), [merchant?.openingHours]);
   const loyalty = useMerchantLoyalty(merchant);
 
-  // Guests only see the deal count from the merchant payload; skip the request when there is none.
-  const { data: deals } = useMerchantDeals(merchant?.id, isAuthenticated && !!merchant && merchant.activeDealCount !== 0);
+  // Keyed on the route id so they run alongside the merchant request instead of after it.
+  // Guests only see the deal count from the merchant payload; once the merchant is known,
+  // skip the request when it has no deal.
+  const { data: deals } = useMerchantDeals(id, isAuthenticated && validId && (!merchant || merchant.activeDealCount !== 0));
+  // Carries the client's own progress, so signed-in clients only; skipped when the merchant has no collection.
+  const { data: collection } = useMerchantCollection(id, isAuthenticated && validId && (!merchant || merchant.hasCollection !== false));
 
   const galleryCount = merchant?.gallery?.length ?? 0;
-  const hasDealsTab = isAuthenticated && !!deals?.length;
+  const hasDealsTab = !!deals?.length || (!isAuthenticated && !!merchant?.activeDealCount);
   const tabs = useMemo(() => getFicheTabs({ hasDeals: hasDealsTab, photoCount: galleryCount }), [hasDealsTab, galleryCount]);
-  const [tab, setTab] = useState<FicheTab>('overview');
-  const activeTab = tabs.includes(tab) ? tab : 'overview';
+  const [tab, setTab] = useState<FicheTab>(initialTab === 'loyalty' ? 'loyalty' : 'shop');
+  const activeTab = tabs.includes(tab) ? tab : 'shop';
 
   // The tab bar pins under the header bar: same translateY trick as RN sticky headers, native driver only.
   const scrollRef = useRef<ScrollView>(null);
@@ -125,47 +131,54 @@ export default function MerchantDetailScreen() {
       offsetRef.current = pinAt;
     }
   }, [pinAt]);
-  const openLoyaltyTab = useCallback(() => selectTab('loyalty'), [selectTab]);
-  const openDealsTab = useCallback(() => selectTab('deals'), [selectTab]);
-  const openInfoTab = useCallback(() => selectTab('info'), [selectTab]);
-
-  const patchMerchant = useCallback((patch: Partial<Merchant>) => {
-    queryClient.setQueryData<Merchant>(queryKeys.merchant(id), (m) => (m ? { ...m, ...patch } : m));
-  }, [queryClient, id]);
-
-  const refreshCards = useCallback(() => {
-    queryClient.invalidateQueries({
-      predicate: (q) => q.queryKey[0] === 'stamps' || (q.queryKey[0] === 'merchant' && q.queryKey[1] === id),
-    });
-  }, [queryClient, id]);
 
   // Guests can browse the profile; card, report and block actions need an account.
-  const promptLogin = useCallback(() => {
-    Alert.alert(t('guest.loginRequired'), t('guest.loginRequiredDesc'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('welcome.createAccount'), onPress: () => router.push('/register') },
-      { text: t('welcome.login'), onPress: () => router.push('/login') },
-    ], { cancelable: true });
-  }, [router, t]);
+  // The page (and the Join the guest tapped) comes back once signed in.
+  const showLoginPrompt = usePromptLogin();
+  const promptLogin = useCallback((wantsJoin = false) => {
+    const name = merchant?.nomBoutique ?? '';
+    showLoginPrompt({
+      remember: () => { if (validId) savePendingMerchant(id, wantsJoin); },
+      ...(wantsJoin && name ? { title: t('guest.joinTitle', { name }), message: t('guest.joinDesc', { name }) } : {}),
+    });
+  }, [showLoginPrompt, t, merchant?.nomBoutique, id, validId]);
+  // For props called with their own arguments (they must not read as a Join).
+  const promptLoginOnly = useCallback(() => promptLogin(), [promptLogin]);
 
-  const handleJoin = useCallback(async () => {
-    if (!isAuthenticated) { promptLogin(); return; }
-    if (!id || busyRef.current) return;
-    busyRef.current = true;
-    setJoinLoading(true);
-    try {
-      const res = await api.joinMerchant(id);
-      patchMerchant({ hasCard: true, cardDeactivated: false, cardBalance: res.card?.stamps ?? 0 });
-      hapticSuccess();
-      refreshCards();
-    } catch (e) {
-      if (__DEV__) console.warn('Join merchant error:', e);
-      Alert.alert(t('common.error'), t('merchant.joinError'));
-    } finally {
-      busyRef.current = false;
-      setJoinLoading(false);
-    }
-  }, [id, isAuthenticated, promptLogin, patchMerchant, refreshCards, t]);
+  const handleJoin = useCallback(() => {
+    if (!isAuthenticated) { promptLogin(true); return; }
+    if (!id || joinPending) return;
+    joinMerchant(undefined, {
+      onSuccess: (res) => {
+        hapticSuccess();
+        const granted = res.card?.welcomeBonusGranted ?? 0;
+        if (granted > 0) setWelcomeGift(granted);
+      },
+      onError: (e) => {
+        if (__DEV__) console.warn('Join merchant error:', e);
+        Alert.alert(t('common.error'), t('merchant.joinError'));
+      },
+    });
+  }, [id, isAuthenticated, joinPending, promptLogin, joinMerchant, t]);
+
+  // Join tapped as a guest: done as soon as the page is back after sign-up.
+  // The intent comes from memory (pendingDeal), never from a route param that
+  // an external link could carry.
+  const autoJoinedRef = useRef(false);
+  const wantsAutoJoinRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (autoJoinedRef.current || !isAuthenticated || !merchant || !validId) return;
+    if (wantsAutoJoinRef.current === null) wantsAutoJoinRef.current = takePendingAutoJoin(id);
+    if (!wantsAutoJoinRef.current) return;
+    autoJoinedRef.current = true;
+    if (!merchant.hasCard || merchant.cardDeactivated) void handleJoin();
+  }, [id, validId, isAuthenticated, merchant, handleJoin]);
+
+  const closeWelcomeGift = useCallback(() => setWelcomeGift(0), []);
+  const viewWelcomeCard = useCallback(() => {
+    setWelcomeGift(0);
+    selectTab('loyalty');
+  }, [selectTab]);
 
   const handleLeave = useCallback(() => {
     if (!id || !merchant) return;
@@ -175,41 +188,33 @@ export default function MerchantDetailScreen() {
       {
         text: t('merchant.leaveConfirm'),
         style: 'destructive',
-        onPress: async () => {
-          if (busyRef.current) return;
-          busyRef.current = true;
-          setLeaveLoading(true);
-          try {
-            await api.leaveMerchant(id);
-            patchMerchant({ hasCard: false, cardDeactivated: true, cardBalance: 0, cardStampsExpireAt: null });
-            haptic();
-            refreshCards();
-          } catch (e) {
-            if (__DEV__) console.warn('Leave merchant error:', e);
-            Alert.alert(t('common.error'), t('merchant.leaveError'));
-          } finally {
-            busyRef.current = false;
-            setLeaveLoading(false);
-          }
+        onPress: () => {
+          if (leavePending) return;
+          leaveMerchant(undefined, {
+            onSuccess: () => haptic(),
+            onError: (e) => {
+              if (__DEV__) console.warn('Leave merchant error:', e);
+              Alert.alert(t('common.error'), t('merchant.leaveError'));
+            },
+          });
         },
       },
     ]);
-  }, [id, merchant, patchMerchant, refreshCards, t]);
+  }, [id, merchant, leavePending, leaveMerchant, t]);
 
-  const submitReport = useCallback(async (reason: ReportReason) => {
-    if (!id || busyRef.current) return;
-    busyRef.current = true;
-    try {
-      await api.reportMerchant(id, reason);
-      haptic();
-      Alert.alert(t('merchant.reportThanksTitle'), t('merchant.reportThanksBody'));
-    } catch (e) {
-      if (__DEV__) console.warn('Report merchant error:', e);
-      Alert.alert(t('common.error'), t('merchant.reportError'));
-    } finally {
-      busyRef.current = false;
-    }
-  }, [id, t]);
+  const submitReport = useCallback((reason: MerchantReportReason) => {
+    if (!id || reportPending) return;
+    reportMerchant(reason, {
+      onSuccess: () => {
+        haptic();
+        Alert.alert(t('merchant.reportThanksTitle'), t('merchant.reportThanksBody'));
+      },
+      onError: (e) => {
+        if (__DEV__) console.warn('Report merchant error:', e);
+        Alert.alert(t('common.error'), t('merchant.reportError'));
+      },
+    });
+  }, [id, reportPending, reportMerchant, t]);
 
   // Opened from a link on a cold start there is nothing to go back to.
   const handleBack = useCallback(() => {
@@ -225,28 +230,25 @@ export default function MerchantDetailScreen() {
       {
         text: t('merchant.blockConfirm'),
         style: 'destructive',
-        onPress: async () => {
-          if (busyRef.current) return;
-          busyRef.current = true;
-          try {
-            await api.blockMerchant(id);
-            haptic();
-            queryClient.invalidateQueries({
-              predicate: (q) => q.queryKey[0] === 'merchants' || (q.queryKey[0] === 'merchant' && q.queryKey[1] === id),
-            });
-            Alert.alert(t('merchant.blockedTitle'), t('merchant.blockedBody'), [
-              { text: t('common.ok'), onPress: handleBack },
-            ]);
-          } catch (e) {
-            if (__DEV__) console.warn('Block merchant error:', e);
-            Alert.alert(t('common.error'), t('merchant.blockError'));
-          } finally {
-            busyRef.current = false;
-          }
+        onPress: () => {
+          if (blockPending) return;
+          // The cache refresh (lists, deal feeds, booking search) is in the mutation.
+          blockMerchant(undefined, {
+            onSuccess: () => {
+              haptic();
+              Alert.alert(t('merchant.blockedTitle'), t('merchant.blockedBody'), [
+                { text: t('common.ok'), onPress: handleBack },
+              ]);
+            },
+            onError: (e) => {
+              if (__DEV__) console.warn('Block merchant error:', e);
+              Alert.alert(t('common.error'), t('merchant.blockError'));
+            },
+          });
         },
       },
     ], { cancelable: true });
-  }, [id, queryClient, handleBack, t]);
+  }, [id, blockPending, blockMerchant, handleBack, t]);
 
   const handleShare = useCallback(async () => {
     if (!merchant) return;
@@ -262,8 +264,9 @@ export default function MerchantDetailScreen() {
   const openMore = useCallback(() => {
     if (!isAuthenticated) { promptLogin(); return; }
     setSheet('more');
+    setSheetOpen(true);
   }, [isAuthenticated, promptLogin]);
-  const closeSheet = useCallback(() => setSheet('none'), []);
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
 
   const sheetOptions = useMemo<ActionSheetOption[]>(() => {
     if (sheet === 'report') {
@@ -272,6 +275,7 @@ export default function MerchantDetailScreen() {
       }));
     }
     return [
+      // Leaving the card is on the bottom bar, next to the member badge.
       { key: 'report', label: t('merchant.reportTitle'), icon: Flag, keepOpen: true, onPress: () => setSheet('report') },
       { key: 'block', label: t('merchant.blockTitle'), icon: Ban, destructive: true, onPress: handleBlock },
     ];
@@ -279,52 +283,29 @@ export default function MerchantDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.container, { backgroundColor: pageBg }]}>
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
         <Skeleton width="100%" height={HERO_HEIGHT} borderRadius={0} />
         <View style={styles.skeletonBody}>
-          <Skeleton width={ms(90)} height={ms(90)} borderRadius={ms(20)} style={styles.skeletonLogo} />
-          <Skeleton width={wp(200)} height={hp(24)} borderRadius={ms(6)} />
-          <Skeleton width={wp(150)} height={hp(14)} borderRadius={ms(6)} />
-          <Skeleton width={wp(260)} height={ms(38)} borderRadius={999} />
-          <Skeleton width="100%" height={hp(140)} borderRadius={ms(8)} />
-          <Skeleton width="100%" height={hp(100)} borderRadius={ms(8)} />
+          <Skeleton width={ms(90)} height={ms(90)} borderRadius={radius.lg} style={styles.skeletonLogo} />
+          <Skeleton width={wp(200)} height={hp(24)} borderRadius={radius.sm} />
+          <Skeleton width={wp(150)} height={hp(14)} borderRadius={radius.sm} />
+          <Skeleton width={wp(260)} height={ms(44)} borderRadius={radius.full} />
+          <Skeleton width="100%" height={hp(140)} borderRadius={radius.lg} />
+          <Skeleton width="100%" height={hp(100)} borderRadius={radius.lg} />
         </View>
       </View>
     );
   }
 
   if (!merchant || !loyalty) {
-    const notFound = !error || (isAxiosError(error) && error.response?.status === 404);
+    const notFound = !error || isNotFoundError(error);
+    const back = { label: t('common.back'), onPress: handleBack };
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: pageBg }]} edges={['top', 'bottom']}>
-        <View style={styles.errorContainer}>
-          <View style={[styles.errorIcon, { backgroundColor: theme.primaryBg }]}>
-            <AlertCircle size={ms(28)} color={theme.primary} strokeWidth={2} />
-          </View>
-          <Text style={[styles.errorTitle, { color: theme.text, fontFamily: fonts.bold }]}>
-            {notFound ? t('merchant.notFound') : t('common.error')}
-          </Text>
-          <Text style={[styles.errorText, { color: theme.textMuted, fontFamily: fonts.regular }]}>
-            {notFound ? t('merchant.notFoundDesc') : t('errors.generic')}
-          </Text>
-          <View style={styles.errorActions}>
-            {!notFound && (
-              <Pressable onPress={() => refetch()} style={[styles.errorButton, { backgroundColor: theme.primary }]} accessibilityRole="button">
-                <Text style={[styles.errorButtonText, { fontFamily: fonts.bold }]}>{t('common.retry')}</Text>
-              </Pressable>
-            )}
-            <Pressable
-              onPress={handleBack}
-              style={[styles.errorButton, notFound ? { backgroundColor: theme.primary } : { backgroundColor: theme.bgInput }]}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.errorButtonText, { fontFamily: fonts.bold }, !notFound && { color: theme.text }]}>
-                {t('common.back')}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </SafeAreaView>
+      <DetailErrorState
+        title={notFound ? t('merchant.notFound') : t('common.error')}
+        message={notFound ? t('merchant.notFoundDesc') : t('errors.generic')}
+        actions={notFound ? [back] : [{ label: t('common.retry'), onPress: () => { void refetch(); } }, { ...back, secondary: true }]}
+      />
     );
   }
 
@@ -332,7 +313,7 @@ export default function MerchantDetailScreen() {
   const wheel = merchant.activeLuckyWheel;
 
   return (
-    <View style={[styles.container, { backgroundColor: pageBg }]}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <Animated.ScrollView
         ref={scrollRef}
         onScroll={onScroll}
@@ -352,36 +333,26 @@ export default function MerchantDetailScreen() {
 
         <Animated.View
           onLayout={onTabsLayout}
-          style={[styles.tabs, { backgroundColor: pageBg, borderBottomColor: theme.border }, tabsMotion]}
+          style={[styles.tabs, { backgroundColor: theme.bg, borderBottomColor: theme.border }, tabsMotion]}
         >
           <MerchantTabs tabs={tabs} active={activeTab} onChange={selectTab} />
         </Animated.View>
 
         {/* Tall enough for the tab bar to pin even when the active tab is short. */}
         <View style={[styles.sections, { minHeight: windowHeight - pinOffset - TAB_BAR_HEIGHT }]}>
-          {activeTab === 'overview' && (
+          {/* What the merchant says about the shop, laid out like a maps listing. */}
+          {activeTab === 'shop' && (
             <>
-              <MerchantLoyaltySummary loyalty={loyalty} wheel={wheel} accent={accent} onOpen={openLoyaltyTab} />
-              <MerchantDeals
-                deals={deals}
-                activeDealCount={merchant.activeDealCount}
-                isAuthenticated={isAuthenticated}
-                onLocked={promptLogin}
-                limit={OVERVIEW_DEALS}
-                onSeeAll={openDealsTab}
-              />
-              <MerchantInfoSummary
-                hours={merchant.openingHours}
-                status={openStatus}
-                stores={stores}
-                merchantName={merchant.nomBoutique}
-                onOpen={openInfoTab}
-              />
+              <MerchantAbout merchant={merchant} part="description" />
+              <MerchantShopInfo stores={stores} hours={merchant.openingHours} merchantName={merchant.nomBoutique} />
+              <MerchantAbout merchant={merchant} part="details" />
             </>
           )}
+          {/* The loyalty program and its games. */}
           {activeTab === 'loyalty' && (
             <>
               <MerchantLoyaltyCard loyalty={loyalty} accent={accent} />
+              {collection && <MerchantCollection collection={collection} accent={accent} />}
               {wheel && <MerchantLuckyWheel wheel={wheel} currency={merchant.currency} />}
             </>
           )}
@@ -390,18 +361,8 @@ export default function MerchantDetailScreen() {
               deals={deals}
               activeDealCount={merchant.activeDealCount}
               isAuthenticated={isAuthenticated}
-              onLocked={promptLogin}
+              onLocked={promptLoginOnly}
             />
-          )}
-          {activeTab === 'info' && (
-            <>
-              {/* Same order as the overview: where, when, then who. */}
-              <MerchantLocations stores={stores} merchantName={merchant.nomBoutique} />
-              {hasOpeningHours(merchant.openingHours) && (
-                <MerchantOpeningHours hours={merchant.openingHours} />
-              )}
-              <MerchantAbout merchant={merchant} />
-            </>
           )}
           {activeTab === 'photos' && <MerchantGallery images={merchant.gallery ?? []} />}
         </View>
@@ -417,19 +378,28 @@ export default function MerchantDetailScreen() {
 
       <MerchantBottomBar
         merchant={merchant}
-        joinLoading={joinLoading}
-        leaveLoading={leaveLoading}
+        joinLoading={joinPending}
+        leaveLoading={leavePending}
         onJoin={handleJoin}
         onLeave={handleLeave}
       />
 
       <ActionSheet
-        visible={sheet !== 'none'}
+        visible={sheetOpen}
         title={sheet === 'report' ? t('merchant.reportTitle') : merchant.nomBoutique}
         message={sheet === 'report' ? t('merchant.reportBody') : undefined}
         options={sheetOptions}
         cancelLabel={t('common.cancel')}
         onClose={closeSheet}
+      />
+      <WelcomeGiftSheet
+        stamps={welcomeGift}
+        merchantName={merchant.nomBoutique}
+        loyalty={loyalty}
+        accent={accent}
+        bottomInset={insets.bottom}
+        onClose={closeWelcomeGift}
+        onViewCard={viewWelcomeCard}
       />
     </View>
   );
@@ -438,7 +408,7 @@ export default function MerchantDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   tabs: {
-    marginTop: hp(14),
+    marginTop: hp(16),
     borderBottomWidth: StyleSheet.hairlineWidth,
     zIndex: 2,
     // Above the cards' Android elevation once pinned over them.
@@ -448,12 +418,4 @@ const styles = StyleSheet.create({
 
   skeletonBody: { alignItems: 'flex-start', paddingHorizontal: wp(16), gap: hp(12) },
   skeletonLogo: { marginTop: -ms(45) },
-
-  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: wp(40) },
-  errorIcon: { width: ms(64), height: ms(64), borderRadius: ms(22), alignItems: 'center', justifyContent: 'center', marginBottom: hp(16) },
-  errorTitle: { fontSize: ms(20), marginBottom: hp(8), textAlign: 'center' },
-  errorText: { fontSize: ms(14), textAlign: 'center', lineHeight: ms(22), marginBottom: hp(24) },
-  errorActions: { flexDirection: 'row', gap: wp(10) },
-  errorButton: { paddingHorizontal: wp(24), paddingVertical: hp(12), borderRadius: ms(14) },
-  errorButtonText: { color: '#fff', fontSize: ms(15) },
 });

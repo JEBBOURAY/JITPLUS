@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Globe, Hourglass } from 'lucide-react-native';
 import { JitStore } from '@/components/icons';
 import { useTheme, type ThemeColors } from '@/contexts/ThemeContext';
@@ -10,7 +11,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import { StatusPill } from '@/components/scratch/ScratchUI';
-import type { DealDisplayStatus, DealOffer, DealScope, DealType } from '@jitplus/shared/src/deals';
+import type { DealDisplayStatus, DealOffer, DealPriceTexts, DealScope } from '@jitplus/shared/src/deals';
 import DealThumb from './DealThumb';
 import { dealBadgeLabel, dealPrices, dealTimeLeftLabel } from './dealVisual';
 
@@ -54,16 +55,14 @@ export function useDealMerchantLook(): DealMerchantLook {
 }
 
 /** Promo price, original price (struck for a price drop, "value of" for a free item) and badge. */
-export function DealPriceRow({ type, price, original, badge, large }: {
-  type: DealType;
-  price: string | null;
-  original: string | null;
+/** `prices`: the texts of dealPrices. */
+export function DealPriceRow({ prices: { price, original, struck }, badge, large }: {
+  prices: DealPriceTexts;
   badge: string | null;
   /** Bigger texts, for the deal detail */
   large?: boolean;
 }) {
   const theme = useTheme();
-  const { t } = useLanguage();
   const { row } = useDir();
   if (!price && !original && !badge) return null;
   return (
@@ -71,10 +70,10 @@ export function DealPriceRow({ type, price, original, badge, large }: {
       {price ? <Text style={[styles.price, large && styles.priceLarge, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>{price}</Text> : null}
       {original ? (
         <Text
-          style={[styles.original, large && styles.originalLarge, { color: theme.textMuted }, type === 'PRICE_DROP' && styles.struck]}
+          style={[styles.original, large && styles.originalLarge, { color: theme.textMuted }, struck && styles.struck]}
           maxFontSizeMultiplier={1.3}
         >
-          {type === 'FREE_ITEM' ? t('deals.valueOf', { value: original }) : original}
+          {original}
         </Text>
       ) : null}
       {badge ? (
@@ -103,7 +102,6 @@ export const DealPreviewRow = React.memo(function DealPreviewRow({ title, offer,
   const { money } = useMoney();
   const { row, textAlign } = useDir();
   const badge = dealBadgeLabel(offer, t);
-  const { price, original } = dealPrices(offer, money);
   const time = dealTimeLeftLabel(endsAt, t);
   const timeColor = time.urgent ? theme.warning : theme.textMuted;
   const ScopeIcon = scope === 'ONLINE' ? Globe : JitStore;
@@ -122,7 +120,7 @@ export const DealPreviewRow = React.memo(function DealPreviewRow({ title, offer,
         <Text style={[styles.title, { color: theme.text, textAlign }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
           {title || t('deals.wizard.titlePlaceholder')}
         </Text>
-        <DealPriceRow type={offer.type} price={price} original={original} badge={badge} />
+        <DealPriceRow prices={dealPrices(offer, money, t)} badge={badge} />
         <View style={[styles.metaRow, { flexDirection: row }]}>
           <ScopeIcon size={13} color={theme.textMuted} strokeWidth={icon.stroke} />
           <Text style={[styles.meta, { color: theme.textSecondary, textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>

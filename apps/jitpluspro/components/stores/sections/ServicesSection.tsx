@@ -1,15 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
-import { Award, ImagePlus } from 'lucide-react-native';
+import { toast as notify } from '@/components/ui/Toast';
+import { Award } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthActions } from '@/contexts/AuthContext';
 import { useUpdateMerchantProfile } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
 import { MERCHANT_BADGE_CODES, type Merchant, type MerchantBadge } from '@/types';
-import { BadgesChips, GalleryGrid } from '@/components/stores/FicheControls';
-import { Panel, CountPill, ProPill, SaveBar, SectionScreen, useDiscardGuard, useToast, haptic } from '@/components/stores/StoreUi';
+import { BadgesChips } from '@/components/stores/FicheControls';
+import { Panel, CountPill, SaveBar, SectionScreen, useDiscardGuard, useToast, haptic } from '@/components/stores/StoreUi';
 import { brandColor, sameMembers } from '@/components/stores/brand';
-import { useGalleryEditor } from '@/components/stores/useGalleryEditor';
+import { GalleryPanel } from '@/components/stores/GalleryPanel';
 
 const BADGES_MAX = 8;
 
@@ -27,7 +27,6 @@ export default function ServicesSection({ merchant }: { merchant: Merchant }) {
   const toast = useToast();
   const update = useUpdateMerchantProfile();
   const accent = brandColor(merchant.themeColor);
-  const gallery = useGalleryEditor(merchant);
 
   const initialBadges = useMemo(() => savedBadges(merchant), [merchant]);
   const [badges, setBadges] = useState<MerchantBadge[]>(initialBadges);
@@ -49,7 +48,7 @@ export default function ServicesSection({ merchant }: { merchant: Merchant }) {
       haptic();
       showToast(t('storePreview.savedToast'));
     } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err));
+      notify.error(getErrorMessage(err));
     }
   }, [badges, update, updateMerchant, showToast, t]);
 
@@ -69,24 +68,7 @@ export default function ServicesSection({ merchant }: { merchant: Merchant }) {
         <BadgesChips selected={badges} max={BADGES_MAX} accent={accent} onToggle={toggleBadge} />
       </Panel>
 
-      <Panel
-        Icon={ImagePlus}
-        title={t('storePreview.galleryTitle')}
-        caption={t('storePreview.galleryHint')}
-        right={gallery.isPremium ? <CountPill value={`${gallery.gallery.length}/${gallery.max}`} /> : <ProPill />}
-      >
-        <GalleryGrid
-          items={gallery.gallery}
-          max={gallery.max}
-          busyUrl={gallery.busyUrl}
-          isUploading={gallery.isUploading}
-          isMutationPending={gallery.isMutationPending}
-          accent={accent}
-          onAddPhotos={gallery.addPhotos}
-          onRemove={gallery.removePhoto}
-          onMove={gallery.movePhoto}
-        />
-      </Panel>
+      <GalleryPanel merchant={merchant} caption={() => t('storePreview.galleryHint')} />
     </SectionScreen>
   );
 }

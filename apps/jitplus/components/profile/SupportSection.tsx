@@ -26,9 +26,10 @@ function SupportSection() {
   }, [t]);
 
   const rateApp = useCallback(async () => {
-    const reviewUrl = getReviewUrl();
+    // No canOpenURL: iOS answers false for itms-apps (not in LSApplicationQueriesSchemes),
+    // which always skipped the write-review screen.
     try {
-      await Linking.openURL((await Linking.canOpenURL(reviewUrl)) ? reviewUrl : getStoreUrl());
+      await Linking.openURL(getReviewUrl());
     } catch {
       Linking.openURL(getStoreUrl()).catch(() => {});
     }

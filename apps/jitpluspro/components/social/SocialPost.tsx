@@ -8,6 +8,7 @@ import { Bell, Check, Download, Link2, MapPin, Tag, UserPlus } from 'lucide-reac
 import { JitGames, JitGift, JitStamp, JitStar } from '@/components/icons';
 import MerchantLogo from '@/components/MerchantLogo';
 import { PText, readableBrand } from '@/components/plv/PlvPoster';
+import { mix, rgb } from '@/components/plv/color';
 import type { PlvProgram } from '@/components/plv/usePlvProgram';
 import type { useLanguage } from '@/contexts/LanguageContext';
 import { font } from '@/constants/design';
@@ -50,18 +51,6 @@ const GREEN_INK = '#059669';
 const INK = '#0F172A';
 const GRADIENT_START = { x: 0, y: 0.5 };
 const GRADIENT_END = { x: 1, y: 0.5 };
-
-function rgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-/** `a` blended towards `b` (0 = a, 1 = b). */
-function mix(a: string, b: string, amount: number): string {
-  const [x, y] = [rgb(a), rgb(b)];
-  const c = x.map((v, i) => Math.round(v + (y[i] - v) * amount));
-  return `#${((c[0] << 16) | (c[1] << 8) | c[2]).toString(16).padStart(6, '0')}`;
-}
 
 /** Colours of a post, derived from the merchant's brand colour. */
 function buildPalette(brandColor?: string | null) {

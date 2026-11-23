@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateTeamMemberDto {
   @IsNotEmpty({ message: 'Le nom est requis' })
@@ -6,6 +7,7 @@ export class CreateTeamMemberDto {
   @MaxLength(100)
   nom: string;
 
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toLowerCase() : value)
   @IsEmail({}, { message: 'Email invalide' })
   email: string;
 

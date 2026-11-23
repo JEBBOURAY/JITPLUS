@@ -1,10 +1,10 @@
 import { memo } from 'react';
 import {
-  View, Pressable, TouchableOpacity, type ViewStyle, I18nManager,
+  View, Pressable, TouchableOpacity, type ViewStyle,
 } from 'react-native';
 import { Text } from '@/components/AppText';
 import {
-  MapPin, ChevronRight, Navigation, ExternalLink, BadgePercent,
+  MapPin, ChevronRight, Navigation, ExternalLink, BadgePercent, Gift, Award,
 } from 'lucide-react-native';
 import { pluralKey } from '@jitplus/shared';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -14,10 +14,28 @@ import MerchantLogo from '@/components/MerchantLogo';
 import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
 import { formatDistance } from '@/utils/distance';
 import { discoverStyles as styles } from './discoverStyles';
-import { pointName } from '@/utils/merchantPoint';
+import { pointName } from '@/utils/merchantPoint';
+import { DIR_FLIP } from '@/utils/rtl';
 
-// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
-const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
+
+/**
+ * What the loyalty card gives: "Café offert après 8 tampons". The line a
+ * newcomer needs to understand why they would join this merchant.
+ */
+const RewardLine = memo(function RewardLine({ merchant }: { merchant: Merchant }) {
+  const theme = useTheme();
+  const { t, locale } = useLanguage();
+  const reward = merchant.firstReward;
+  if (!reward?.title) return null;
+  return (
+    <View style={styles.rewardRow}>
+      <Award size={ms(13)} color={palette.gold} strokeWidth={2.2} />
+      <Text style={[styles.rewardText, { color: theme.text }]} numberOfLines={1}>
+        {t(pluralKey('discover.rewardLine', reward.stamps, locale), { reward: reward.title, count: reward.stamps })}
+      </Text>
+    </View>
+  );
+});
 
 export const FallbackMerchantCard = memo(function FallbackMerchantCard({
   merchant,
@@ -49,6 +67,7 @@ export const FallbackMerchantCard = memo(function FallbackMerchantCard({
             <Text style={[styles.catBadgeText, { color: palette.violet }]}>{t(`categories.${merchant.categorie}`, { defaultValue: merchant.categorie })}</Text>
           </View>
         )}
+        <RewardLine merchant={merchant} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(2) }}>
           <MapPin size={ms(11)} color={theme.textMuted} strokeWidth={2} />
           <Text style={[styles.fallbackAddr, { color: theme.textMuted, flexShrink: 1 }]} numberOfLines={1}>
@@ -94,11 +113,16 @@ export const MerchantCallout = memo(function MerchantCallout({
   style?: ViewStyle;
 }) {
   const theme = useTheme();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const dealCount = merchant.activeDealCount ?? 0;
   return (
     <View style={[styles.calloutWrapper, style]}>
-      <Pressable style={[styles.calloutCard, { backgroundColor: theme.bgCard }]} onPress={() => onPress(merchant)}>
+      <Pressable
+        style={[styles.calloutCard, { backgroundColor: theme.bgCard }]}
+        onPress={() => onPress(merchant)}
+        accessibilityRole="button"
+        accessibilityLabel={`${pointName(merchant)}, ${t('discover.seeLoyaltyCard')}`}
+      >
         <View style={styles.calloutAccent} />
         <View style={[styles.calloutAvatar, { backgroundColor: palette.violet + '10' }]}>
           <MerchantLogo logoUrl={merchant.logoUrl} style={styles.merchantLogo} merchantName={merchant.nomBoutique} />
@@ -124,6 +148,15 @@ export const MerchantCallout = memo(function MerchantCallout({
               </Text>
             </View>
           )}
+          <RewardLine merchant={merchant} />
+          {!!merchant.welcomeOffer && (
+            <View style={styles.welcomeBadge}>
+              <Gift size={ms(12)} color={palette.violet} strokeWidth={2.2} />
+              <Text style={styles.welcomeBadgeText} numberOfLines={1}>
+                {t(pluralKey('merchant.welcomeMapBadge', merchant.welcomeOffer.stamps, locale), { count: merchant.welcomeOffer.stamps })}
+              </Text>
+            </View>
+          )}
           {dealCount > 0 && (
             <Pressable
               onPress={() => onDealPress(merchant)}
@@ -138,10 +171,15 @@ export const MerchantCallout = memo(function MerchantCallout({
             >
               <BadgePercent size={ms(12)} color={theme.danger} strokeWidth={2.2} />
               <Text style={{ flexShrink: 1, fontSize: FS.xs, fontWeight: '600', color: theme.danger }} numberOfLines={1}>
-                {merchant.topDeal?.title ?? t(pluralKey('deals.map.count', dealCount), { count: dealCount })}
+                {merchant.topDeal?.title ?? t(pluralKey('deals.map.count', dealCount, locale), { count: dealCount })}
               </Text>
             </Pressable>
           )}
+          {/* Says where the tap leads: the bare chevron did not. */}
+          <View style={styles.calloutCta}>
+            <Text style={styles.calloutCtaText} numberOfLines={1}>{t('discover.seeLoyaltyCard')}</Text>
+            <ChevronRight size={ms(14)} color={palette.violet} strokeWidth={2.4} style={DIR_FLIP} />
+          </View>
         </View>
         <View style={styles.calloutActions}>
           <TouchableOpacity
@@ -152,7 +190,6 @@ export const MerchantCallout = memo(function MerchantCallout({
           >
             <Navigation size={ms(16)} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
-          <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} style={DIR_FLIP} />
         </View>
       </Pressable>
     </View>

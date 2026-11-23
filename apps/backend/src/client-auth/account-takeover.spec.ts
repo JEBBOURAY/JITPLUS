@@ -101,7 +101,7 @@ describe('ClientOtpService.verifyOtpEmail — unverified email claims', () => {
   });
 
   it('login on a verified account opens an OTP-proven session', async () => {
-    const { service, sessions } = setup({ ...OWNER, nom: 'V' });
+    const { service, sessions } = setup({ ...OWNER, nom: 'V', prenom: 'P' });
 
     await service.verifyOtpEmail('victim@x.com', '123456', false);
 

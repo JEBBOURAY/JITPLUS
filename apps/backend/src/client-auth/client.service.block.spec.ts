@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ClientService } from './client.service';
+import { ClientClosureService } from './client-closure.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { invalidateMerchantListCache } from '../common/utils/merchant-list-cache';
 import {
   CLIENT_REPOSITORY,
@@ -59,6 +61,8 @@ const noop = { findUnique: jest.fn(), findMany: jest.fn(), findFirst: jest.fn(),
 
 // ── Suite ───────────────────────────────────────────────────────────────────
 
+const mockClosure = { close: jest.fn(), cancelUpcomingAt: jest.fn().mockResolvedValue(0) };
+
 describe('ClientService — block / unblock / filter', () => {
   let service: ClientService;
 
@@ -80,6 +84,8 @@ describe('ClientService — block / unblock / filter', () => {
         { provide: CLIENT_MERCHANT_BLOCK_REPOSITORY, useValue: mockPrisma.clientMerchantBlock },
         { provide: ClientClaimService, useValue: {} },
         { provide: DealsClientService, useValue: mockDeals },
+        { provide: NotificationsService, useValue: { sendToClient: jest.fn() } },
+        { provide: ClientClosureService, useValue: mockClosure },
         { provide: MerchantPlanService, useValue: { resolveEffectivePlan: jest.fn().mockResolvedValue({ plan: 'PREMIUM' }), assertCanAddClient: jest.fn() } },
       ],
     }).compile();
@@ -92,6 +98,25 @@ describe('ClientService — block / unblock / filter', () => {
   // ── blockMerchant ────────────────────────────────────────────────────────
 
   describe('blockMerchant()', () => {
+    it('cancels the upcoming bookings at the blocked merchant', async () => {
+      mockMerchantRepo.findFirst.mockResolvedValue({ id: MERCHANT_ID });
+      mockPrisma.clientMerchantBlock.upsert.mockResolvedValue({});
+      mockLoyaltyCardRepo.findUnique.mockResolvedValue(null);
+
+      await service.blockMerchant(CLIENT_ID, MERCHANT_ID);
+
+      expect(mockClosure.cancelUpcomingAt).toHaveBeenCalledWith(CLIENT_ID, MERCHANT_ID);
+    });
+
+    it('still blocks when the bookings cannot be cancelled', async () => {
+      mockMerchantRepo.findFirst.mockResolvedValue({ id: MERCHANT_ID });
+      mockPrisma.clientMerchantBlock.upsert.mockResolvedValue({});
+      mockLoyaltyCardRepo.findUnique.mockResolvedValue(null);
+      mockClosure.cancelUpcomingAt.mockRejectedValueOnce(new Error('db flake'));
+
+      await expect(service.blockMerchant(CLIENT_ID, MERCHANT_ID)).resolves.toEqual({ success: true });
+    });
+
     it('throws NotFoundException when merchant does not exist', async () => {
       mockMerchantRepo.findFirst.mockResolvedValue(null);
 
@@ -276,7 +301,7 @@ describe('ClientService — block / unblock / filter', () => {
       expect(result).toEqual({ ...cached, merchants: sampleMerchants.map((m) => ({ ...m, ...noBadge })) });
     });
 
-    it('adds deal badges, without the deal content for guests', async () => {
+    it('adds deal badges, guests included (deals are open to them)', async () => {
       const topDeal = { id: 'd1', title: '-20 %', type: 'PERCENT_OFF', percentOff: 20, buyQty: null, freeQty: null };
       mockCache.get.mockResolvedValue({ merchants: sampleMerchants, pagination: { total: 3 } });
       mockPrisma.clientMerchantBlock.findMany.mockResolvedValue([]);
@@ -285,7 +310,7 @@ describe('ClientService — block / unblock / filter', () => {
       const guest = (await service.getMerchants(page, limit)) as any;
       const client = (await service.getMerchants(page, limit, CLIENT_ID)) as any;
 
-      expect(guest.merchants[0]).toMatchObject({ id: 'm1', activeDealCount: 2, topDeal: null });
+      expect(guest.merchants[0]).toMatchObject({ id: 'm1', activeDealCount: 2, topDeal });
       expect(client.merchants[0]).toMatchObject({ id: 'm1', activeDealCount: 2, topDeal });
       expect(client.merchants[1]).toMatchObject({ id: 'm2', ...noBadge });
     });
@@ -320,11 +345,13 @@ describe('ClientService — block / unblock / filter', () => {
       });
 
       it('selects only what the map shows (no profile or loyalty-card fields)', async () => {
-        await load({ latitude: 1, longitude: 1, stores: [] });
+        const points = await load({ latitude: 1, longitude: 1, stores: [] });
         const { select } = mockMerchantRepo.findMany.mock.calls.at(-1)[0];
-        for (const heavy of ['description', 'coverUrl', 'tagline', 'badges', 'cardBackgroundUrl', 'stampsForReward']) {
+        for (const heavy of ['description', 'coverUrl', 'tagline', 'badges', 'cardBackgroundUrl']) {
           expect(select).not.toHaveProperty(heavy);
         }
+        // Read to compute the welcome badge, never sent to the map.
+        expect(points[0]).not.toHaveProperty('stampsForReward');
         expect(select).toMatchObject({ id: true, nom: true, latitude: true, longitude: true, logoUrl: true });
       });
 

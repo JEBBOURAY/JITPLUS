@@ -12,6 +12,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { MerchantTypeGuard } from '../../auth/guards/merchant-type.guard';
+import { parseIdempotencyKey } from '../../common/utils/idempotency-key';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../../common/interfaces/jwt-payload.interface';
 import { THROTTLE_TTL } from '../../common/constants';
@@ -43,14 +44,7 @@ export class MerchantQuickAddController {
     @CurrentUser() user: JwtPayload,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    let normalizedKey: string | undefined;
-    if (idempotencyKey && idempotencyKey.trim()) {
-      const trimmed = idempotencyKey.trim();
-      if (trimmed.length > 64 || !/^[A-Za-z0-9_\-]+$/.test(trimmed)) {
-        throw new BadRequestException('Idempotency-Key invalide (max 64 chars, [A-Za-z0-9_-]).');
-      }
-      normalizedKey = trimmed;
-    }
+    const normalizedKey = parseIdempotencyKey(idempotencyKey);
     return this.claimService.quickAddAndClaim({
       merchantId: user.userId,
       telephone: dto.telephone,

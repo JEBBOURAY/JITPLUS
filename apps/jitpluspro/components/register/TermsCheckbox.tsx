@@ -1,4 +1,5 @@
-import { StyleSheet, Text, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

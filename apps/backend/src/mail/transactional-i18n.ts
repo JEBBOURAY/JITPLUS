@@ -75,7 +75,7 @@ export type OtpPurpose = 'login' | 'register' | 'reset' | 'change-email' | 'chan
 export const OTP_I18N: Record<EmailLang, {
   subject: (code: string, brand: string, purpose: OtpPurpose) => string;
   intro: (purpose: OtpPurpose) => string;
-  expires: string;
+  expires: (minutes: number) => string;
   ignore: string;
 }> = {
   fr: {
@@ -101,7 +101,7 @@ export const OTP_I18N: Record<EmailLang, {
       };
       return map[purpose];
     },
-    expires: 'Ce code expire dans <strong>5 minutes</strong>.',
+    expires: (m) => `Ce code expire dans <strong>${m} minutes</strong>.`,
     ignore: "Si vous n'avez pas demandé ce code, ignorez cet e-mail.",
   },
   en: {
@@ -127,7 +127,7 @@ export const OTP_I18N: Record<EmailLang, {
       };
       return map[purpose];
     },
-    expires: 'This code expires in <strong>5 minutes</strong>.',
+    expires: (m) => `This code expires in <strong>${m} minutes</strong>.`,
     ignore: "If you didn't request this code, ignore this email.",
   },
   ar: {
@@ -153,12 +153,42 @@ export const OTP_I18N: Record<EmailLang, {
       };
       return map[purpose];
     },
-    expires: 'هاد الكود كيتسالى ف <strong>5 دقايق</strong>.',
+    expires: (m) => `هاد الكود كيتسالى ف <strong>${m} دقايق</strong>.`,
     ignore: 'إلا ماشي نتا اللي طلبتي هاد الكود، ما تعطيوش الأهمية.',
   },
 };
 
 // ─── Welcome ─────────────────────────────────────────────────────────────────
+
+export const ACCOUNT_EXISTS_CLIENT_I18N: Record<EmailLang, {
+  subject: string;
+  title: string;
+  body: string;
+  help: string;
+  ignore: string;
+}> = {
+  fr: {
+    subject: 'Vous avez déjà un compte JitPlus',
+    title: 'Vous avez déjà un compte',
+    body: 'Une inscription à JitPlus vient d’être demandée avec cette adresse, qui possède déjà un compte.',
+    help: 'Ouvrez l’application et connectez-vous. Si vous avez oublié votre mot de passe, choisissez « Mot de passe oublié ».',
+    ignore: 'Si ce n’est pas vous, ignorez cet email : votre compte n’a pas été modifié.',
+  },
+  en: {
+    subject: 'You already have a JitPlus account',
+    title: 'You already have an account',
+    body: 'Someone just tried to sign up for JitPlus with this address, which already has an account.',
+    help: 'Open the app and log in. If you forgot your password, choose “Forgot password”.',
+    ignore: 'If this was not you, ignore this email: your account has not been changed.',
+  },
+  ar: {
+    subject: 'لديك حساب JitPlus بالفعل',
+    title: 'لديك حساب بالفعل',
+    body: 'تم طلب إنشاء حساب في JitPlus بهذا العنوان، وهو مرتبط بحساب موجود.',
+    help: 'افتح التطبيق وسجّل الدخول. إذا نسيت كلمة المرور، اختر «نسيت كلمة المرور».',
+    ignore: 'إذا لم تكن أنت، تجاهل هذه الرسالة: لم يتم تغيير حسابك.',
+  },
+};
 
 export const WELCOME_CLIENT_I18N: Record<EmailLang, {
   subject: string;

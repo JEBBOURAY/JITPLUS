@@ -86,7 +86,8 @@ const styles = StyleSheet.create({
   },
   rateText: { color: palette.goldLight, fontSize: FS.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: ms(12), paddingVertical: hp(8) },
-  dot: { width: ms(10), height: ms(10), borderRadius: ms(5) },
+  // Outlined so the dark shades (lost, deep violet) stay visible on the stage.
+  dot: { width: ms(10), height: ms(10), borderRadius: ms(5), borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
   rowBody: { flex: 1 },
   label: { color: '#fff', fontSize: FS.sm },
   desc: { color: 'rgba(255,255,255,0.5)', fontSize: FS.xs, marginTop: hp(1) },

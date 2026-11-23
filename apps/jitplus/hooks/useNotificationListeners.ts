@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
+import { openRoute } from '@/utils/navReset';
 import { useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import { api } from '@/services/api';
@@ -32,7 +33,9 @@ export function useNotificationListeners(): void {
     };
     const open = (data: NotificationData) => {
       try {
-        router.push(resolveNotificationRoute(data));
+        // Tab routes go back to the existing tabs (a push stacked a second set
+        // of tabs over the screen the user was on).
+        openRoute(resolveNotificationRoute(data));
       } catch (e) { if (__DEV__) console.warn('Navigation failed', e); }
     };
     const dataOf = (n: { request: { content: { data?: unknown } } }) => n.request.content.data as NotificationData;

@@ -36,6 +36,12 @@ describe('formatDistance', () => {
     expect(formatDistance(2.123)).toBe('2.1 km');
   });
 
+  it('drops the decimal from 10 km', () => {
+    expect(formatDistance(9.94)).toBe('9.9 km');
+    expect(formatDistance(37.8)).toBe('38 km');
+    expect(formatDistance(1725.6)).toBe('1726 km');
+  });
+
   it('formats exactly 1 km', () => {
     expect(formatDistance(1)).toBe('1.0 km');
   });

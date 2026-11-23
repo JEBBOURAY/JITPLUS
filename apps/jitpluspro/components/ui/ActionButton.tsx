@@ -1,4 +1,5 @@
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type TextStyle, type TouchableOpacityProps } from 'react-native';
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View, type StyleProp, type TextStyle, type TouchableOpacityProps } from 'react-native';
+import { Text } from '@/components/AppText';
 import type { LucideIcon } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

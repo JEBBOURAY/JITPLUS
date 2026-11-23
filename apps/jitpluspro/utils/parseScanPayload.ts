@@ -14,8 +14,8 @@ const QR_ALLOWED_HOSTS: ReadonlySet<string> = new Set<string>([
 ]);
 
 type ScanPayload =
-  /** Coupon QR (`jitplus://coupon/{token}` or a bare `c1.` token); `token` is the raw scanned data. */
-  | { kind: 'coupon'; token: string }
+  /** Coupon QR of an older client app (`jitplus://coupon/{token}` or a bare `c1.` token): no longer scanned. */
+  | { kind: 'coupon' }
   /** Signed client QR `jitplus://scan/{JWT}`. */
   | { kind: 'signed'; token: string }
   | { kind: 'missingToken' }
@@ -44,7 +44,7 @@ function extractLegacyClientId(data: string): string | undefined {
 
 export function parseScanPayload(data: string): ScanPayload {
   if (data.startsWith(COUPON_QR_PREFIX) || data.startsWith('c1.')) {
-    return { kind: 'coupon', token: data };
+    return { kind: 'coupon' };
   }
 
   if (data.startsWith(SIGNED_PREFIX)) {

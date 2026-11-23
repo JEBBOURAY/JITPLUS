@@ -2,12 +2,12 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
-  ScrollView, Animated, Image, I18nManager,
+  ScrollView, Animated, Image,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
+import { flagHomeWelcome } from '@/hooks/useHomeBanners';
 import { router, useNavigation } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Lock, ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import BrandText from '@/components/BrandText';
@@ -19,11 +19,10 @@ import { useFocusAfterTransition } from '@/hooks/useFocusAfterTransition';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { getPasswordStrength, isValidPassword as checkPassword } from '@/utils/passwordStrength';
-import { SPRING_SMOOTH, rnSpring } from '@/utils/motion';
+import { SPRING_SMOOTH, rnSpring } from '@/utils/motion';
+import { DIR_FLIP } from '@/utils/rtl';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
-const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 /**
  * Forgot-password step 2, reached from verify-otp. The OTP session opened
@@ -97,7 +96,7 @@ export default function SetPasswordScreen() {
 
     if (result.success) {
       completedRef.current = true;
-      await AsyncStorage.setItem('showWelcome', '1');
+      await flagHomeWelcome('back');
       goHomeAfterLogin(router);
       return;
     }
@@ -107,7 +106,8 @@ export default function SetPasswordScreen() {
     if (result.sessionExpired) {
       // The OTP proof is spent or too old: only a new code can unlock a reset.
       Alert.alert(t('setPassword.resetTitle'), result.error);
-      router.replace('/login');
+      // Back to the login screen underneath (replace stacked a second one).
+      router.dismissTo('/login');
     } else if (result.isNetworkError) {
       Alert.alert(t('common.networkError'), result.error);
     } else {
@@ -164,6 +164,7 @@ export default function SetPasswordScreen() {
 
               <PasswordField
                 inputRef={passwordRef}
+                isNew
                 icon={Lock}
                 value={password}
                 onChangeText={onPasswordChange}
@@ -180,6 +181,7 @@ export default function SetPasswordScreen() {
 
               <PasswordField
                 inputRef={confirmRef}
+                isNew
                 icon={CheckCircle2}
                 value={confirmPassword}
                 onChangeText={onConfirmChange}

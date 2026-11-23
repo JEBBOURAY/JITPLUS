@@ -17,14 +17,28 @@ export type DealDisplayStatus = 'SCHEDULED' | 'LIVE' | 'ENDED' | 'REMOVED';
 export const DEAL_REPORT_REASONS = ['INAPPROPRIATE', 'MISLEADING', 'OFF_TOPIC', 'EXPIRED', 'OTHER'] as const;
 export type DealReportReason = (typeof DEAL_REPORT_REASONS)[number];
 
-export const DEAL_FEED_TABS = ['nearby', 'new', 'ending', 'online'] as const;
+/** `saved` (the client's bookmarked deals) needs an account */
+export const DEAL_FEED_TABS = ['nearby', 'new', 'ending', 'online', 'saved'] as const;
 export type DealFeedTab = (typeof DEAL_FEED_TABS)[number];
 
+export const DEAL_FEED_SORTS = ['recommended', 'discount'] as const;
+export type DealFeedSort = (typeof DEAL_FEED_SORTS)[number];
+
+/** What a displayed price counts for ("12 DH / kg") */
+export const DEAL_PRICE_UNITS = ['PIECE', 'KG', 'PERSON', 'HOUR', 'NIGHT', 'MONTH'] as const;
+export type DealPriceUnit = (typeof DEAL_PRICE_UNITS)[number];
+
 /** Client events counted in the merchant's stats (views are counted by the detail endpoint) */
-export const DEAL_EVENT_TYPES = ['LINK_CLICK', 'DIRECTIONS', 'SHARE'] as const;
+export const DEAL_EVENT_TYPES = ['LINK_CLICK', 'DIRECTIONS', 'SHARE', 'CALL'] as const;
 export type DealEventType = (typeof DEAL_EVENT_TYPES)[number];
 
-/** Offer fields; which ones apply depends on `type` */
+/**
+ * Offer fields; which ones apply depends on `type`.
+ * - PRICE_DROP: originalPrice and dealPrice (percentOff is computed)
+ * - PERCENT_OFF: percentOff, and optionally originalPrice (dealPrice is computed)
+ * - BUY_X_GET_Y: the quantities, and optionally originalPrice = price of one unit
+ * - FREE_ITEM: optionally originalPrice = value of the item
+ */
 export interface DealOffer {
   type: DealType;
   originalPrice?: number | null;
@@ -32,6 +46,9 @@ export interface DealOffer {
   percentOff?: number | null;
   buyQty?: number | null;
   freeQty?: number | null;
+  /** "À partir de": the price shown is the lowest one */
+  priceFrom?: boolean;
+  priceUnit?: DealPriceUnit | null;
 }
 
 // ── Merchant (JitPlus Pro) ───────────────────────────────────────────────────
@@ -57,7 +74,20 @@ export interface DealStats {
   views: number;
   linkClicks: number;
   directions: number;
+  calls: number;
   shares: number;
+  /** Clients who tapped "J'en profite" */
+  claims: number;
+}
+
+/** One Morocco day of a deal; days without activity are absent */
+export interface DealDailyStat {
+  /** YYYY-MM-DD */
+  day: string;
+  views: number;
+  /** Link clicks, directions and calls */
+  actions: number;
+  claims: number;
 }
 
 export interface MerchantDealDto extends Required<DealOffer> {
@@ -78,6 +108,8 @@ export interface MerchantDealDto extends Required<DealOffer> {
   displayStatus: DealDisplayStatus;
   endedReason: string | null;
   stats: DealStats;
+  /** Last 30 days, oldest first; only on GET /merchant/deals/:id */
+  daily?: DealDailyStat[];
   createdAt: string;
 }
 
@@ -142,6 +174,16 @@ export interface ClientDealDetail extends ClientDealSummary {
   isOver: boolean;
   stores: ClientDealStore[];
   merchantPhone: string | null;
+  /** The three below are false / null for a guest */
+  saved: boolean;
+  /** When the client tapped "J'en profite" (the pass shown at the till) */
+  claimedAt: string | null;
+  /** The client already holds the merchant's loyalty card */
+  hasCard: boolean;
+}
+
+export interface DealClaimResult {
+  claimedAt: string;
 }
 
 export interface DealFeedResponse {
@@ -150,6 +192,8 @@ export interface DealFeedResponse {
   nextCursor: string | null;
   /** City used for the results (chosen or derived from the position) */
   cityKey: string | null;
+  /** "Près de moi" found no in-store deal around the position: the closest city that has some */
+  suggestedCity?: DealCityDto | null;
 }
 
 /** Live deals per merchant category for a tab and an area; categories without deals are absent. */

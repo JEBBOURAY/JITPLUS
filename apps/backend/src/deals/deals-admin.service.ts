@@ -57,6 +57,7 @@ export class DealsAdminService {
           reportCount: true,
           viewCount: true,
           linkClickCount: true,
+          claimCount: true,
           createdAt: true,
           merchant: { select: { id: true, nom: true, email: true } },
         },
@@ -69,20 +70,29 @@ export class DealsAdminService {
     };
   }
 
+  /** What moderation needs to judge a deal: its reports and the edits of its offer. */
   async reports(id: string) {
-    const rows = await this.prisma.dealReport.findMany({
-      where: { dealId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      select: {
-        id: true,
-        reason: true,
-        comment: true,
-        createdAt: true,
-        client: { select: { id: true, prenom: true, nom: true } },
-      },
-    });
-    return { reports: rows };
+    const [reports, offerChanges] = await Promise.all([
+      this.prisma.dealReport.findMany({
+        where: { dealId: id },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        select: {
+          id: true,
+          reason: true,
+          comment: true,
+          createdAt: true,
+          client: { select: { id: true, prenom: true, nom: true } },
+        },
+      }),
+      this.prisma.dealOfferChange.findMany({
+        where: { dealId: id },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: { id: true, before: true, after: true, createdAt: true },
+      }),
+    ]);
+    return { reports, offerChanges };
   }
 
   async remove(ctx: AdminAuditContext, id: string, reason: string) {

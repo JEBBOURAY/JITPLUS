@@ -1,24 +1,24 @@
-import { useCallback, useMemo, useState } from 'react';
-import {
-  Image, Pressable, RefreshControl, ScrollView, StyleSheet, View,
-  type NativeScrollEvent, type NativeSyntheticEvent,
-} from 'react-native';
+import { useCallback, useMemo } from 'react';
+import { Image, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft } from 'lucide-react-native';
+import { CalendarDays } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import FadeInView from '@/components/FadeInView';
-import GuestGuard from '@/components/GuestGuard';
+import { HeaderBackButton, ScreenHeader } from '@/components/ScreenHeader';
 import {
   AccountActions, PreferencesSection, ProfileCompletionCard, ProfileHeader,
   SecuritySection, SupportSection,
 } from '@/components/profile';
-import { useGuardedCallback } from '@/hooks/useGuardedCallback';
+import SettingsGroup from '@/components/profile/SettingsGroup';
+import SettingsRow from '@/components/profile/SettingsRow';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { useScrolledHeader } from '@/hooks/useScrolledHeader';
 import { useAppFonts } from '@/utils/fonts';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { getProfileCompletion } from '@/utils/profileCompletion';
@@ -26,7 +26,6 @@ import { fontSize as FS, hp, ms, wp } from '@/utils/responsive';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-const SCROLLED_THRESHOLD = 4;
 const APP_VERSION = Constants.expoConfig?.version || '1.0.0';
 
 export default function ProfileScreen() {
@@ -34,63 +33,39 @@ export default function ProfileScreen() {
   const fonts = useAppFonts();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { t, isRTL } = useLanguage();
-  const { client, refreshProfile, isGuest } = useAuth();
+  const { t } = useLanguage();
+  const { client, refreshProfile } = useAuth();
 
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
+  const { isScrolled, onScroll } = useScrolledHeader();
 
   useFocusEffect(useCallback(() => {
-    if (isGuest) return;
     if (!useAuthStore.getState().client) refreshProfile().catch(() => {});
-  }, [isGuest, refreshProfile]));
+  }, [refreshProfile]));
 
-  const handleRefresh = useGuardedCallback(async () => {
-    setIsRefreshing(true);
+  const pull = usePullToRefresh(async () => {
     haptic(HapticStyle.Light);
-    await refreshProfile().catch(() => {});
-    setIsRefreshing(false);
+    await refreshProfile();
   });
-
-  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const scrolled = e.nativeEvent.contentOffset.y > SCROLLED_THRESHOLD;
-    setIsScrolled((prev) => (prev === scrolled ? prev : scrolled));
-  }, []);
 
   const completion = useMemo(() => getProfileCompletion(client, t), [client, t]);
 
   const openEdit = useCallback(() => { haptic(HapticStyle.Light); router.push('/edit-profile'); }, [router]);
+  const openBookings = useCallback(() => { haptic(HapticStyle.Light); router.push('/bookings'); }, [router]);
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/(tabs)');
   }, [router]);
 
-  if (isGuest) return <GuestGuard />;
-
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View
-        style={[
-          styles.header,
-          { paddingTop: insets.top + hp(10), backgroundColor: theme.bg, borderBottomColor: isScrolled ? theme.border : 'transparent' },
-          isScrolled && !theme.isDark && styles.headerShadow,
-        ]}
-      >
+      <ScreenHeader isScrolled={isScrolled}>
         <View style={styles.titleRow}>
-          <Pressable
-            onPress={goBack}
-            hitSlop={12}
-            style={[styles.backBtn, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.back')}
-          >
-            <ArrowLeft size={ms(20)} color={theme.text} strokeWidth={2} style={isRTL ? styles.flip : undefined} />
-          </Pressable>
+          <HeaderBackButton onPress={goBack} />
           <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]} accessibilityRole="header" numberOfLines={1}>
             {t('tabs.profile')}
           </Text>
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -99,8 +74,8 @@ export default function ProfileScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + hp(24) }]}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
+            refreshing={pull.refreshing}
+            onRefresh={pull.onRefresh}
             tintColor={theme.primaryLight}
             colors={[theme.primary]}
           />
@@ -124,6 +99,9 @@ export default function ProfileScreen() {
         </FadeInView>
 
         <FadeInView delay={80} duration={280} distance={hp(10)}>
+          <SettingsGroup title={t('booking.profileGroup')}>
+            <SettingsRow icon={CalendarDays} title={t('booking.myBookings')} subtitle={t('booking.profileRowHint')} onPress={openBookings} />
+          </SettingsGroup>
           <PreferencesSection />
           <SecuritySection />
           <SupportSection />
@@ -142,22 +120,7 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    paddingHorizontal: wp(20),
-    paddingBottom: hp(12),
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    zIndex: 10,
-  },
-  headerShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
   titleRow: { minHeight: ms(46), flexDirection: 'row', alignItems: 'center', gap: wp(12) },
-  backBtn: { width: ms(40), height: ms(40), borderRadius: ms(20), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  flip: { transform: [{ scaleX: -1 }] },
   title: { flex: 1, fontSize: FS['3xl'], letterSpacing: -0.6, textAlign: 'left' },
   content: { paddingHorizontal: wp(16), paddingTop: hp(8) },
   footer: { alignItems: 'center', paddingTop: hp(20) },

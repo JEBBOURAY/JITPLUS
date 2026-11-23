@@ -14,6 +14,13 @@ export function resetPushTokenDedup(): void {
 
 export function createAuthMethods(http: AxiosInstance) {
   return {
+    /**
+     * Counts a sign-up step only the app can see (admin funnel). Sends no
+     * personal data, is never awaited and never fails the sign-up.
+     */
+    trackSignup(step: 'screen_opened' | 'code_resent' | 'name_done', method: 'all' | 'email' | 'social'): void {
+      http.post('/client-auth/signup-event', { step, method }).catch(() => {});
+    },
     async sendOtpEmail(email: string, isRegister = false): Promise<OtpResponse> {
       const { data } = await http.post('/client-auth/send-otp-email', { email, isRegister });
       return data;

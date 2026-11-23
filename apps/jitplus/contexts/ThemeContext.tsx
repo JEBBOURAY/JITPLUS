@@ -20,10 +20,13 @@ export const palette = {
   goldDark: '#D97706',
   goldSoft: '#FDE68A',
   goldUltraLight: '#FEF3C7',
+  /** goldUltraLight's dark-mode counterpart: a gold-tinted surface on the dark background. */
+  goldNight: '#2A2113',
   // Semantic aliases
   neonBlue: '#38BDF8',
   emerald: '#10B981',
   red: '#EF4444',
+  redUltraLight: '#FEF2F2',
   // Neutral spectrum
   white: '#FFFFFF',
   gray50: '#F8FAFC',

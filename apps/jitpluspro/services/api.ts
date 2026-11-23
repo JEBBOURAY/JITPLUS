@@ -2,7 +2,8 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { createApiClient, resolveApiUrl, resolveServerBaseUrl } from '@jitplus/shared/src/apiFactory';
 import { API_TIMEOUT_MS } from '@/constants/app';
-import { logApiError, logInfo } from '@/utils/devLogger';
+import { logApiError, logApiResponse, logInfo } from '@/utils/devLogger';
+import i18n from '@/i18n';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
@@ -117,6 +118,13 @@ const api = createApiClient({
   authRoutes: AUTH_ROUTES,
 });
 
+// Server errors follow the language chosen in the app, which the device's
+// Accept-Language does not reflect (and Android does not send it).
+api.interceptors.request.use((req) => {
+  req.headers['x-lang'] = i18n.locale;
+  return req;
+});
+
 // Exposed so AuthContext / login flows that write directly to SecureStore
 // can also invalidate the in-memory cache.
 export const resetApiTokenCache = (): void => {
@@ -131,7 +139,7 @@ if (IS_DEV) {
 
   api.interceptors.response.use(
     (res) => {
-      logInfo('API', `${res.config.method?.toUpperCase()} ${res.config.url} → ${res.status}`);
+      logApiResponse('API', res);
       return res;
     },
     (error) => {

@@ -12,6 +12,7 @@ import { pointKey, pointName } from '@/utils/merchantPoint';
 import { getDistanceKm, formatDistance } from '@/utils/distance';
 import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
 import { EASE_OUT } from '@/utils/motion';
+import { DIR_FLIP } from '@/utils/rtl';
 
 /** Rows rendered at most: past that, zooming in is more useful than scrolling. */
 const MAX_ROWS = 50;
@@ -55,7 +56,7 @@ const Row = memo(function Row({ merchant, distance, onPress }: {
         )}
       </View>
       {distance != null && <Text style={styles.distance}>{formatDistance(distance)}</Text>}
-      <ChevronRight size={ms(16)} color={theme.textMuted} strokeWidth={2} />
+      <ChevronRight size={ms(16)} color={theme.textMuted} strokeWidth={2} style={DIR_FLIP} />
     </Pressable>
   );
 });

@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { useAuthState, useAuthActions } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { getErrorMessage } from '@/utils/error';
+import { prepareUploadImage } from '@/utils/prepareUploadImage';
 import {
   useUploadMerchantLogo,
   useDeleteMerchantLogo,
@@ -45,8 +46,8 @@ export function useMerchantMedia() {
         preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const { url } = await uploadLogo.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType });
+      const image = await prepareUploadImage(result.assets[0], { aspect: [1, 1], maxSide: 1024 });
+      const { url } = await uploadLogo.mutateAsync(image);
       updateMerchant({ logoUrl: url });
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoUploadError')));
@@ -61,17 +62,16 @@ export function useMerchantMedia() {
       // library access (same as pickLogo and the gallery picker).
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
+        // iOS ignores `aspect` and always crops a square, which cut the top and
+        // bottom of a 16:9 cover: pick uncropped there, cut to 16:9 below.
+        allowsEditing: Platform.OS !== 'ios',
         aspect: [16, 9],
         quality: 0.8,
         preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const { url } = await uploadCover.mutateAsync({
-        uri: asset.uri,
-        mimeType: asset.mimeType,
-      });
+      const image = await prepareUploadImage(result.assets[0], { aspect: [16, 9], maxSide: 2048 });
+      const { url } = await uploadCover.mutateAsync(image);
       updateMerchant({ coverUrl: url });
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('account.coverUploadError')));

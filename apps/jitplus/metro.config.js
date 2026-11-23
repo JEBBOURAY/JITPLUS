@@ -1,4 +1,9 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const {
+  withSentryResolver,
+  withSentryFeedbackResolver,
+  withSentryExcludeServerOnlyResolver,
+} = require('@sentry/react-native/metro');
 const path = require('path');
 
 const config = getDefaultConfig(__dirname);
@@ -70,6 +75,7 @@ const FORCE_PREFIX = [
   'expo-modules-core',
   'expo-linear-gradient',
   'lucide-react-native',
+  'react-native-svg', // native RNSVG* views; packages/shared imports it too
 ];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
@@ -77,6 +83,30 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   // longer exists in expo-router 58, so Metro spams "invalid package.json" warnings.
   if (moduleName === 'expo-router/build/global-state/router-store') {
     return { type: 'empty' };
+  }
+  // react-native-qrcode-svg imports its `logoSVG` renderer, which pulls
+  // react-native-svg/css (css-tree, mdn-data, css-select: ~0.5 MB of JS). The app
+  // never passes `logoSVG`, so the module is never rendered: stub it out.
+  if (moduleName === './LogoSVG' && /[\\/]react-native-qrcode-svg[\\/]/.test(context.originModulePath)) {
+    return { type: 'empty' };
+  }
+  // Sentry's metro resolvers below match the importer with `includes('@sentry/browser')`
+  // / `includes('@sentry/core')`, which never matches Windows paths (backslashes).
+  // Result on Windows: `@sentry/feedback` is emptied but @sentry/browser's
+  // feedbackAsync/feedbackSync wrappers still load and call `buildFeedbackIntegration`
+  // (undefined) at import time, crashing the app before any route mounts.
+  // Re-apply both checks with a separator-agnostic test.
+  const origin = context.originModulePath || '';
+  if (platform !== 'web') {
+    if (/@sentry[\\/]browser[\\/]/.test(origin) && /\/feedback(Sync|Async)/.test(moduleName)) {
+      return { type: 'empty' };
+    }
+    if (
+      /@sentry[\\/]core[\\/]/.test(origin) &&
+      /\/(mcp-server|integrations\/(http|express|postgresjs|requestdata|consola|spanStreaming)|tracing\/(vercel-ai|openai|anthropic-ai|google-genai|langchain|langgraph)|utils\/ai)(\/|\.js|$)/.test(moduleName)
+    ) {
+      return { type: 'empty' };
+    }
   }
   if (
     FORCE_PREFIX.some((p) => moduleName === p || moduleName.startsWith(p + '/'))
@@ -90,4 +120,9 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return context.resolveRequest(context, moduleName, platform);
 };
 
-module.exports = config;
+// Sentry's own native-bundle trims (what getSentryExpoConfig would apply): drop
+// the web session replay, the web feedback widget and server-only modules
+// (~0.3 MB of JS the native SDK never uses). They chain to resolveRequest above.
+module.exports = withSentryExcludeServerOnlyResolver(
+  withSentryFeedbackResolver(withSentryResolver(config, false), false),
+);

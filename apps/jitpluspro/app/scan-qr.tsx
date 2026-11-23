@@ -1,7 +1,6 @@
 import React, { useReducer, useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Keyboard,
@@ -14,7 +13,9 @@ import {
   useWindowDimensions,
   Animated,
   AppState,
+  Linking,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { StatusBar } from 'expo-status-bar';
 import { logError } from '@/utils/devLogger';
 import { CameraView, useCameraPermissions, type BarcodeSettings } from 'expo-camera';
@@ -35,7 +36,7 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
@@ -47,6 +48,7 @@ import { SCAN_AREA_RATIO, NAVIGATION_DELAY_MS, ASYNC_STORAGE_KEYS } from '@/cons
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useDir } from '@/hooks/useDir';
+import { useGoBack } from '@/hooks/useGoBack';
 import { font, icon as iconTokens } from '@/constants/design';
 
 import { COUNTRIES } from '@/constants/Countries';
@@ -208,9 +210,10 @@ const HowItWorksBanner = React.memo(function HowItWorksBanner({
 });
 type MatchedClient = { id: string; nom: string; telephone?: string; email?: string; scanTicket?: string };
 
-/** "Prénom Nom" from a verify-qr / verify-client response; undefined when the client has no last name. */
+/** "Prénom Nom" from a verify-qr / verify-client response; undefined when the client has no name at all. */
 function verifiedClientName(client: { prenom?: string | null; nom?: string | null } | null | undefined): string | undefined {
-  return client?.nom ? [client.prenom, client.nom].filter(Boolean).join(' ') : undefined;
+  // The last name is optional on JitPlus accounts: a first name alone is a name.
+  return [client?.prenom, client?.nom].filter(Boolean).join(' ') || undefined;
 }
 
 /** The scan ticket is only present for non-members; it lets the next screen enroll them. */
@@ -227,6 +230,9 @@ interface ScanState {
   countryIndex: number;
   matchedClients: MatchedClient[];
 }
+
+// How long the paused camera stays mounted under the stamp screen (released after).
+const CAMERA_BLUR_KEEP_MS = 60_000;
 
 const initialScanState: ScanState = {
   phoneInput: '',
@@ -361,9 +367,6 @@ const BottomControls = React.memo(function BottomControls({
 
 export default function ScanQRScreen() {
   const router = useRouter();
-  // Opened from the coupon screen (which replaced itself): replace again so the stack stays list → coupon-validate.
-  const { from } = useLocalSearchParams<{ from?: string }>();
-  const openedFromCoupon = from === 'coupon';
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const theme = useTheme();
@@ -444,9 +447,14 @@ export default function ScanQRScreen() {
     prefetchTillData(queryClient);
   }, [queryClient]);
 
-  // Cleanup navigation timeouts on unmount
+  // Cleanup navigation timeouts on unmount. mountedRef also stops a request
+  // that answers after the scanner was closed from opening the stamp screen
+  // over whatever the merchant went back to.
+  const mountedRef = useRef(true);
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
       if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
     };
@@ -458,15 +466,29 @@ export default function ScanQRScreen() {
     }
   }, [permission, requestPermission]);
 
+  // Single way to the stamp screen for the QR, phone and picker paths: takes the
+  // navigation mutex (a double tap or a scan landing during a search opens it
+  // once), warms the client status, then pushes after `delayMs`.
+  const openTransaction = useCallback((clientId: string, scanTicket: string | undefined, delayMs: number) => {
+    if (!mountedRef.current || isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    prefetchClientStatus(queryClient, clientId, scanTicket).catch(() => {});
+    if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    const go = () => {
+      navTimeoutRef.current = null;
+      if (!mountedRef.current) return;
+      router.push({ pathname: '/transaction-amount', params: transactionParams(clientId, scanTicket) });
+    };
+    if (delayMs > 0) navTimeoutRef.current = setTimeout(go, delayMs);
+    else go();
+  }, [router, queryClient]);
+
   const renderMatchedClient = useCallback(({ item }: { item: MatchedClient }) => (
     <TouchableOpacity
       style={[styles.cpRow, { flexDirection: dir.row, borderBottomColor: theme.borderLight }]}
       onPress={() => {
         set({ matchedClients: [] });
-        router.push({
-          pathname: '/transaction-amount',
-          params: transactionParams(item.id, item.scanTicket),
-        });
+        openTransaction(item.id, item.scanTicket, 0);
       }}
       activeOpacity={0.6}
       delayPressIn={0}
@@ -479,7 +501,7 @@ export default function ScanQRScreen() {
       </View>
       <ArrowRight size={18} color={theme.primary} strokeWidth={iconTokens.stroke} style={dir.flip} />
     </TouchableOpacity>
-  ), [router, theme, set, dir]);
+  ), [openTransaction, theme, set, dir]);
 
   // cameraMounted gates the CameraView's actual mount in the tree. We must
   // fully unmount (not just `active={false}`) to release the Camera2 session;
@@ -494,11 +516,29 @@ export default function ScanQRScreen() {
   const appStateRef = useRef(AppState.currentState);
   const isFocusedRef = useRef(false);
 
+  const blurUnmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncCameraMount = useCallback(() => {
+    if (blurUnmountTimerRef.current) {
+      clearTimeout(blurUnmountTimerRef.current);
+      blurUnmountTimerRef.current = null;
+    }
     // iOS 'inactive' (Control Center, notification shade, Face ID) only pauses
     // the preview via `active`; remounting the camera would cost ~1–2 s.
-    const next = isFocusedRef.current && appStateRef.current !== 'background';
+    const inBackground = appStateRef.current === 'background';
+    if (!isFocusedRef.current && !inBackground) {
+      // Blurred by the stamp screen pushed on top: keep the (paused) camera for a
+      // while so the next customer does not wait for a Camera2 rebuild on return.
+      blurUnmountTimerRef.current = setTimeout(() => {
+        blurUnmountTimerRef.current = null;
+        setCameraMounted(false);
+      }, CAMERA_BLUR_KEEP_MS);
+      return;
+    }
+    const next = isFocusedRef.current && !inBackground;
     setCameraMounted((prev) => (prev === next ? prev : next));
+  }, []);
+  useEffect(() => () => {
+    if (blurUnmountTimerRef.current) clearTimeout(blurUnmountTimerRef.current);
   }, []);
 
   useFocusEffect(
@@ -532,24 +572,15 @@ export default function ScanQRScreen() {
   }, [syncCameraMount]);
 
   const navigateToTransaction = useCallback((clientId: string, clientName?: string, scanTicket?: string) => {
-    if (isNavigatingRef.current) return;
-    isNavigatingRef.current = true;
+    if (!mountedRef.current || isNavigatingRef.current) return;
     setOverlayState({
       phase: 'found',
       message: clientName ? t('scan.clientFound', { name: clientName }) : t('scan.clientFoundFallback'),
     });
     // Success only once the server has confirmed the client, with the green card.
     safeNotification(Haptics.NotificationFeedbackType.Success);
-    prefetchClientStatus(queryClient, clientId, scanTicket).catch(() => {});
-    if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
-    navTimeoutRef.current = setTimeout(() => {
-      navTimeoutRef.current = null;
-      router.push({
-        pathname: '/transaction-amount',
-        params: transactionParams(clientId, scanTicket),
-      });
-    }, NAVIGATION_DELAY_MS);
-  }, [router, t, queryClient]);
+    openTransaction(clientId, scanTicket, NAVIGATION_DELAY_MS);
+  }, [t, openTransaction]);
 
   const handleBarCodeScanned = useCallback(
     async ({ data }: { type: string; data: string }) => {
@@ -580,17 +611,9 @@ export default function ScanQRScreen() {
 
       const payload = parseScanPayload(data);
 
+      // Coupon QR of an older client app: gifts are given from the client's own QR now.
       if (payload.kind === 'coupon') {
-        const couponToken = payload.token;
-        if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
-        if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
-        isNavigatingRef.current = true;
-        navTimeoutRef.current = setTimeout(() => {
-          navTimeoutRef.current = null;
-          const target = { pathname: '/coupon-validate', params: { token: couponToken } } as const;
-          if (openedFromCoupon) router.replace(target);
-          else router.push(target);
-        }, NAVIGATION_DELAY_MS);
+        showScanError(t('scan.couponQrRetired'));
         return;
       }
 
@@ -627,7 +650,7 @@ export default function ScanQRScreen() {
         showScanError(getErrorMessage(err, t('scan.clientNotFoundFallback')));
       }
     },
-    [isScanning, navigateToTransaction, set, t, router, openedFromCoupon],
+    [isScanning, navigateToTransaction, set, t],
   );
 
   // Gate the scanner handler at the prop level so CameraView sees a stable
@@ -657,19 +680,11 @@ export default function ScanQRScreen() {
       });
       const clients: MatchedClient[] = res.data;
 
+      if (!mountedRef.current) return;
       if (clients.length === 1) {
         // Exactly one match → go to transaction
         safeNotification(Haptics.NotificationFeedbackType.Success);
-        if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
-        isNavigatingRef.current = true;
-        prefetchClientStatus(queryClient, clients[0].id, clients[0].scanTicket).catch(() => {});
-        navTimeoutRef.current = setTimeout(() => {
-          navTimeoutRef.current = null;
-          router.push({
-            pathname: '/transaction-amount',
-            params: transactionParams(clients[0].id, clients[0].scanTicket),
-          });
-        }, NAVIGATION_DELAY_MS);
+        openTransaction(clients[0].id, clients[0].scanTicket, NAVIGATION_DELAY_MS);
       } else if (clients.length > 1) {
         // Multiple matches → show picker for disambiguation
         safeImpact(Haptics.ImpactFeedbackStyle.Light);
@@ -707,16 +722,13 @@ export default function ScanQRScreen() {
       searchInFlightRef.current = false;
       set({ isSearching: false });
     }
-  }, [phoneInput, router, countryIndex, t, set, queryClient]);
+  }, [phoneInput, router, countryIndex, t, set, openTransaction]);
 
+  const goBack = useGoBack();
   const handleClose = useCallback(() => {
     safeImpact(Haptics.ImpactFeedbackStyle.Light);
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)');
-    }
-  }, [router]);
+    goBack();
+  }, [goBack]);
 
   const handleRetryScan = useCallback(() => {
     lastScannedRef.current = null;
@@ -784,6 +796,15 @@ export default function ScanQRScreen() {
                 {t('scan.cameraDenied')}
               </Text>
             </View>
+          )}
+          {!permission.canAskAgain && (
+            // The OS will not ask again: Settings is the only way out.
+            <ActionButton
+              label={t('notifSettings.openSettingsAction')}
+              size="lg"
+              onPress={() => { Linking.openSettings().catch(() => {}); }}
+              style={styles.permissionBtn}
+            />
           )}
           <ActionButton label={t('common.back')} variant="ghost" onPress={handleClose} />
         </View>

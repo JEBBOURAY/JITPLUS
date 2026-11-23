@@ -35,6 +35,9 @@ export interface IMailProvider {
   /** Send a welcome email to a new client */
   sendWelcomeClient(to: string, prenom?: string, lang?: MailLang): Promise<void>;
 
+  /** Sign-up attempted with an address that already has a client account */
+  sendAccountExistsClient(to: string, lang?: MailLang): Promise<void>;
+
   /** Send a welcome email to a new merchant */
   sendWelcomeMerchant(to: string, nomBoutique: string, lang?: MailLang): Promise<void>;
 

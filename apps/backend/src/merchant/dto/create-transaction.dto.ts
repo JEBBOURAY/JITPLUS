@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsNumber, IsOptional, IsUUID, Min, Max } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsUUID, Min, Max } from 'class-validator';
 
 /** PURCHASE = purchase without stamps that only gives a lucky-wheel spin. */
 export const MERCHANT_TRANSACTION_TYPES = ['EARN_STAMPS', 'REDEEM_REWARD', 'PURCHASE'] as const;
@@ -25,4 +25,14 @@ export class CreateTransactionDto {
   @IsUUID()
   @IsOptional()
   rewardId?: string;
+
+  /** The till was opened from this booking: the transaction is its visit (EARN_STAMPS / PURCHASE). */
+  @IsUUID()
+  @IsOptional()
+  bookingId?: string;
+
+  /** With bookingId: also close the booking. */
+  @IsBoolean()
+  @IsOptional()
+  completeBooking?: boolean;
 }

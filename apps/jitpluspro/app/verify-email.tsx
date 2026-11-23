@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { toast } from '@/components/ui/Toast';
 import {
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -11,7 +10,9 @@ import {
   Alert,
   Animated,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { backToTabs } from '@/utils/navReset';
 import { ArrowLeft, Mail, ShieldCheck, RefreshCw } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -65,12 +66,14 @@ export default function VerifyEmailScreen() {
     return () => anim.stop();
   }, [iconAnim, cardAnim]);
 
-  // If already verified (e.g. came back after verifying), skip this screen
+  // If already verified (e.g. came back after verifying, or right after the
+  // code below succeeds), leave for the tabs: back to the existing ones when
+  // this screen was pushed over them (notification tap), never a second set.
   useEffect(() => {
     if (isLoggedIn && merchant?.emailVerified) {
-      router.replace('/(tabs)');
+      backToTabs();
     }
-  }, [isLoggedIn, merchant?.emailVerified, router]);
+  }, [isLoggedIn, merchant?.emailVerified]);
 
   // Auto-send OTP on mount — skips if this component remounts.
   useEffect(() => {
@@ -118,13 +121,14 @@ export default function VerifyEmailScreen() {
         code,
       });
       if (isLoggedIn) {
+        // The effect above navigates once emailVerified is set (navigating
+        // here too replaced the tabs a second time).
         updateMerchant({ emailVerified: true });
-        router.replace('/(tabs)');
       } else {
         Alert.alert(
           t('verifyEmail.successTitle'),
           t('verifyEmail.successMsg'),
-          [{ text: 'OK', onPress: () => router.replace('/login') }],
+          [{ text: t('common.ok'), onPress: () => router.replace('/login') }],
         );
       }
     } catch (err: unknown) {
@@ -154,7 +158,7 @@ export default function VerifyEmailScreen() {
         email: email.trim().toLowerCase(),
       });
       setResendTimer(RESEND_COOLDOWN);
-      Alert.alert(t('verifyEmail.resentTitle'), t('verifyEmail.resentMsg'));
+      toast.success(t('verifyEmail.resentMsg'));
     } catch (err: unknown) {
       setError(getErrorMessage(err, t('verifyEmail.resendError')));
     } finally {
@@ -233,6 +237,8 @@ export default function VerifyEmailScreen() {
                 if (error) setError('');
               }}
               keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              autoComplete="one-time-code"
               maxLength={OTP_LENGTH}
               placeholder="000000"
               placeholderTextColor={theme.textMuted}

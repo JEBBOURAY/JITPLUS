@@ -78,10 +78,11 @@ export function maskName(name: string | null | undefined): string | null {
  */
 export function mapClientResponse(
   client: { id: string; prenom?: string | null; nom: string | null; email: string | null; telephone: string | null; shareInfoMerchants?: boolean; createdAt: Date },
-  loyaltyCard: { stamps: number; createdAt: Date; deactivatedAt?: Date | null } | undefined | null,
+  loyaltyCard: { stamps: number; createdAt: Date; deactivatedAt?: Date | null; consentPending?: boolean } | undefined | null,
   tx: { lastVisit: Date | null; txCount: number } | undefined,
 ) {
-  const shared = client.shareInfoMerchants !== false;
+  // A card the merchant opened from a typed phone number is not the client's consent to share.
+  const shared = client.shareInfoMerchants !== false && !loyaltyCard?.consentPending;
   return {
     id: client.id,
     prenom: shared ? (client.prenom ?? null) : maskName(client.prenom),

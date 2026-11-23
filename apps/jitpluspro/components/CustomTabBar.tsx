@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo } from 'react';
-import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
+import React, { useCallback, useMemo, useRef } from 'react';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { LayoutGrid, ReceiptText, type LucideIcon } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { JitClients, JitHome, JitScan } from '@/components/icons';
@@ -119,15 +120,24 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
     [state.routes, emitter, navigateToTab, focusedName],
   );
 
+  // A double tap on Scanner pushed two cameras on top of each other.
+  const lastScanPressRef = useRef(0);
+  const openScanner = useCallback(() => {
+    const now = Date.now();
+    if (now - lastScanPressRef.current < 800) return;
+    lastScanPressRef.current = now;
+    router.push('/scan-qr');
+  }, [router]);
+
   const handlers = useMemo(() => {
     const map: Record<string, () => void> = {};
     for (const item of BAR_ITEMS) {
       if (item.kind === 'stats') map[item.name] = openStats;
-      else if (item.kind === 'scan') map[item.name] = () => router.push('/scan-qr');
+      else if (item.kind === 'scan') map[item.name] = openScanner;
       else map[item.name] = () => pressTab(item.name);
     }
     return map;
-  }, [router, pressTab, openStats]);
+  }, [openScanner, pressTab, openStats]);
 
   // The WhatsApp support button floats above the bar on Accueil only.
   const showSupportFab = focusedName === 'index';

@@ -1,4 +1,5 @@
-import { AppState, NativeModules, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import { requireOptionalNativeModule } from 'expo';
 
 type TrackingStatus = 'unavailable' | 'denied' | 'authorized' | 'restricted' | 'not-determined' | 'granted';
 
@@ -18,7 +19,16 @@ class MetaAdsManager {
   }
 
   private static async initializeInternal(): Promise<void> {
-    if (AppState.currentState !== 'active') return;
+    // The ATT prompt is only shown to an active app: wait for it instead of
+    // giving up for the whole session (initialized is already true).
+    if (AppState.currentState !== 'active') {
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state !== 'active') return;
+        sub.remove();
+        void MetaAdsManager.initializeInternal();
+      });
+      return;
+    }
 
     try {
       // IMPORTANT: Android relies on native manifest/plugin initialization.
@@ -26,11 +36,15 @@ class MetaAdsManager {
       // native init and crash. Keep JS-side activation iOS-only.
       const { Settings, AppEventsLogger } = await import('react-native-fbsdk-next');
 
-      Settings.initializeSDK();
+      // ATT first: on iOS the SDK no longer starts by itself
+      // (plugins/withFacebookIOSConsent.js), so nothing reaches Meta before
+      // the merchant has answered the prompt.
       const trackingStatus = await MetaAdsManager.requestTrackingPermission();
       const isTrackingGranted = trackingStatus === 'granted' || trackingStatus === 'authorized';
       Settings.setAdvertiserTrackingEnabled?.(isTrackingGranted);
       Settings.setAdvertiserIDCollectionEnabled?.(isTrackingGranted);
+      Settings.initializeSDK();
+      Settings.setAutoLogAppEventsEnabled?.(true);
 
       // Triggers the standard app activation event expected by Meta campaigns.
       // `activateApp` exists at runtime on older SDK bridges but is missing from
@@ -49,7 +63,9 @@ class MetaAdsManager {
   private static async requestTrackingPermission(): Promise<TrackingStatus> {
     try {
       // OTA updates can run on older binaries that don't embed this native module yet.
-      if (!NativeModules?.ExpoTrackingTransparency) return 'unavailable';
+      // Expo modules are not in NativeModules (bridgeless): probing it there always
+      // failed, so the ATT prompt was never shown.
+      if (requireOptionalNativeModule('ExpoTrackingTransparency') == null) return 'unavailable';
 
       const { requestTrackingPermissionsAsync } = await import('expo-tracking-transparency');
       const result = await requestTrackingPermissionsAsync();

@@ -10,7 +10,7 @@ interface ImageAsset {
   mimeType?: string | null;
 }
 
-type MerchantImageType = 'logo' | 'cover' | 'gallery' | 'reward' | 'cardBackground';
+type MerchantImageType = 'logo' | 'cover' | 'gallery' | 'reward' | 'collection' | 'cardBackground';
 
 /** Validates the MIME type, then uploads to POST /merchant/upload-image?type=… */
 async function uploadMerchantImage(asset: ImageAsset, type: MerchantImageType, maxBytes: number) {
@@ -67,6 +67,14 @@ export function useUploadRewardImage() {
   return useMutation({
     mutationFn: async (asset: ImageAsset) =>
       (await uploadMerchantImage(asset, 'reward', MAX_UPLOAD_SIZE_BYTES)) as { url: string },
+  });
+}
+
+/** Photo of a product of a collection. The URL is saved with the collection. */
+export function useUploadCollectionImage() {
+  return useMutation({
+    mutationFn: async (asset: ImageAsset) =>
+      (await uploadMerchantImage(asset, 'collection', MAX_UPLOAD_SIZE_BYTES)) as { url: string },
   });
 }
 

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ChevronDown, ChevronUp, ShieldCheck, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
 import { useMoney } from '@/hooks/useCurrency';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
@@ -40,14 +42,13 @@ export const RewardEditor = React.memo(function RewardEditor({
   index, reward, assuredChance, canRemove, catalog, onChange: onChangeKey, onRemove,
 }: Props) {
   const theme = useTheme();
-  const { t, isRTL } = useLanguage();
+  const { t } = useLanguage();
+  const { row, textAlign } = useDir();
   const { symbol: currencySymbol } = useMoney();
   const cur = { currency: currencySymbol };
   const isAssured = index === 0;
   const optionCount = countRewardOptions(reward);
   const [showOptions, setShowOptions] = useState(optionCount > 0);
-  const row = isRTL ? 'row-reverse' : 'row';
-  const textAlign = isRTL ? 'right' : 'left';
   const onChange = (patch: Partial<RewardForm>) => onChangeKey(reward.key, patch);
   const isProduct = reward.type === 'FREE_PRODUCT';
 

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
-import { getInsights, getStats } from '../api';
-import type { AdminInsights, AuditLogBrief, GlobalStats, InsightPeriod, MerchantRow } from '../types';
+import { getInsights, getSignupFunnel, getStats } from '../api';
+import type { AdminInsights, AuditLogBrief, GlobalStats, InsightPeriod, MerchantRow, SignupFunnel } from '../types';
 import StatCard from '../components/StatCard';
 import PlanBadge from '../components/PlanBadge';
 import { ExportButton } from '../components/ui';
@@ -411,6 +411,102 @@ function MerchantsTab({ d, navigate }: { d: AdminInsights; navigate: (to: string
   );
 }
 
+const SOCIAL_SIGNUP_METHODS = ['google', 'apple'];
+
+/**
+ * Where people drop during the JitPlus sign-up. Counters only (no personal
+ * data), filled by the server and by three calls of the app.
+ */
+function SignupFunnelBlock({ days }: { days: InsightPeriod }) {
+  const [data, setData] = useState<SignupFunnel | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setFailed(false);
+    getSignupFunnel(days)
+      .then((res) => { if (alive) setData(res); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [days]);
+
+  const rows = data?.rows ?? [];
+  const sum = (step: string, by?: { methods?: string[]; platform?: string }) =>
+    rows
+      .filter((r) => r.step === step
+        && (!by?.methods || by.methods.includes(r.method))
+        && (!by?.platform || r.platform === by.platform))
+      .reduce((total, r) => total + r.count, 0);
+
+  const completed = sum('completed');
+
+  return (
+    <>
+      <GroupLabel>Inscription JitPlus sur {days} jours</GroupLabel>
+      {failed ? (
+        <Card style={{ marginBottom: 24 }}><Empty>Impossible de charger l'entonnoir d'inscription. Actualisez la page.</Empty></Card>
+      ) : data && rows.length === 0 ? (
+        <Card style={{ marginBottom: 24 }}>
+          <p style={{ margin: 0, fontSize: 13, color: C.textMuted }}>
+            Aucune inscription comptée sur cette période. Le comptage démarre à la mise en ligne de cette version du serveur.
+          </p>
+        </Card>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 24 }}>
+          <Card title="Entonnoir par e-mail">
+            <Funnel
+              steps={[
+                { label: 'Écran d\'inscription ouvert', value: sum('screen_opened'), hint: 'Toutes méthodes : à ce stade, la personne n\'a pas encore choisi e-mail, Google ou Apple' },
+                { label: 'Code demandé', value: sum('code_requested') },
+                { label: 'Code validé', value: sum('account_started', { methods: ['email'] }) },
+                { label: 'Prénom saisi', value: sum('name_done', { methods: ['email'] }) },
+                { label: 'Compte créé', value: sum('completed', { methods: ['email'] }) },
+              ]}
+            />
+          </Card>
+          <Card title="Entonnoir Google et Apple">
+            <Funnel
+              color={C.blue}
+              steps={[
+                { label: 'Connexion Google ou Apple réussie', value: sum('account_started', { methods: SOCIAL_SIGNUP_METHODS }) },
+                { label: 'Prénom saisi', value: sum('name_done', { methods: ['social'] }) },
+                { label: 'Compte créé', value: sum('completed', { methods: SOCIAL_SIGNUP_METHODS }) },
+              ]}
+            />
+            <p style={{ margin: '14px 0 0', fontSize: 12, color: C.textMuted }}>
+              Google : {fmtNumber(sum('completed', { methods: ['google'] }))} compte(s) créé(s) · Apple : {fmtNumber(sum('completed', { methods: ['apple'] }))}
+            </p>
+          </Card>
+          <Card title="Difficultés avec le code">
+            <ShareList
+              total={sum('code_requested')}
+              items={[
+                { label: 'Codes refusés (faux)', value: sum('code_wrong'), color: C.red },
+                { label: 'Codes expirés', value: sum('code_expired'), color: C.amber },
+                { label: 'Renvois demandés', value: sum('code_resent'), color: C.blue },
+              ]}
+            />
+            <p style={{ margin: '14px 0 0', fontSize: 12, color: C.textMuted }}>
+              En part des codes demandés. Une même personne peut compter plusieurs fois.
+            </p>
+          </Card>
+          <Card title="Comptes créés">
+            <ShareList
+              total={completed}
+              items={[
+                { label: 'Android', value: sum('completed', { platform: 'android' }), color: C.green },
+                { label: 'iPhone', value: sum('completed', { platform: 'ios' }), color: C.text },
+                { label: 'E-mail avec mot de passe', value: sum('password_set'), color: C.primary },
+                { label: 'E-mail sans mot de passe (« Plus tard »)', value: sum('password_skipped'), color: C.amber },
+              ]}
+            />
+          </Card>
+        </div>
+      )}
+    </>
+  );
+}
+
 function ClientsTab({ d }: { d: AdminInsights }) {
   const c = d.clients;
   const l = d.loyalty;
@@ -430,6 +526,8 @@ function ClientsTab({ d }: { d: AdminInsights }) {
         <StatCard label="Cartes inactives" value={fmtNumber(l.inactiveCards)} sub="sans visite depuis 30 j" color={C.red} />
         <StatCard label="Réclamation ajout rapide" value={`${d.engagement.claimRate}%`} sub={`${fmtNumber(d.engagement.claimsConsumed)} / ${fmtNumber(d.engagement.claimsCreated)} liens`} color={C.green} />
       </Grid>
+
+      <SignupFunnelBlock days={d.period.days as InsightPeriod} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 16 }}>
         <Card title="Joignabilité (opt-in)">

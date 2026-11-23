@@ -14,8 +14,18 @@ interface PrizeLike {
   weight?: number;
 }
 
-const PRIZE_COLORS = ['#7C3AED', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#F97316'];
-export const LOST_COLOR = '#475569';
+// One family, violet and gold alternating (premium, no rainbow). Each prize keeps
+// its own shade so the legend dots still match the wheel.
+const PRIZE_COLORS = ['#6D28D9', '#F5B544', '#4C1D95', '#FCD9A0', '#8B5CF6', '#D99A2B'];
+export const LOST_COLOR = '#2B1D4A';
+
+/** Readable label colour on a segment: dark on the light golds, white on the violets. */
+export function segmentTextColor(color: string): string {
+  const hex = color.replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.55 ? '#3B1D06' : '#FFFFFF';
+}
 const MIN_SEGMENTS = 8;
 const MAX_SEGMENTS = 14;
 

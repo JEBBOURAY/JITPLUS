@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check } from 'lucide-react-native';
 import { JitGift } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';

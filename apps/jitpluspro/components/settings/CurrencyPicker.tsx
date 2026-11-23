@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check } from 'lucide-react-native';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 import { useDir } from '@/hooks/useDir';

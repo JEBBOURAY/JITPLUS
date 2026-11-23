@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import Svg, { Path } from 'react-native-svg';
 import { palette } from '@/contexts/ThemeContext';
 import { khatamPath } from '@/utils/khatam';

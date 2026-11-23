@@ -48,6 +48,7 @@ export const PURGEABLE_CAMPAIGN_PATTERNS: readonly string[] = [
   // Deal alerts (src/deals)
   'deals\\_digest\\_%', // day
   'deals\\_online\\_%', // week
+  'deal\\_card\\_%', // deal id: the deal has long ended after 120 days
   // Merchant pushes
   'merchant\\_setup\\_reminder\\_%', // weekTag
   'merchant\\_weekly\\_perf\\_%', // weekTag

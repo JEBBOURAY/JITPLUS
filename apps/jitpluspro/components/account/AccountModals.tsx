@@ -1,7 +1,12 @@
 import { useRef, type ReactNode } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Camera, Trash2 } from 'lucide-react-native';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';

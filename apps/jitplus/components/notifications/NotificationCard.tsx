@@ -30,7 +30,7 @@ export default React.memo(function NotificationCard({
   const kind = notificationKind(notif);
   const isOfficial = kind !== 'merchant';
   const sender = kind === 'deals' ? t('deals.notification.sender') : notif.merchantName || 'JitPlus';
-  const accent = isDark ? palette.violetLight : palette.violet;
+  const accent = theme.primary;
   // Opaque tints (not rgba) so the unread dot's border reads as a clean cut-out.
   const cardBg = isUnread ? (isDark ? '#1E2340' : '#F7F3FF') : theme.bgCard;
 

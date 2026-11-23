@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPi
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
+import { createHmac } from 'crypto';
 import { Request } from 'express';
 import { THROTTLE_TTL } from '../common/constants';
 import { MerchantTypeGuard } from '../auth/guards/merchant-type.guard';
@@ -121,6 +122,26 @@ export class DealsClientController {
     return this.deals.recordEvent(user.userId, id, dto.type);
   }
 
+  @Post('deals/:id/claim')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
+  claim(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.deals.claim(user.userId, id);
+  }
+
+  @Post('deals/:id/save')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  save(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.deals.setSaved(user.userId, id, true);
+  }
+
+  @Delete('deals/:id/save')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  unsave(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.deals.setSaved(user.userId, id, false);
+  }
+
   @Post('deals/:id/report')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
@@ -154,7 +175,11 @@ export class DealsClientController {
   }
 }
 
-/** Guests: counters and blurred pictures only, never the content of a deal. */
+/**
+ * Guests ("Explorer sans compte"): the same feed and deal pages as members,
+ * without the personal parts (blocked merchants, reports, alerts, saved deals,
+ * "J'en profite"). Views and clicks are de-duplicated per IP.
+ */
 @ApiTags('Deals – Guest')
 @Controller('client-auth/deals')
 export class DealsGuestController {
@@ -165,6 +190,47 @@ export class DealsGuestController {
   teaser(@Query() query: DealPositionQueryDto) {
     return this.deals.teaser(query);
   }
+
+  @Get()
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 60 } })
+  feed(@Query() query: DealFeedQueryDto) {
+    return this.deals.feed(null, query);
+  }
+
+  /** Declared before :id so these words are not taken for an id. */
+  @Get('categories')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 60 } })
+  categoryCounts(@Query() query: DealCategoryCountsQueryDto) {
+    return this.deals.categoryCounts(null, query);
+  }
+
+  @Get('cities')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  cities(@Query() query: DealPositionQueryDto) {
+    return this.deals.cities(query);
+  }
+
+  @Get(':id')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 60 } })
+  detail(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Query() query: DealPositionQueryDto) {
+    return this.deals.detail(null, id, query, guestKey(req));
+  }
+
+  @Post(':id/events')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  event(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DealEventDto) {
+    return this.deals.recordEvent(guestKey(req), id, dto.type);
+  }
+}
+
+/**
+ * De-duplicates a guest's counters. req.ip honours `trust proxy`; only a keyed
+ * hash of it is stored (deal_event_marks), never the address itself.
+ */
+function guestKey(req: Request): string {
+  const key = process.env.JWT_SECRET ?? 'dev-only-deal-guest';
+  return `g:${createHmac('sha256', key).update(`deal-guest:${req.ip ?? 'unknown'}`).digest('hex').slice(0, 32)}`;
 }
 
 function adminCtx(user: JwtPayload, req: Request): AdminAuditContext {

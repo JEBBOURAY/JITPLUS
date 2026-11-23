@@ -46,6 +46,7 @@ class CreatePrizeDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(8760) // one year
   claimWindowHours?: number;
 }
 
@@ -82,6 +83,7 @@ class UpdatePrizeDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(8760) // one year
   claimWindowHours?: number;
 }
 
@@ -117,18 +119,21 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(10_000)
   ticketCostStamps?: number;
 
   @ApiPropertyOptional({ example: 5, description: 'Un ticket tous les N visites' })
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(10_000)
   ticketEveryNVisits?: number;
 
   @ApiPropertyOptional({ example: 50, description: 'Montant d\'achat minimum (en devise) pour obtenir un ticket de roue de la chance' })
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(1_000_000)
   minSpendAmount?: number;
 
   @ApiProperty({ type: [CreatePrizeDto] })
@@ -180,6 +185,7 @@ export class UpdateCampaignDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(1_000_000)
   minSpendAmount?: number;
 
   @ApiPropertyOptional({ type: [UpdatePrizeDto], description: 'Liste mise à jour des lots (remplace tous les lots existants)' })

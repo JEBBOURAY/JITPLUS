@@ -4,7 +4,10 @@ import api from '@/services/api';
 import type { CustomerStatus, RecordTransactionPayload } from '@/types';
 import { queryKeys, STALE, GC } from './keys';
 import { fetchRewards } from './rewards';
-import { fetchLuckyWheelActiveInfo } from './luckyWheel';
+import { fetchLuckyWheelActiveInfo, fetchLuckyWheelClientPrizes } from './luckyWheel';
+import { prefetchClientCouponsAtTill } from '../useScratchHooks';
+import { prefetchTillCollection } from '../useCollectionHooks';
+import { invalidateAfterTransaction, markLocalTransaction } from './transactionCache';
 
 async function fetchClientStatus(clientId: string, scanTicket?: string): Promise<CustomerStatus> {
   const res = await api.get(`/merchant/client/${clientId}/status`, {
@@ -25,6 +28,17 @@ export function useClientStatus(clientId: string | undefined, scanTicket?: strin
 
 /** Starts the till-screen client fetch while the scan screen is still animating. */
 export function prefetchClientStatus(qc: QueryClient, clientId: string, scanTicket?: string) {
+  // The till sections (prizes, coupons, collection) load with the card instead of
+  // popping in after the screen opened.
+  void Promise.allSettled([
+    qc.prefetchQuery({
+      queryKey: queryKeys.luckyWheelClientPrizes(clientId),
+      queryFn: () => fetchLuckyWheelClientPrizes(clientId),
+      staleTime: STALE.TILL,
+    }),
+    prefetchClientCouponsAtTill(qc, clientId),
+    prefetchTillCollection(qc, clientId),
+  ]);
   return qc.prefetchQuery({
     queryKey: queryKeys.clientStatus(clientId),
     queryFn: () => fetchClientStatus(clientId, scanTicket),
@@ -39,26 +53,6 @@ export function prefetchTillData(qc: QueryClient) {
     qc.prefetchQuery({ queryKey: queryKeys.rewards, queryFn: fetchRewards, staleTime: STALE.MEDIUM }),
     qc.prefetchQuery({ queryKey: queryKeys.luckyWheelActiveInfo, queryFn: fetchLuckyWheelActiveInfo, staleTime: STALE.SHORT }),
   ]);
-}
-
-// The socket echoes this device's own transactions back; the mutation already
-// refreshed the client and the list, so the echo must not refetch them again.
-// Keyed by client because the echo can arrive before the HTTP response.
-const LOCAL_TX_ECHO_WINDOW_MS = 3000;
-const localTxAt = new Map<string, number>();
-
-function markLocalTransaction(clientId: string) {
-  localTxAt.set(clientId, Date.now());
-}
-
-export function isLocalTransactionEcho(clientId: string): boolean {
-  const at = localTxAt.get(clientId);
-  if (at === undefined) return false;
-  if (Date.now() - at > LOCAL_TX_ECHO_WINDOW_MS) {
-    localTxAt.delete(clientId);
-    return false;
-  }
-  return true;
 }
 
 export function useRecordTransaction() {
@@ -80,15 +74,12 @@ export function useRecordTransaction() {
       return res.data;
     },
     onSuccess: (_data, variables) => {
-      const clientId = variables.clientId;
-      if (clientId) {
-        markLocalTransaction(clientId);
-        qc.invalidateQueries({ queryKey: queryKeys.clientStatus(clientId) });
-        qc.invalidateQueries({ queryKey: queryKeys.clientDetail(clientId) });
+      invalidateAfterTransaction(qc, variables.clientId);
+      // Stamps given from a booking change that booking (arrived or closed, stamps given).
+      if (variables.bookingId) {
+        qc.invalidateQueries({ queryKey: queryKeys.booking(variables.bookingId) });
+        qc.invalidateQueries({ queryKey: queryKeys.bookingAgendaRoot });
       }
-      qc.invalidateQueries({ queryKey: queryKeys.transactions });
-      // Only marks client lists stale; the Clients tab reloads them when it regains focus.
-      qc.invalidateQueries({ queryKey: queryKeys.clientsRoot, refetchType: 'none' });
     },
   });
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef } from 'react';
-import { Dimensions, View } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing, Extrapolation, cancelAnimation, interpolate, runOnJS, useAnimatedReaction, useAnimatedStyle,
@@ -12,11 +12,6 @@ import { haptic, HapticStyle } from '@/utils/haptics';
 import { SPRING_MOMENTUM, SPRING_SMOOTH, project, spring } from '@/utils/motion';
 import { notificationStyles as styles } from './notificationStyles';
 import { SWIPE_THRESHOLD_RATIO, PAN_MIN_DX, ROW_COLLAPSE_DURATION_MS } from '@/constants';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const SWIPE_THRESHOLD = SCREEN_WIDTH * SWIPE_THRESHOLD_RATIO;
-/** The fling-off spring aims past the edge; the row collapses as soon as the card has left the screen. */
-const FLING_TARGET = SCREEN_WIDTH * 1.25;
 
 interface SwipeableNotifCardProps {
   onDismiss: () => void;
@@ -33,6 +28,11 @@ interface SwipeableNotifCardProps {
 const SwipeableNotifCard = React.memo(function SwipeableNotifCard({
   onDismiss, children, deleteLabel, fontFamily,
 }: SwipeableNotifCardProps) {
+  // Live width, so the swipe distances follow a tablet rotation.
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const SWIPE_THRESHOLD = SCREEN_WIDTH * SWIPE_THRESHOLD_RATIO;
+  /** The fling-off spring aims past the edge; the row collapses as soon as the card has left the screen. */
+  const FLING_TARGET = SCREEN_WIDTH * 1.25;
   const translateX = useSharedValue(0);
   const dragStart = useSharedValue(0);
   const pastThreshold = useSharedValue(false);
@@ -91,7 +91,7 @@ const SwipeableNotifCard = React.memo(function SwipeableNotifCard({
         translateX.value = withSpring(0, spring(response, dampingRatio, v));
       }
     }),
-  [translateX, dragStart, pastThreshold, flinging, tick, commit]);
+  [translateX, dragStart, pastThreshold, flinging, tick, commit, SWIPE_THRESHOLD, FLING_TARGET]);
 
   const rowStyle = useAnimatedStyle(() => (
     collapse.value < 1 && rowHeight.value > 0

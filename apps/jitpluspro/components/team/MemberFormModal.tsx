@@ -1,16 +1,15 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Modal,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { Mail, User, ArrowLeft, Check, X, Eye, EyeOff } from 'lucide-react-native';
 import { JitLock } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';

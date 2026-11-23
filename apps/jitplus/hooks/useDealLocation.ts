@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import type { Coords } from '@/hooks/useKnownLocation';
+import { promptLocationPermission } from '@/utils/locationPermission';
 
 type Translate = (key: string, params?: Record<string, unknown>) => string;
 
@@ -53,26 +53,7 @@ export function useDealLocation(t: Translate) {
 
   const request = useCallback(async () => {
     try {
-      const perm = await Location.getForegroundPermissionsAsync();
-      if (perm.status === 'granted') { await fetchNow(); return; }
-      if (!perm.canAskAgain) {
-        Alert.alert(t('discover.locationPromptTitle'), t('discover.locationBlockedBody'), [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('profile.openSettings'), onPress: () => { Linking.openSettings().catch(() => {}); } },
-        ]);
-        return;
-      }
-      Alert.alert(t('discover.locationPromptTitle'), t('discover.locationPromptBody'), [
-        { text: t('notifications.later'), style: 'cancel' },
-        {
-          text: t('discover.locationAllow'),
-          onPress: () => {
-            Location.requestForegroundPermissionsAsync()
-              .then(({ status }) => (status === 'granted' ? fetchNow() : undefined))
-              .catch(() => {});
-          },
-        },
-      ]);
+      await promptLocationPermission(t, fetchNow);
     } catch { /* permission check failed */ }
   }, [t, fetchNow]);
 

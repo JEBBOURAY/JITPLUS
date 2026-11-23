@@ -7,9 +7,12 @@ import { ClientSessionService } from './client-session.service';
 import { ClientOtpService } from './client-otp.service';
 import { ClientOAuthService } from './client-oauth.service';
 import { ClientService } from './client.service';
+import { SignupFunnelModule } from './signup-funnel.module';
 import { MerchantPlanModule } from '../merchant/merchant-plan.module';
 import { MerchantModule } from '../merchant/merchant.module';
 import { DealsModule } from '../deals/deals.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { ClientClosureModule } from './client-closure.module';
 import { jwtModuleFactory } from '../common/jwt/jwt-module.factory';
 import { SMS_PROVIDER } from '../common/interfaces';
 import { NoopSmsProvider } from '../common/providers/noop-sms.provider';
@@ -21,6 +24,9 @@ import { NoopSmsProvider } from '../common/providers/noop-sms.provider';
     MerchantPlanModule,
     MerchantModule,
     DealsModule,
+    NotificationsModule,
+    ClientClosureModule,
+    SignupFunnelModule,
   ],
   controllers: [ClientAuthController, ClientController, PublicUnsubscribeController],
   providers: [

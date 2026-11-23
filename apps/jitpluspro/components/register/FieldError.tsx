@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Text } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDir } from '@/hooks/useDir';
 import { formStyles } from './formStyles';

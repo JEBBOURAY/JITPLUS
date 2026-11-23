@@ -4,17 +4,8 @@ import { Text } from '@/components/AppText';
 import { AlertTriangle, RotateCcw } from 'lucide-react-native';
 import * as Sentry from '@sentry/react-native';
 import i18n from '@/i18n';
-import { useTheme } from '@/contexts/ThemeContext';
-import { wp, hp, ms } from '@/utils/responsive';
-
-const darkColors = {
-  iconBg: '#3B1C1C', title: '#F3F4F6', body: '#9CA3AF',
-  devBg: '#3B1C1C', brand: '#7C3AED', danger: '#EF4444',
-};
-const lightColors = {
-  iconBg: '#FEE2E2', title: '#111827', body: '#6B7280',
-  devBg: '#FEE2E2', brand: '#7C3AED', danger: '#EF4444',
-};
+import { palette, useTheme } from '@/contexts/ThemeContext';
+import { wp, hp, ms, radius } from '@/utils/responsive';
 
 /**
  * Expo Router per-screen error boundary.
@@ -24,7 +15,7 @@ const lightColors = {
 export function ScreenErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
   // The app theme can differ from the system one (forced light/dark in Profile).
   const theme = useTheme();
-  const c = theme.isDark ? darkColors : lightColors;
+  const dangerTint = `${theme.danger}1F`;
 
   // Report per-screen crashes to Sentry (production only)
   useEffect(() => {
@@ -33,18 +24,18 @@ export function ScreenErrorBoundary({ error, retry }: { error: Error; retry: () 
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
-      <View style={[styles.iconCircle, { backgroundColor: c.iconBg }]}>
-        <AlertTriangle size={36} color={c.danger} strokeWidth={1.5} />
+      <View style={[styles.iconCircle, { backgroundColor: dangerTint }]}>
+        <AlertTriangle size={32} color={theme.danger} strokeWidth={1.75} />
       </View>
-      <Text style={[styles.title, { color: c.title }]}>{i18n.t('errors.somethingWentWrong')}</Text>
-      <Text style={[styles.body, { color: c.body }]}>{i18n.t('errors.unexpectedError')}</Text>
+      <Text style={[styles.title, { color: theme.text }]}>{i18n.t('errors.somethingWentWrong')}</Text>
+      <Text style={[styles.body, { color: theme.textSecondary }]}>{i18n.t('errors.unexpectedError')}</Text>
       {__DEV__ && error && (
-        <Text style={[styles.devError, { backgroundColor: c.devBg, color: c.danger }]} numberOfLines={4}>
+        <Text style={[styles.devError, { backgroundColor: dangerTint, color: theme.danger }]} numberOfLines={4}>
           {error.message}
         </Text>
       )}
-      <TouchableOpacity style={[styles.button, { backgroundColor: c.brand }]} onPress={retry} activeOpacity={0.8} accessibilityRole="button">
-        <RotateCcw size={18} color="#fff" strokeWidth={1.5} />
+      <TouchableOpacity style={[styles.button, { backgroundColor: palette.violet }]} onPress={retry} activeOpacity={0.8} accessibilityRole="button">
+        <RotateCcw size={18} color="#fff" strokeWidth={1.75} />
         <Text style={styles.buttonText}>{i18n.t('common.retry')}</Text>
       </TouchableOpacity>
     </View>
@@ -59,9 +50,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(32),
   },
   iconCircle: {
-    width: ms(80),
-    height: ms(80),
-    borderRadius: ms(40),
+    width: ms(72),
+    height: ms(72),
+    borderRadius: ms(36),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: hp(24),
@@ -82,7 +73,7 @@ const styles = StyleSheet.create({
     fontSize: ms(11),
     fontFamily: 'monospace',
     padding: wp(12),
-    borderRadius: ms(8),
+    borderRadius: radius.sm,
     marginBottom: hp(20),
     width: '100%',
   },
@@ -92,7 +83,8 @@ const styles = StyleSheet.create({
     gap: wp(8),
     paddingHorizontal: wp(28),
     paddingVertical: hp(14),
-    borderRadius: ms(14),
+    minHeight: 48,
+    borderRadius: radius.md,
   },
   buttonText: {
     color: '#fff',

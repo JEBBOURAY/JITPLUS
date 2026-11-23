@@ -2,7 +2,6 @@ import { useState, useCallback, useMemo } from 'react';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   Alert,
@@ -10,6 +9,7 @@ import {
   RefreshControl,
   Platform,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';
 import { JitLock, JitPersonAdd } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -284,11 +284,13 @@ export default function TeamScreen() {
           >
             {t('team.proRequiredMsg')}
           </Text>
-          <ActionButton
-            label={t('team.viewMyPlan')}
-            onPress={goToPlan}
-            style={styles.emptyAddBtn}
-          />
+          {Platform.OS !== 'ios' && (
+            <ActionButton
+              label={t('team.viewMyPlan')}
+              onPress={goToPlan}
+              style={styles.emptyAddBtn}
+            />
+          )}
         </View>
       </View>
     );

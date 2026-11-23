@@ -37,6 +37,9 @@ const translations = {
       n > 1
         ? `Vous avez gagné ${n} tickets pour la roue de la chance chez ${merchant}. Tentez votre chance !`
         : `Vous avez gagné un ticket pour la roue de la chance chez ${merchant}. Tentez votre chance !`,
+    welcomeGiftTitle: (n: number) => `🎁 +${n} ${n > 1 ? 'tampons offerts' : 'tampon offert'} !`,
+    welcomeGiftBody: (n: number, merchant: string) =>
+      `Bienvenue chez ${merchant} : ${n > 1 ? `${n} tampons sont déjà` : '1 tampon est déjà'} sur votre carte.`,
   },
   en: {
     earnTitle: (stamps: number, unit: string) => `+${stamps} ${unit} 🎉`,
@@ -72,6 +75,9 @@ const translations = {
       n > 1
         ? `You won ${n} wheel-of-fortune tickets at ${merchant}. Try your luck!`
         : `You won a wheel-of-fortune ticket at ${merchant}. Try your luck!`,
+    welcomeGiftTitle: (n: number) => `🎁 +${n} free ${n > 1 ? 'stamps' : 'stamp'}!`,
+    welcomeGiftBody: (n: number, merchant: string) =>
+      `Welcome to ${merchant}: ${n > 1 ? `${n} stamps are` : '1 stamp is'} already on your card.`,
   },
   ar: {
     earnTitle: (stamps: number, unit: string) => `+${stamps} ${unit} 🎉`,
@@ -107,6 +113,9 @@ const translations = {
       n > 1
         ? `لقد ربحت ${n} تذاكر لعجلة الحظ عند ${merchant}. جرّب حظك!`
         : `لقد ربحت تذكرة لعجلة الحظ عند ${merchant}. جرّب حظك!`,
+    welcomeGiftTitle: (n: number) => `🎁 +${n} ${n > 1 ? 'طوابع هدية' : 'طابع هدية'}!`,
+    welcomeGiftBody: (n: number, merchant: string) =>
+      `مرحبا بيك عند ${merchant}: ${n > 1 ? `${n} طوابع راهم` : 'طابع واحد راه'} فالكارطة ديالك.`,
   },
 } as const;
 

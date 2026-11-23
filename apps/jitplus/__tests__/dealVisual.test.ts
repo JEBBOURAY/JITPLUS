@@ -38,20 +38,38 @@ describe('dealTimeLeftLabel', () => {
 });
 
 describe('dealPrices', () => {
-  it('gives the promo and struck price of a price drop', () => {
-    expect(dealPrices({ ...offer, type: 'PRICE_DROP', originalPrice: 120, dealPrice: 99 }, money)).toEqual({
+  const none = { price: null, original: null, struck: false, savings: null };
+
+  it('gives the promo price, the struck price and the saving of a price drop', () => {
+    expect(dealPrices({ ...offer, type: 'PRICE_DROP', originalPrice: 120, dealPrice: 99 }, money, t)).toEqual({
       price: '99 DH',
       original: '120 DH',
+      struck: true,
+      savings: '21 DH',
     });
   });
 
-  it('uses the merchant currency', () => {
-    expect(dealPrices({ ...offer, type: 'FREE_ITEM', originalPrice: 5000 }, moneyFormatter('XAF', 'fr')).original).toBe('5\u202f000 FCFA');
+  it('does the same for a percentage that gives its price, and nothing without one', () => {
+    expect(dealPrices({ ...offer, type: 'PERCENT_OFF', percentOff: 30, originalPrice: 100, dealPrice: 70 }, money, t))
+      .toMatchObject({ price: '70 DH', original: '100 DH', struck: true });
+    expect(dealPrices({ ...offer, type: 'PERCENT_OFF', percentOff: 10 }, money, t)).toEqual(none);
   });
 
-  it('gives the value of a free item and nothing for other offers', () => {
-    expect(dealPrices({ ...offer, type: 'FREE_ITEM', originalPrice: 15 }, money)).toEqual({ price: null, original: '15 DH' });
-    expect(dealPrices({ ...offer, type: 'PERCENT_OFF', percentOff: 10 }, money)).toEqual({ price: null, original: null });
+  it('adds "from" and the unit to the price the client pays', () => {
+    const texts = dealPrices({ ...offer, type: 'PRICE_DROP', originalPrice: 120, dealPrice: 99, priceFrom: true, priceUnit: 'KG' }, money, t);
+    expect(texts.price).toMatch(/^deals\.price\.from:.*deals\.price\.per:.*99 DH.*deals\.price\.unit\.KG/);
+    expect(texts.original).toBe('120 DH');
+  });
+
+  it('uses the merchant currency', () => {
+    expect(dealPrices({ ...offer, type: 'FREE_ITEM', originalPrice: 5000 }, moneyFormatter('XAF', 'fr'), t).original)
+      .toBe('deals.valueOf:{"value":"5\u202f000 FCFA"}');
+  });
+
+  it('gives the value of a free item, never struck, and the unit price of "buy X get Y"', () => {
+    expect(dealPrices({ ...offer, type: 'FREE_ITEM', originalPrice: 15 }, money, t))
+      .toEqual({ ...none, original: 'deals.valueOf:{"value":"15 DH"}' });
+    expect(dealPrices({ ...offer, type: 'BUY_X_GET_Y', buyQty: 2, freeQty: 1, originalPrice: 25 }, money, t)).toEqual({ ...none, price: '25 DH' });
   });
 });
 

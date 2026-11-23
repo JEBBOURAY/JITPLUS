@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   RefreshControl,
@@ -9,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ChevronRight, Plus } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { JitPin } from '@/components/icons';
@@ -32,7 +32,7 @@ import DealThumb from '@/components/deals/DealThumb';
 import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { DealStatusPill, useDealMerchantLook, type DealMerchantLook } from '@/components/deals/DealRows';
 import { dealBadgeLabel, dealTimeLeftLabel } from '@/components/deals/dealVisual';
-import { DEAL_LIST_TABS, dealLimitReached, dealsForTab, type DealListTab } from '@/components/deals/dealForm';
+import { DEAL_LIST_TABS, dealActions, dealLimitReached, dealsForTab, type DealListTab } from '@/components/deals/dealForm';
 import type { MerchantDealDto } from '@jitplus/shared/src/deals';
 
 // Same artwork as the "Bons plans" card of Accueil.
@@ -65,8 +65,12 @@ export default function DealsScreen() {
   );
   const totals = useMemo(
     () => deals.reduce(
-      (acc, d) => ({ views: acc.views + d.stats.views, clicks: acc.clicks + d.stats.linkClicks }),
-      { views: 0, clicks: 0 },
+      (acc, d) => ({
+        views: acc.views + d.stats.views,
+        actions: acc.actions + dealActions(d.stats),
+        claims: acc.claims + d.stats.claims,
+      }),
+      { views: 0, actions: 0, claims: 0 },
     ),
     [deals],
   );
@@ -126,8 +130,8 @@ export default function DealsScreen() {
           max={limits.maxActive}
           stats={[
             { label: t('deals.list.views'), value: number(totals.views) },
-            { label: t('deals.list.clicks'), value: number(totals.clicks) },
-            { label: t('deals.list.today'), value: `${limits.createdToday}/${limits.maxPerDay}` },
+            { label: t('deals.list.actions'), value: number(totals.actions) },
+            { label: t('deals.list.claims'), value: number(totals.claims) },
           ]}
         />
       ) : null}
@@ -210,7 +214,7 @@ export default function DealsScreen() {
   );
 }
 
-/** One deal: visual, title and status, then its two figures and its dates. */
+/** One deal: visual, title and status, then its figures and its dates. */
 const DealCard = React.memo(function DealCard({ deal, look, onOpen }: {
   deal: MerchantDealDto;
   look: DealMerchantLook;
@@ -244,8 +248,12 @@ const DealCard = React.memo(function DealCard({ deal, look, onOpen }: {
       headline = t('deals.list.endedOn', { date: day(moroccoYmdOf(new Date(deal.endsAt))) });
   }
 
-  const views = number(deal.stats.views);
-  const clicks = number(deal.stats.linkClicks);
+  // "Utilisations" only exist in store: an online deal is used on the merchant's site.
+  const figures = [
+    { label: t('deals.list.views'), value: number(deal.stats.views) },
+    { label: t('deals.list.actions'), value: number(dealActions(deal.stats)) },
+    ...(deal.scope === 'LOCAL' ? [{ label: t('deals.list.claims'), value: number(deal.stats.claims) }] : []),
+  ];
 
   return (
     <TouchableOpacity
@@ -256,8 +264,7 @@ const DealCard = React.memo(function DealCard({ deal, look, onOpen }: {
         deal.title,
         t(`deals.status.${deal.displayStatus}`),
         headline,
-        `${t('deals.list.views')} ${views}`,
-        `${t('deals.list.clicks')} ${clicks}`,
+        ...figures.map((f) => `${f.label} ${f.value}`),
         scope,
         dates,
       ].join(', ')}
@@ -288,12 +295,11 @@ const DealCard = React.memo(function DealCard({ deal, look, onOpen }: {
       </View>
 
       <View style={[styles.cardFooter, { flexDirection: row, borderTopColor: theme.borderLight }]}>
-        <Text style={[styles.figureLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-          <Text style={[styles.figureValue, { color: theme.text }]}>{views}</Text> {t('deals.list.views')}
-        </Text>
-        <Text style={[styles.figureLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-          <Text style={[styles.figureValue, { color: theme.text }]}>{clicks}</Text> {t('deals.list.clicks')}
-        </Text>
+        {figures.map((f) => (
+          <Text key={f.label} style={[styles.figureLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+            <Text style={[styles.figureValue, { color: theme.text }]}>{f.value}</Text> {f.label}
+          </Text>
+        ))}
         <Text style={[styles.cardDates, { color: theme.textMuted, textAlign: isRTL ? 'left' : 'right' }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
           {scope} · {dates}
         </Text>

@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Share, Alert } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Share, Alert } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { Send, Lightbulb, ChevronRight } from 'lucide-react-native';
 import { JitMessages, JitPoster, JitStar } from '@/components/icons';

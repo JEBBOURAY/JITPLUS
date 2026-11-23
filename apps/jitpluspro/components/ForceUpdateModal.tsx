@@ -1,10 +1,10 @@
 import {
   View,
-  Text,
   StyleSheet,
   Linking,
   Platform,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Download, AlertTriangle, Wrench } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';

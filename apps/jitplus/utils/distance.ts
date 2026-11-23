@@ -22,5 +22,7 @@ export function getDistanceKm(
 
 /** Format a distance for display (e.g. "350 m" or "2.1 km") */
 export function formatDistance(km: number): string {
-  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  // A decimal helps only nearby: "2.4 km", but "38 km" rather than "37.8 km".
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
 }

@@ -1,5 +1,5 @@
-// Pieces shared by the two games shown on a dark stage (lucky wheel and
-// scratch cards): the header with its history button, and the state card
+// Pieces shared by the games shown on a dark stage (lucky wheel, scratch
+// cards, collections): the header with its history button, and the state card
 // (load error, nothing to play).
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
@@ -8,27 +8,32 @@ import { Text } from '@/components/AppText';
 import { palette } from '@/contexts/ThemeContext';
 import type { AppFonts } from '@/utils/fonts';
 import { hp, ms, wp, fontSize as FS, radius } from '@/utils/responsive';
+import { formatBadgeCount } from '@/utils/badge';
+
+/** Background of the dark game stage (LinearGradient colors). */
+export const GAME_STAGE_GRADIENT = ['#24104A', '#150830', '#0B0418'] as const;
 
 interface HeaderProps {
   /** History view: the left button goes back instead of closing, and the history button is hidden. */
-  inHistory: boolean;
+  inHistory?: boolean;
   title: string;
-  historyLabel: string;
+  historyLabel?: string;
   /** Read after the history label when the badge is shown ("2 lots à récupérer"). */
-  badgeLabel: string;
-  badgeCount: number;
+  badgeLabel?: string;
+  badgeCount?: number;
   historyDisabled?: boolean;
   isRTL: boolean;
   topInset: number;
   fonts: AppFonts;
   t: (key: string, options?: Record<string, unknown>) => string;
   onClose: () => void;
-  onBack: () => void;
-  onOpenHistory: () => void;
+  onBack?: () => void;
+  /** Leave out for a screen without history (a single scratch card): a spacer keeps the title centred. */
+  onOpenHistory?: () => void;
 }
 
 export const GameHeader = React.memo(function GameHeader({
-  inHistory, title, historyLabel, badgeLabel, badgeCount, historyDisabled = false, isRTL, topInset, fonts, t,
+  inHistory = false, title, historyLabel = '', badgeLabel = '', badgeCount = 0, historyDisabled = false, isRTL, topInset, fonts, t,
   onClose, onBack, onOpenHistory,
 }: HeaderProps) {
   const BackIcon = isRTL ? ChevronRight : ChevronLeft;
@@ -36,7 +41,7 @@ export const GameHeader = React.memo(function GameHeader({
   return (
     <View style={[styles.header, { paddingTop: topInset + hp(8) }]}>
       <TouchableOpacity
-        onPress={inHistory ? onBack : onClose}
+        onPress={inHistory ? (onBack ?? onClose) : onClose}
         activeOpacity={0.7}
         style={styles.iconBtn}
         hitSlop={8}
@@ -50,7 +55,7 @@ export const GameHeader = React.memo(function GameHeader({
       <Text style={[styles.headerTitle, { fontFamily: fonts.bold }]} numberOfLines={1} accessibilityRole="header">
         {title}
       </Text>
-      {inHistory ? (
+      {inHistory || !onOpenHistory ? (
         <View style={styles.iconBtnSpacer} />
       ) : (
         <TouchableOpacity
@@ -66,7 +71,7 @@ export const GameHeader = React.memo(function GameHeader({
           {badgeCount > 0 && (
             <View style={styles.headerBadge}>
               <Text style={[styles.headerBadgeText, { fontFamily: fonts.bold }]} maxFontSizeMultiplier={1.2}>
-                {badgeCount > 99 ? '99+' : badgeCount}
+                {formatBadgeCount(badgeCount)}
               </Text>
             </View>
           )}
@@ -195,4 +200,27 @@ const styles = StyleSheet.create({
     backgroundColor: palette.goldLight,
   },
   badgeText: { color: '#3B1D06', fontSize: FS.xs },
+});
+
+/** List of the hub screens (scratch cards, collections): section title, grouped rows, logo and texts. */
+export const gameListStyles = StyleSheet.create({
+  section: {
+    color: 'rgba(255,255,255,0.9)', fontSize: FS.sm,
+    marginTop: hp(10), marginBottom: hp(4), paddingHorizontal: wp(20),
+  },
+  group: {
+    marginHorizontal: wp(16), marginTop: hp(6), borderRadius: radius.xl, overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: ms(12), paddingHorizontal: ms(14), paddingVertical: hp(12),
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  logo: { width: ms(42), height: ms(42), borderRadius: ms(12), backgroundColor: '#fff' },
+  rowBody: { flex: 1, gap: hp(2) },
+  rowTitle: { color: '#fff', fontSize: FS.md },
+  rowMeta: { color: 'rgba(255,255,255,0.55)', fontSize: FS.xs },
+  /** Gold pill at the end of a row ("Gratter", "Mon cadeau"). */
+  pill: { paddingHorizontal: ms(14), paddingVertical: ms(7), borderRadius: 999, backgroundColor: palette.goldLight },
+  pillText: { color: '#3B1D06', fontSize: FS.xs },
 });

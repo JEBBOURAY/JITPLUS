@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { Check, LogIn, Mail } from 'lucide-react-native';
 import { AppleLogo } from '@/components/AppleLogo';
 import { GoogleLogo } from '@/components/GoogleLogo';

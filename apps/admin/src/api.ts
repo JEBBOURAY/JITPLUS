@@ -25,8 +25,9 @@ import type {
   ClientActivity,
   NotificationStats,
   AdminAlerts,
+  SignupFunnel,
   AdminDealsResponse,
-  AdminDealReport,
+  AdminDealModeration,
   AdminDealListParams,
   ActivatePremiumInput,
   FollowUp,
@@ -192,6 +193,8 @@ export async function logout(): Promise<void> {
 export const getStats = () => req<GlobalStats>('/admin/stats');
 export const getInsights = (days: InsightPeriod = 30) =>
   req<AdminInsights>(`/admin/stats/insights?days=${days}`);
+export const getSignupFunnel = (days: InsightPeriod = 30) =>
+  req<SignupFunnel>(`/admin/stats/signup-funnel?days=${days}`);
 export const getAlerts = () => req<AdminAlerts>('/admin/alerts');
 
 // ── Merchants ──────────────────────────────────────────────────────────────────
@@ -335,7 +338,7 @@ export const getAdminDeals = (params: AdminDealListParams = {}) =>
   req<AdminDealsResponse>(`/admin/deals?${qs({ page: 1, limit: 20, ...params })}`);
 
 export const getDealReports = (id: string) =>
-  req<{ reports: AdminDealReport[] }>(`/admin/deals/${encodeURIComponent(id)}/reports`);
+  req<AdminDealModeration>(`/admin/deals/${encodeURIComponent(id)}/reports`);
 
 export const removeDeal = (id: string, reason: string) =>
   req<{ success: boolean }>(`/admin/deals/${encodeURIComponent(id)}/remove`, {
@@ -411,3 +414,43 @@ export const voidPayment = (paymentId: string, reason: string) =>
 
 export const setPremiumGrant = (id: string, grant: PremiumGrant, note?: string) =>
   req<{ success: boolean }>(`/admin/merchants/${id}/premium-grant`, { method: 'PATCH', body: JSON.stringify({ grant, note }) });
+
+// ── Booking (réservation de créneaux) ──────────────────────────────────────────
+export interface AdminBookingStats {
+  merchantsEnabled: number;
+  merchantsConfigured: number;
+  upcomingBookings: number;
+  last30Days: { byStatus: Record<string, number>; bookedFromApp: number; attendanceRate: number | null };
+  customServices: number;
+}
+
+export interface AdminServiceTemplate {
+  id: string;
+  category: string;
+  nom: string;
+  description: string | null;
+  order: number;
+  isActive: boolean;
+  _count: { services: number };
+}
+
+export interface AdminCustomServiceSuggestion {
+  category: string;
+  nom: string;
+  merchants: number;
+  avgDurationMin: number;
+}
+
+export const getBookingStats = () => req<AdminBookingStats>('/admin/booking/stats');
+
+export const getServiceTemplates = (category?: string) =>
+  req<AdminServiceTemplate[]>(`/admin/booking/templates?${qs({ category })}`);
+
+export const createServiceTemplate = (body: { category: string; nom: string; description?: string; order?: number }) =>
+  req<AdminServiceTemplate>('/admin/booking/templates', { method: 'POST', body: JSON.stringify(body) });
+
+export const updateServiceTemplate = (id: string, body: Partial<{ nom: string; description: string | null; order: number; isActive: boolean }>) =>
+  req<AdminServiceTemplate>(`/admin/booking/templates/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+export const getCustomServiceSuggestions = (category?: string) =>
+  req<AdminCustomServiceSuggestion[]>(`/admin/booking/custom-services?${qs({ category })}`);

@@ -23,16 +23,22 @@ import { DEAL_LIMITS } from '../deal-limits';
 export const DEAL_TYPES = ['BUY_X_GET_Y', 'PERCENT_OFF', 'PRICE_DROP', 'FREE_ITEM', 'OTHER'] as const;
 export const DEAL_SCOPES = ['LOCAL', 'ONLINE'] as const;
 export const DEAL_REPORT_REASONS = ['INAPPROPRIATE', 'MISLEADING', 'OFF_TOPIC', 'EXPIRED', 'OTHER'] as const;
-export const DEAL_FEED_TABS = ['nearby', 'new', 'ending', 'online'] as const;
-export const DEAL_EVENT_TYPES = ['LINK_CLICK', 'DIRECTIONS', 'SHARE'] as const;
+export const DEAL_FEED_TABS = ['nearby', 'new', 'ending', 'online', 'saved'] as const;
+export const DEAL_FEED_SORTS = ['recommended', 'discount'] as const;
+export const DEAL_PRICE_UNITS = ['PIECE', 'KG', 'PERSON', 'HOUR', 'NIGHT', 'MONTH'] as const;
+export const DEAL_EVENT_TYPES = ['LINK_CLICK', 'DIRECTIONS', 'SHARE', 'CALL'] as const;
 export const ADMIN_DEAL_FILTERS = ['all', 'live', 'reported', 'removed'] as const;
 
 export type DealTypeValue = (typeof DEAL_TYPES)[number];
 export type DealScopeValue = (typeof DEAL_SCOPES)[number];
 export type DealFeedTab = (typeof DEAL_FEED_TABS)[number];
+export type DealFeedSort = (typeof DEAL_FEED_SORTS)[number];
+export type DealPriceUnit = (typeof DEAL_PRICE_UNITS)[number];
 export type DealEventType = (typeof DEAL_EVENT_TYPES)[number];
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const DEAL_SEARCH_MIN = 2;
+const DEAL_SEARCH_MAX = 40;
 const CITY_KEY = /^[a-z_]{2,40}$/;
 
 const trimOrNull = ({ value }: { value: unknown }) =>
@@ -99,7 +105,9 @@ export class CreateDealDto {
   @ApiPropertyOptional({ example: 30 })
   @IsOptional()
   @IsInt()
-  @Min(DEAL_LIMITS.MIN_PERCENT)
+  // Format only: the business floor (DEAL_LIMITS.MIN_PERCENT) is enforced by normalizeOffer,
+  // which skips untouched offers of deals created under older rules.
+  @Min(1)
   @Max(DEAL_LIMITS.MAX_PERCENT)
   percentOff?: number | null;
 
@@ -116,6 +124,16 @@ export class CreateDealDto {
   @Min(1)
   @Max(DEAL_LIMITS.MAX_QTY)
   freeQty?: number | null;
+
+  @ApiPropertyOptional({ description: '« À partir de » devant le prix' })
+  @IsOptional()
+  @IsBoolean()
+  priceFrom?: boolean;
+
+  @ApiPropertyOptional({ enum: DEAL_PRICE_UNITS, nullable: true })
+  @IsOptional()
+  @IsIn(DEAL_PRICE_UNITS as unknown as string[], { message: 'Unité de prix invalide' })
+  priceUnit?: DealPriceUnit | null;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()
@@ -189,14 +207,27 @@ export class DealFeedQueryDto {
   @Matches(/^[A-Z_]{2,30}$/)
   category?: string;
 
+  @ApiPropertyOptional({ description: 'Recherche dans le titre et le nom du commerce' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(DEAL_SEARCH_MIN)
+  @MaxLength(DEAL_SEARCH_MAX)
+  q?: string;
+
+  @ApiPropertyOptional({ enum: DEAL_FEED_SORTS, default: 'recommended' })
+  @IsOptional()
+  @IsIn(DEAL_FEED_SORTS as unknown as string[])
+  sort?: DealFeedSort;
+
   @ApiPropertyOptional({ description: 'Valeur nextCursor de la page précédente' })
   @IsOptional()
   @Matches(/^\d{1,4}(\.\d{1,4})?$/)
   cursor?: string;
 }
 
-/** Same area and tab as the feed, without the category and the cursor. */
-export class DealCategoryCountsQueryDto extends OmitType(DealFeedQueryDto, ['category', 'cursor'] as const) {}
+/** Same area and tab as the feed, without what narrows or orders the list. */
+export class DealCategoryCountsQueryDto extends OmitType(DealFeedQueryDto, ['category', 'cursor', 'q', 'sort'] as const) {}
 
 export class DealPositionQueryDto {
   @ApiPropertyOptional()

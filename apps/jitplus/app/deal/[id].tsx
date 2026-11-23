@@ -2,11 +2,10 @@ import { moneyFormatter } from '@jitplus/shared/src/currency';
 import { useCallback, useMemo, useState } from 'react';
 import { View, ScrollView, Pressable, Share, Alert, Linking, StyleSheet, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { isAxiosError } from 'axios';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  AlertCircle, ArrowLeft, BadgePercent, ChevronRight, ExternalLink, Flag, Flame, Globe,
-  Hourglass, ListChecks, LogIn, MapPin, Navigation, Phone, Share2, Store, FileText,
+  Bookmark, ChevronRight, ExternalLink, Flag, Flame, Globe,
+  Hourglass, ListChecks, MapPin, Navigation, Phone, Share2, Store, FileText, Ticket,
 } from 'lucide-react-native';
 import { hasCoords, pluralKey, toTel } from '@jitplus/shared';
 import { openDirections, openFirst } from '@jitplus/shared/src/openLinks';
@@ -15,13 +14,17 @@ import { Text } from '@/components/AppText';
 import Skeleton from '@/components/Skeleton';
 import MerchantLogo from '@/components/MerchantLogo';
 import ActionSheet, { type ActionSheetOption } from '@/components/ActionSheet';
+import DetailErrorState from '@/components/DetailErrorState';
+import { HeaderBackButton } from '@/components/ScreenHeader';
 import MerchantSection from '@/components/merchant/MerchantSection';
 import DealThumb from '@/components/deals/DealThumb';
+import DealPassSheet from '@/components/deals/DealPassSheet';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { recordDealEvent, useDeal, useReportDeal } from '@/hooks/useDealHooks';
+import { recordDealEvent, useClaimDeal, useDeal, useReportDeal, useSaveDeal } from '@/hooks/useDealHooks';
 import { useKnownLocation } from '@/hooks/useKnownLocation';
+import { usePromptLogin } from '@/hooks/usePromptLogin';
 import { getServerBaseUrl } from '@/services/api';
 import { savePendingDeal } from '@/services/pendingDeal';
 import {
@@ -30,9 +33,11 @@ import {
 import { formatDistance } from '@/utils/distance';
 import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
+import { isNotFoundError } from '@/utils/errorMessage';
 import { isEntityId } from '@/utils/ids';
 import { getMerchantAccent } from '@/utils/merchantAccent';
-import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
+import { wp, hp, ms, fontSize } from '@/utils/responsive';
+import { DIR_FLIP } from '@/utils/rtl';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
@@ -40,79 +45,25 @@ const BOTTOM_BAR_SPACE = hp(110);
 
 export default function DealDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { isAuthenticated } = useAuth();
   const dealId = isEntityId(id) ? id.toLowerCase() : undefined;
-  if (!isAuthenticated) return <DealGuestView dealId={dealId} />;
   return <DealDetail dealId={dealId} />;
 }
 
-function BackButton({ onPress, floating }: { onPress: () => void; floating?: boolean }) {
-  const theme = useTheme();
-  const { t, isRTL } = useLanguage();
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={10}
-      style={[styles.roundBtn, floating ? styles.floatingBtn : { backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 }]}
-      accessibilityRole="button"
-      accessibilityLabel={t('common.back')}
-    >
-      <ArrowLeft size={ms(20)} color={floating ? '#FFFFFF' : theme.text} strokeWidth={2} style={isRTL ? styles.flip : undefined} />
-    </Pressable>
-  );
-}
-
-/** Deals are for members: a shared link opened as a guest asks to sign in, then comes back here. */
-function DealGuestView({ dealId }: { dealId?: string }) {
-  const theme = useTheme();
-  const fonts = useAppFonts();
-  const { t } = useLanguage();
-  const router = useRouter();
-
-  const go = (path: '/login' | '/register') => {
-    haptic();
-    if (dealId) savePendingDeal(dealId);
-    router.push(path);
-  };
-
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
-      <View style={styles.plainHeader}>
-        <BackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/deals'))} />
-      </View>
-      <View style={styles.center}>
-        <View style={[styles.stateIcon, { backgroundColor: `${palette.violet}15` }]}>
-          <BadgePercent size={ms(34)} color={palette.violet} strokeWidth={1.6} />
-        </View>
-        <Text style={[styles.stateTitle, { color: theme.text, fontFamily: fonts.bold }]} accessibilityRole="header">
-          {t('deals.guest.detailTitle')}
-        </Text>
-        <Text style={[styles.stateBody, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('deals.guest.detailBody')}</Text>
-        <Pressable onPress={() => go('/register')} style={styles.fullBtn} accessibilityRole="button">
-          <View style={[styles.gradientBtn, { backgroundColor: palette.violet }]}>
-            <Text style={[styles.primaryText, { fontFamily: fonts.semibold }]}>{t('welcome.createAccount')}</Text>
-          </View>
-        </Pressable>
-        <Pressable onPress={() => go('/login')} style={styles.linkBtn} accessibilityRole="button">
-          <LogIn size={ms(16)} color={palette.violet} strokeWidth={2} />
-          <Text style={[styles.linkText, { color: palette.violet, fontFamily: fonts.medium }]}>{t('welcome.login')}</Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
-  );
-}
-
+/** Guests see the whole deal; using, saving or reporting it needs an account. */
 function DealDetail({ dealId }: { dealId?: string }) {
+  const { isAuthenticated } = useAuth();
   const theme = useTheme();
-  const fonts = useAppFonts();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const userLocation = useKnownLocation();
   const { data: deal, isLoading, error, refetch } = useDeal(dealId);
   const { mutateAsync: reportDeal, isPending: reportPending } = useReportDeal(dealId ?? '');
+  const { mutate: claimDeal, isPending: claimPending } = useClaimDeal(dealId ?? '');
+  const { mutate: saveDeal } = useSaveDeal(dealId ?? '');
   const [sheet, setSheet] = useState(false);
+  const [passVisible, setPassVisible] = useState(false);
 
   const stores = useMemo(() => dealStoresByDistance(deal?.stores, userLocation), [deal?.stores, userLocation]);
 
@@ -133,6 +84,38 @@ function DealDetail({ dealId }: { dealId?: string }) {
       if (result.action === Share.sharedAction) recordDealEvent(deal.id, 'SHARE');
     } catch { /* user cancelled */ }
   }, [deal, t]);
+
+  /** The guest comes back to this deal once signed in. */
+  const showLoginPrompt = usePromptLogin();
+  const promptLogin = useCallback(() => {
+    showLoginPrompt({ remember: () => { if (dealId) savePendingDeal(dealId); } });
+  }, [dealId, showLoginPrompt]);
+
+  const toggleSaved = useCallback(() => {
+    if (!deal) return;
+    if (!isAuthenticated) { promptLogin(); return; }
+    haptic();
+    saveDeal(!deal.saved, { onError: () => Alert.alert(t('common.error'), t('deals.detail.saveError')) });
+  }, [deal, isAuthenticated, promptLogin, saveDeal, t]);
+
+  /** First tap takes the pass (counted once for the merchant), later taps only show it again. */
+  const openPass = useCallback(() => {
+    if (!deal || claimPending) return;
+    if (!isAuthenticated) { promptLogin(); return; }
+    haptic();
+    if (deal.claimedAt) { setPassVisible(true); return; }
+    claimDeal(undefined, {
+      onSuccess: () => setPassVisible(true),
+      onError: () => Alert.alert(t('common.error'), t('deals.detail.claimError')),
+    });
+  }, [deal, claimPending, isAuthenticated, promptLogin, claimDeal, t]);
+
+  const call = useCallback((tel: string) => {
+    if (!deal) return;
+    haptic();
+    recordDealEvent(deal.id, 'CALL');
+    void openFirst([tel]);
+  }, [deal]);
 
   const openLink = useCallback(async () => {
     // Checked again right before opening: the link comes from a merchant.
@@ -199,29 +182,16 @@ function DealDetail({ dealId }: { dealId?: string }) {
   }
 
   if (!deal) {
-    const notFound = !dealId || !error || (isAxiosError(error) && error.response?.status === 404);
+    const notFound = !dealId || !error || isNotFoundError(error);
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
-        <View style={styles.plainHeader}><BackButton onPress={goBack} /></View>
-        <View style={styles.center}>
-          <View style={[styles.stateIcon, { backgroundColor: theme.primaryBg }]}>
-            <AlertCircle size={ms(30)} color={theme.primary} strokeWidth={2} />
-          </View>
-          <Text style={[styles.stateTitle, { color: theme.text, fontFamily: fonts.bold }]}>
-            {notFound ? t('deals.detail.notFoundTitle') : t('common.error')}
-          </Text>
-          <Text style={[styles.stateBody, { color: theme.textSecondary, fontFamily: fonts.regular }]}>
-            {notFound ? t('deals.detail.notFoundBody') : t('errors.generic')}
-          </Text>
-          <Pressable
-            onPress={notFound ? () => router.replace('/(tabs)/deals') : () => { void refetch(); }}
-            style={[styles.solidBtn, { backgroundColor: palette.violet }]}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.primaryText, { fontFamily: fonts.semibold }]}>{notFound ? t('deals.title') : t('common.retry')}</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <DetailErrorState
+        header={<View style={styles.plainHeader}><HeaderBackButton onPress={goBack} /></View>}
+        title={notFound ? t('deals.detail.notFoundTitle') : t('common.error')}
+        message={notFound ? t('deals.detail.notFoundBody') : t('errors.generic')}
+        actions={[notFound
+          ? { label: t('deals.title'), onPress: () => router.replace('/(tabs)/deals') }
+          : { label: t('common.retry'), onPress: () => { void refetch(); } }]}
+      />
     );
   }
 
@@ -238,28 +208,66 @@ function DealDetail({ dealId }: { dealId?: string }) {
           height={Math.round(width * 0.72)}
           radius={0}
         />
-        <DealBody deal={deal} stores={stores} onMerchant={openMerchant} onDirections={directionsTo} />
+        <DealBody
+          deal={deal}
+          stores={stores}
+          suggestCard={isAuthenticated && !deal.hasCard && !deal.isOver}
+          onMerchant={openMerchant}
+          onDirections={directionsTo}
+          onCall={call}
+        />
       </ScrollView>
 
       <View style={[styles.topBar, { top: insets.top + hp(8) }]} pointerEvents="box-none">
-        <BackButton onPress={goBack} floating />
+        <HeaderBackButton onPress={goBack} floating />
         <View style={styles.topActions}>
           <Pressable onPress={share} hitSlop={8} style={[styles.roundBtn, styles.floatingBtn]} accessibilityRole="button" accessibilityLabel={t('deals.detail.share')}>
             <Share2 size={ms(18)} color="#FFFFFF" strokeWidth={2} />
           </Pressable>
-          <Pressable
-            onPress={() => { haptic(); setSheet(true); }}
-            hitSlop={8}
-            style={[styles.roundBtn, styles.floatingBtn]}
-            accessibilityRole="button"
-            accessibilityLabel={t('deals.report.action')}
-          >
-            <Flag size={ms(17)} color="#FFFFFF" strokeWidth={2} />
-          </Pressable>
+          {!deal.isOver && (
+            <Pressable
+              onPress={toggleSaved}
+              hitSlop={8}
+              style={[styles.roundBtn, styles.floatingBtn]}
+              accessibilityRole="button"
+              accessibilityLabel={deal.saved ? t('deals.detail.unsave') : t('deals.detail.save')}
+              accessibilityState={{ selected: deal.saved }}
+            >
+              <Bookmark size={ms(18)} color="#FFFFFF" fill={deal.saved ? '#FFFFFF' : 'transparent'} strokeWidth={2} />
+            </Pressable>
+          )}
+          {isAuthenticated && (
+            <Pressable
+              onPress={() => { haptic(); setSheet(true); }}
+              hitSlop={8}
+              style={[styles.roundBtn, styles.floatingBtn]}
+              accessibilityRole="button"
+              accessibilityLabel={t('deals.report.action')}
+            >
+              <Flag size={ms(17)} color="#FFFFFF" strokeWidth={2} />
+            </Pressable>
+          )}
         </View>
       </View>
 
-      <DealActionBar deal={deal} nearest={stores.find((s) => hasCoords(s))} onLink={openLink} onDirections={directionsTo} onMerchant={openMerchant} />
+      <DealActionBar
+        deal={deal}
+        nearest={stores.find((s) => hasCoords(s))}
+        claimPending={claimPending}
+        onLink={openLink}
+        onPass={openPass}
+        onDirections={directionsTo}
+        onMerchant={openMerchant}
+        onCall={call}
+      />
+
+      <DealPassSheet
+        visible={passVisible}
+        deal={deal}
+        badge={dealBadgeLabel(deal, t)}
+        price={dealPrices(deal, moneyFormatter(deal.merchant.currency, locale), t).price}
+        onClose={() => setPassVisible(false)}
+      />
 
       <ActionSheet
         visible={sheet}
@@ -273,18 +281,25 @@ function DealDetail({ dealId }: { dealId?: string }) {
   );
 }
 
-function DealBody({ deal, stores, onMerchant, onDirections }: {
+function DealBody({ deal, stores, suggestCard, onMerchant, onDirections, onCall }: {
   deal: ClientDealDetail;
+  /** Nearest first, with the distances known on the device */
   stores: ClientDealStore[];
+  /** The client has no loyalty card at this merchant yet */
+  suggestCard: boolean;
   onMerchant: () => void;
   onDirections: (store: ClientDealStore) => void;
+  onCall: (tel: string) => void;
 }) {
   const theme = useTheme();
   const fonts = useAppFonts();
-  const { t, locale, isRTL } = useLanguage();
+  const { t, locale } = useLanguage();
   const accent = getMerchantAccent(deal.merchant.themeColor);
   const badge = dealBadgeLabel(deal, t);
-  const { price, original } = dealPrices(deal, moneyFormatter(deal.merchant.currency, locale));
+  const { price, original, struck, savings } = dealPrices(deal, moneyFormatter(deal.merchant.currency, locale), t);
+  // The deal is fetched without the position: the distance comes from the nearest store.
+  const distanceKm = deal.distanceKm ?? stores[0]?.distanceKm ?? null;
+  const category = t(`categories.${deal.merchant.categorie}`, { defaultValue: deal.merchant.categorie });
   const time = dealTimeLeftLabel(deal.endsAt, t);
   const online = deal.scope === 'ONLINE';
   const endDate = formatDealEndDate(deal.endsAt, locale);
@@ -328,11 +343,14 @@ function DealBody({ deal, stores, onMerchant, onDirections }: {
         <View style={styles.priceRow}>
           {!!price && <Text style={[styles.price, { color: theme.danger, fontFamily: fonts.bold }]}>{price}</Text>}
           {!!original && (
-            <Text style={[styles.original, { color: theme.textMuted, fontFamily: fonts.regular }, deal.type === 'PRICE_DROP' && styles.struck]}>
-              {deal.type === 'FREE_ITEM' ? t('deals.valueOf', { value: original }) : original}
+            <Text style={[styles.original, { color: theme.textMuted, fontFamily: fonts.regular }, struck && styles.struck]}>
+              {original}
             </Text>
           )}
         </View>
+      )}
+      {!!savings && !deal.isOver && (
+        <Text style={[styles.savings, { color: theme.success, fontFamily: fonts.medium }]}>{t('deals.savings', { amount: savings })}</Text>
       )}
 
       {!deal.isOver && (
@@ -356,12 +374,15 @@ function DealBody({ deal, stores, onMerchant, onDirections }: {
         <View style={styles.flex}>
           <Text style={[styles.merchantName, { color: theme.text, fontFamily: fonts.semibold }]} numberOfLines={1}>{deal.merchant.nom}</Text>
           <Text style={[styles.merchantMeta, { color: theme.textMuted, fontFamily: fonts.regular }]} numberOfLines={1}>
-            {deal.distanceKm != null
-              ? `${t(`categories.${deal.merchant.categorie}`, { defaultValue: deal.merchant.categorie })} · ${t('deals.detail.distanceAway', { distance: formatDistance(deal.distanceKm) })}`
-              : t(`categories.${deal.merchant.categorie}`, { defaultValue: deal.merchant.categorie })}
+            {distanceKm != null ? `${category} · ${t('deals.detail.distanceAway', { distance: formatDistance(distanceKm) })}` : category}
           </Text>
+          {suggestCard && (
+            <Text style={[styles.merchantMeta, { color: theme.primary, fontFamily: fonts.medium }]} numberOfLines={1}>
+              {t('deals.detail.getCard')}
+            </Text>
+          )}
         </View>
-        <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} style={isRTL ? styles.flip : undefined} />
+        <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} style={DIR_FLIP} />
       </Pressable>
 
       {!!deal.description && (
@@ -396,6 +417,7 @@ function DealBody({ deal, stores, onMerchant, onDirections }: {
                 accent={accent}
                 first={i === 0}
                 onDirections={onDirections}
+                onCall={onCall}
               />
             ))}
           </View>
@@ -405,12 +427,13 @@ function DealBody({ deal, stores, onMerchant, onDirections }: {
   );
 }
 
-function DealStoreRow({ store, fallbackName, accent, first, onDirections }: {
+function DealStoreRow({ store, fallbackName, accent, first, onDirections, onCall }: {
   store: ClientDealStore;
   fallbackName: string;
   accent: string;
   first: boolean;
   onDirections: (store: ClientDealStore) => void;
+  onCall: (tel: string) => void;
 }) {
   const theme = useTheme();
   const fonts = useAppFonts();
@@ -433,7 +456,7 @@ function DealStoreRow({ store, fallbackName, accent, first, onDirections }: {
       </View>
       {!!tel && (
         <Pressable
-          onPress={() => { haptic(); void openFirst([tel]); }}
+          onPress={() => onCall(tel)}
           style={({ pressed }) => [styles.storeAction, { backgroundColor: `${theme.success}14`, opacity: pressed ? 0.7 : 1 }]}
           accessibilityRole="button"
           accessibilityLabel={`${t('deals.detail.call')} ${name}`}
@@ -457,12 +480,19 @@ function DealStoreRow({ store, fallbackName, accent, first, onDirections }: {
   );
 }
 
-function DealActionBar({ deal, nearest, onLink, onDirections, onMerchant }: {
+/**
+ * One primary action: the offer page of an online deal, the pass of an in-store
+ * one, the merchant page once the deal is over. Call and directions stay one tap away.
+ */
+function DealActionBar({ deal, nearest, claimPending, onLink, onPass, onDirections, onMerchant, onCall }: {
   deal: ClientDealDetail;
   nearest: ClientDealStore | undefined;
+  claimPending: boolean;
   onLink: () => void;
+  onPass: () => void;
   onDirections: (store: ClientDealStore) => void;
   onMerchant: () => void;
+  onCall: (tel: string) => void;
 }) {
   const theme = useTheme();
   const fonts = useAppFonts();
@@ -472,9 +502,11 @@ function DealActionBar({ deal, nearest, onLink, onDirections, onMerchant }: {
   const link = !deal.isOver && deal.scope === 'ONLINE' && isSafeDealLink(deal.linkUrl) ? deal.linkUrl : null;
   const host = link ? dealLinkHost(link) : null;
 
-  let primary: { label: string; icon: typeof Navigation; onPress: () => void } | null = null;
+  const inStore = !deal.isOver && deal.scope === 'LOCAL';
+
+  let primary: { label: string; icon: typeof Navigation; onPress: () => void };
   if (link) primary = { label: t('deals.detail.seeOffer'), icon: ExternalLink, onPress: onLink };
-  else if (!deal.isOver && nearest) primary = { label: t('deals.detail.directions'), icon: Navigation, onPress: () => onDirections(nearest) };
+  else if (inStore) primary = { label: t(deal.claimedAt ? 'deals.detail.showPass' : 'deals.detail.claim'), icon: Ticket, onPress: onPass };
   else primary = { label: t('deals.detail.merchantCta'), icon: Store, onPress: onMerchant };
   const PrimaryIcon = primary.icon;
 
@@ -483,7 +515,7 @@ function DealActionBar({ deal, nearest, onLink, onDirections, onMerchant }: {
       <View style={styles.actionRow}>
         {!deal.isOver && !!tel && (
           <Pressable
-            onPress={() => { haptic(); void openFirst([tel]); }}
+            onPress={() => onCall(tel)}
             style={({ pressed }) => [styles.callBtn, { backgroundColor: `${theme.success}14`, opacity: pressed ? 0.7 : 1 }]}
             accessibilityRole="button"
             accessibilityLabel={t('deals.detail.call')}
@@ -491,7 +523,23 @@ function DealActionBar({ deal, nearest, onLink, onDirections, onMerchant }: {
             <Phone size={ms(20)} color={theme.success} strokeWidth={2} />
           </Pressable>
         )}
-        <Pressable onPress={primary.onPress} style={({ pressed }) => [styles.flex, { opacity: pressed ? 0.85 : 1 }]} accessibilityRole="button">
+        {inStore && !!nearest && (
+          <Pressable
+            onPress={() => onDirections(nearest)}
+            style={({ pressed }) => [styles.callBtn, { backgroundColor: theme.primaryBg, opacity: pressed ? 0.7 : 1 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t('deals.detail.directions')}
+          >
+            <Navigation size={ms(20)} color={theme.primary} strokeWidth={2} />
+          </Pressable>
+        )}
+        <Pressable
+          onPress={primary.onPress}
+          disabled={claimPending}
+          style={({ pressed }) => [styles.flex, { opacity: pressed || claimPending ? 0.85 : 1 }]}
+          accessibilityRole="button"
+          accessibilityState={{ busy: claimPending }}
+        >
           <View style={[styles.primaryBtn, { backgroundColor: palette.violet }]}>
             <PrimaryIcon size={ms(18)} color="#FFFFFF" strokeWidth={2} />
             <Text style={[styles.primaryText, { fontFamily: fonts.semibold }]}>{primary.label}</Text>
@@ -510,17 +558,7 @@ function DealActionBar({ deal, nearest, onLink, onDirections, onMerchant }: {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  flip: { transform: [{ scaleX: -1 }] },
   plainHeader: { paddingHorizontal: wp(16), paddingTop: hp(8) },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: wp(32), paddingBottom: hp(60) },
-  stateIcon: { width: ms(76), height: ms(76), borderRadius: ms(24), alignItems: 'center', justifyContent: 'center', marginBottom: hp(18) },
-  stateTitle: { fontSize: ms(20), textAlign: 'center', marginBottom: hp(8) },
-  stateBody: { fontSize: fontSize.md, lineHeight: ms(22), textAlign: 'center', marginBottom: hp(26) },
-  fullBtn: { width: '100%', borderRadius: radius.xl, overflow: 'hidden' },
-  gradientBtn: { paddingVertical: hp(15), alignItems: 'center', borderRadius: radius.xl },
-  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: wp(6), marginTop: hp(16), paddingVertical: hp(8) },
-  linkText: { fontSize: fontSize.md },
-  solidBtn: { paddingHorizontal: wp(24), paddingVertical: hp(12), borderRadius: ms(14) },
   primaryText: { color: '#FFFFFF', fontSize: fontSize.md },
 
   skeletonBody: { padding: wp(16), gap: hp(14) },
@@ -542,6 +580,7 @@ const styles = StyleSheet.create({
   price: { fontSize: ms(24) },
   original: { fontSize: ms(15) },
   struck: { textDecorationLine: 'line-through' },
+  savings: { fontSize: ms(13), marginTop: -hp(8) },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: wp(6) },
   timeText: { flexShrink: 1, fontSize: ms(13) },
   merchantRow: {

@@ -3,15 +3,16 @@ import { ConfigService } from '@nestjs/config';
 import { CLIENT_REPOSITORY, type IClientRepository } from '../common/repositories';
 import { createHmac } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { BCRYPT_SALT_ROUNDS } from '../common/constants';
+import { BCRYPT_SALT_ROUNDS, CLIENT_TERMS_VERSION } from '../common/constants';
 import { errMsg } from '../common/utils';
-import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
+import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps, prismaLockoutOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
 import { IMailProvider, MAIL_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { pickEmailLang } from '../mail/transactional-i18n';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { ClientSessionService, type ClientAuthResponse } from './client-session.service';
 import { normalizePhone, isValidPhone, extractCountryCode } from './client-phone.util';
+import type { SignupMethod } from './signup-funnel.service';
 
 export type { ClientAuthResponse } from './client-session.service';
 
@@ -44,46 +45,50 @@ export class ClientAuthService {
 
   /** Lockout DB ops for Client model */
   private get clientLockoutOps(): LockoutDbOps {
-    return {
-      incrementFailedAttempts: (id, newAttempts, lockedUntil) =>
-        this.clientRepo.update({
-          where: { id },
-          data: { failedLoginAttempts: newAttempts, ...(lockedUntil && { lockedUntil }) },
-        }).then(() => {}),
-      resetFailedAttempts: (id) =>
-        this.clientRepo.update({
-          where: { id },
-          data: { failedLoginAttempts: 0, lockedUntil: null },
-        }).then(() => {}),
-    };
+    return prismaLockoutOps(this.clientRepo);
   }
 
   /**
    * Complete profile for new users (prénom + nom + terms acceptance + optional password)
    */
-  async completeProfile(clientId: string, prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string): Promise<ClientProfileResult> {
+  async completeProfile(clientId: string, prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string): Promise<ClientProfileResult & { firstCompletion?: { method: SignupMethod; withPassword: boolean } }> {
     if (!termsAccepted) {
       throw new BadRequestException('error.auth.termsRequired');
     }
+    // Blank names passed the DTO and left the profile incomplete forever.
+    if (!prenom.trim()) throw new BadRequestException('error.auth.firstNameRequired');
+    if (dateNaissance) {
+      const birth = new Date(dateNaissance);
+      if (birth.getTime() > Date.now() || birth.getUTCFullYear() < 1900) {
+        throw new BadRequestException('error.auth.birthDateInvalid');
+      }
+    }
+
+    const current = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: { password: true, telephone: true, termsAccepted: true, language: true },
+    });
 
     // Build update data
-    const data: { prenom: string; nom: string; termsAccepted: true; shareInfoMerchants: false; telephone?: string; countryCode?: string; dateNaissance?: Date; password?: string } = {
+    const data: { prenom: string; nom: string | null; termsAccepted: true; termsAcceptedAt?: Date; termsVersion?: string; telephone?: string; telephoneVerified?: false; countryCode?: string; dateNaissance?: Date; password?: string } = {
       prenom: prenom.trim(),
-      nom: nom.trim(),
+      nom: nom.trim() || null, // optional
       termsAccepted: true,
-      shareInfoMerchants: false, // opt-out par défaut à l'inscription
+      // Proof of consent, written once: a retry of this request keeps the first date.
+      ...(current?.termsAccepted ? {} : { termsAcceptedAt: new Date(), termsVersion: CLIENT_TERMS_VERSION }),
       ...(dateNaissance ? { dateNaissance: new Date(dateNaissance) } : {}),
     };
 
     // If password provided, hash it and include in the atomic update.
     // Never overwrite an existing one: that would bypass change-password's
-    // current-password check (and reset-password-otp's OTP proof).
+    // current-password check (and reset-password-otp's OTP proof). The same
+    // password is accepted: it is the retry of a request whose response was lost.
     if (password) {
-      const current = await this.clientRepo.findUnique({ where: { id: clientId }, select: { password: true } });
-      if (current?.password) {
-        throw new BadRequestException('Un mot de passe existe déjà. Utilisez le changement de mot de passe.');
+      if (!current?.password) {
+        data.password = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+      } else if (!(await bcrypt.compare(password, current.password))) {
+        throw new BadRequestException('error.auth.passwordAlreadySet');
       }
-      data.password = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
     }
 
     // If telephone provided (email-registered users), normalize and save it
@@ -101,11 +106,15 @@ export class ClientAuthService {
             await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
           );
         }
-        throw new ConflictException('Ce numéro de téléphone est déjà associé à un autre compte');
+        // Typing a number proves nothing: it is only taken from another account
+        // with the WhatsApp code (verifyChangeContactOtp).
+        throw new ConflictException('error.auth.phoneExists');
       }
 
       data.telephone = normalizedPhone;
       data.countryCode = extractCountryCode(normalizedPhone);
+      // As in updateProfile: a verification only holds for the number it proved.
+      if (current?.telephone !== normalizedPhone) data.telephoneVerified = false;
     }
 
     const client = await this.clientRepo.update({
@@ -118,20 +127,24 @@ export class ClientAuthService {
     // - WhatsApp users (telephone + no googleId): welcome via WhatsApp
     // - Google users (googleId set): welcome via email
     // - Email users (email + no googleId): welcome via email
-    if (client.telephone && !client.googleId && !client.email) {
+    // Once only: this endpoint can be called again (retry after a lost response).
+    const alreadyWelcomed = !!current?.termsAccepted;
+    if (!alreadyWelcomed && client.telephone && !client.googleId && !client.email) {
       const name = client.prenom ?? 'cher client';
       this.smsProvider.sendWhatsAppMessage(
         client.telephone,
         `Bienvenue ${name} sur JitPlus ! 🎉 Vos cartes de fidélité, partout avec vous.`,
       ).catch((err) => this.logger.warn('Welcome WhatsApp failed', errMsg(err)));
-    } else if (client.email) {
-      const langRow = await this.clientRepo.findUnique({ where: { id: client.id }, select: { language: true } });
-      this.mailProvider.sendWelcomeClient(client.email, client.prenom ?? undefined, pickEmailLang(langRow?.language))
+    } else if (!alreadyWelcomed && client.email) {
+      this.mailProvider.sendWelcomeClient(client.email, client.prenom ?? undefined, pickEmailLang(current?.language))
         .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
     }
 
+    const signupMethod: SignupMethod = client.googleId ? 'google' : client.appleId ? 'apple' : 'email';
     return {
       success: true,
+      // For the sign-up funnel; the controller removes it from the response.
+      ...(alreadyWelcomed ? {} : { firstCompletion: { method: signupMethod, withPassword: !!data.password } }),
       client: {
         id: client.id,
         prenom: client.prenom,
@@ -159,16 +172,23 @@ export class ClientAuthService {
 
   async loginWithEmailPassword(email: string, password: string): Promise<ClientAuthResponse> {
     const normalizedEmail = email.trim().toLowerCase();
-    const genericError = 'Email ou mot de passe incorrect.';
+    const genericError = 'error.auth.invalidCredentials';
 
     const client = await this.clientRepo.findUnique({
       where: { email: normalizedEmail },
       select: CLIENT_LOGIN_SELECT,
     });
 
-    // Brute-force protection — check BEFORE bcrypt to avoid resource waste on locked accounts
+    // A locked account answers like a wrong password, otherwise the lock message
+    // would reveal that the email is registered.
+    let locked = false;
     if (client) {
-      checkLockout(client);
+      try {
+        checkLockout(client);
+      } catch (err) {
+        if (!(err instanceof UnauthorizedException)) throw err;
+        locked = true;
+      }
     }
 
     // Timing-safe: always run bcrypt compare even if user not found
@@ -177,9 +197,13 @@ export class ClientAuthService {
       client?.password ?? ClientAuthService.DUMMY_HASH,
     );
 
-    if (!client || !client.password || !isValid) {
-      if (client) {
-        await handleFailedLogin(client, this.clientLockoutOps);
+    if (locked || !client || !client.password || !isValid) {
+      // Same answer with or without an account: "n attempts left" revealed which
+      // emails are registered, which send-otp-email carefully hides.
+      if (client && !locked) {
+        await handleFailedLogin(client, this.clientLockoutOps).catch((err: unknown) => {
+          if (!(err instanceof UnauthorizedException)) throw err;
+        });
       }
       throw new BadRequestException(genericError);
     }
@@ -200,7 +224,7 @@ export class ClientAuthService {
       select: { password: true },
     });
     if (existing?.password) {
-      throw new BadRequestException('Un mot de passe existe déjà. Utilisez le changement de mot de passe.');
+      throw new BadRequestException('error.auth.passwordAlreadySet');
     }
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
@@ -260,7 +284,8 @@ export class ClientAuthService {
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
     const updated = await this.clientRepo.update({
       where: { id: clientId },
-      data: { password: hashedPassword },
+      // The inbox was just proven: a lockout from the forgotten password must not outlive it.
+      data: { password: hashedPassword, failedLoginAttempts: 0, lockedUntil: null },
       select: CLIENT_AUTH_SELECT,
     });
     await this.sessions.revokeOtherSessions(clientId, currentSessionId);
@@ -301,7 +326,8 @@ export class ClientAuthService {
     if (client.password) {
       if (!currentPassword) throw new BadRequestException('error.auth.currentPasswordRequired');
       const isValid = await bcrypt.compare(currentPassword, client.password);
-      if (!isValid) throw new UnauthorizedException('error.auth.currentPasswordIncorrect');
+      // 400, not 401: a 401 makes the app refresh the session and replay the request.
+      if (!isValid) throw new BadRequestException('error.auth.currentPasswordIncorrect');
     }
 
     // Prevent changing to the same password
@@ -316,7 +342,13 @@ export class ClientAuthService {
       data: { password: hashedPassword },
       select: CLIENT_AUTH_SELECT,
     });
-    await this.sessions.revokeOtherSessions(clientId, currentSessionId);
+    // Only a change proven by the current password signs the other devices out.
+    // A first password on an OAuth-only account needs no proof, so a stolen
+    // access token or an unlocked phone could otherwise set one and evict the
+    // real owner from every device.
+    if (client.password) {
+      await this.sessions.revokeOtherSessions(clientId, currentSessionId);
+    }
 
     return {
       success: true,

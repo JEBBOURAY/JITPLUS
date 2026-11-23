@@ -24,7 +24,7 @@ describe('EventsGateway auth', () => {
   afterEach(() => gateway.onModuleDestroy());
 
   it('verifies tokens with the same algorithm, issuer and audience constraints as HTTP', async () => {
-    jwtService.verify.mockReturnValue({ sub: 'client-1', type: 'client' });
+    jwtService.verify.mockReturnValue({ sub: 'client-1', type: 'client', aud: 'jitplus-client' });
     const socket = makeSocket('tok');
 
     await gateway.handleConnection(socket as never);
@@ -38,7 +38,7 @@ describe('EventsGateway auth', () => {
   });
 
   it('rejects a merchant socket whose device session was revoked', async () => {
-    jwtService.verify.mockReturnValue({ sub: 'merchant-1', type: 'merchant', jti: 'jti-1' });
+    jwtService.verify.mockReturnValue({ sub: 'merchant-1', type: 'merchant', aud: 'jitplus-merchant', jti: 'jti-1' });
     deviceSessionRepo.findUnique.mockResolvedValue(null);
     const socket = makeSocket('tok');
 
@@ -50,7 +50,7 @@ describe('EventsGateway auth', () => {
   });
 
   it('joins the merchant room when the device session is live', async () => {
-    jwtService.verify.mockReturnValue({ sub: 'merchant-1', type: 'team_member', jti: 'jti-1' });
+    jwtService.verify.mockReturnValue({ sub: 'merchant-1', type: 'team_member', aud: 'jitplus-merchant', jti: 'jti-1' });
     deviceSessionRepo.findUnique.mockResolvedValue({ id: 'row-1' });
     const socket = makeSocket('tok');
 
@@ -70,6 +70,46 @@ describe('EventsGateway auth', () => {
     gateway.server = { sockets: { sockets: new Map([[live.id, live], [revoked.id, revoked]]) } } as never;
 
     await (gateway as unknown as { recheckConnectedTokens: () => Promise<void> }).recheckConnectedTokens();
+
+    expect(live.disconnect).not.toHaveBeenCalled();
+    expect(revoked.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('refuses the email-unsubscribe JWT (purpose, no type/sub) even though it verifies', async () => {
+    jwtService.verify.mockReturnValue({ clientId: 'client-1', purpose: 'unsubscribe', aud: 'jitplus-client' });
+    const socket = makeSocket('tok');
+
+    await gateway.handleConnection(socket as never);
+
+    expect(socket.join).not.toHaveBeenCalled();
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('refuses a token whose audience does not match its type', async () => {
+    jwtService.verify.mockReturnValue({ sub: 'merchant-1', type: 'merchant', aud: 'jitplus-client', jti: 'jti-1' });
+    deviceSessionRepo.findUnique.mockResolvedValue({ id: 'row-1' });
+    const socket = makeSocket('tok');
+
+    await gateway.handleConnection(socket as never);
+
+    expect(socket.join).not.toHaveBeenCalled();
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('periodic recheck disconnects client sockets whose ClientSession was deleted', async () => {
+    const clientSessionRepo = { findUnique: jest.fn(), findMany: jest.fn() };
+    const gw = new EventsGateway(jwtService as never, config as never, deviceSessionRepo as never, clientSessionRepo as never);
+    gw.afterInit();
+    const live = makeSocket('live');
+    const revoked = makeSocket('revoked');
+    jwtService.verify.mockImplementation((token: string) => ({
+      sub: 'client-1', type: 'client', aud: 'jitplus-client', sid: token === 'live' ? 'sid-live' : 'sid-gone',
+    }));
+    clientSessionRepo.findMany.mockResolvedValue([{ id: 'sid-live', clientId: 'client-1' }]);
+    gw.server = { sockets: { sockets: new Map([[live.id, live], [revoked.id, revoked]]) } } as never;
+
+    await (gw as unknown as { recheckConnectedTokens: () => Promise<void> }).recheckConnectedTokens();
+    gw.onModuleDestroy();
 
     expect(live.disconnect).not.toHaveBeenCalled();
     expect(revoked.disconnect).toHaveBeenCalledWith(true);

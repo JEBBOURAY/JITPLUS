@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Switch } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Switch } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ArrowLeft, Sparkles, Lightbulb, BellRing, TrendingUp, ShieldCheck, type LucideIcon } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

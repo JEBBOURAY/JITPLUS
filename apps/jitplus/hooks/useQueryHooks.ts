@@ -3,7 +3,7 @@
  * stale-while-revalidate, deduplication, and retry.
  */
 import {
-  useQuery, useInfiniteQuery, useMutation, useQueryClient, keepPreviousData,
+  useQuery, useInfiniteQuery, useMutation, useQueryClient,
   type InfiniteData, type QueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/services/api';
@@ -11,6 +11,7 @@ import {
   StampsOverview, Merchant, NotificationsResponse, ClientNotification, LuckyWheelTicket, LuckyWheelDraw,
 } from '@/types';
 import { useWsStore } from '@/stores/wsStore';
+import { useAuthStore } from '@/stores/authStore';
 
 // ── Query keys (centralised for easy invalidation) ──
 
@@ -24,12 +25,23 @@ export const queryKeys = {
   merchant: (id: string | undefined) => ['merchant', id] as const,
 } as const;
 
+/** A stamp can grant a lucky-wheel ticket: the wallet and the tickets move together. */
+export function invalidateStamps(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: queryKeys.stamps });
+  qc.invalidateQueries({ queryKey: queryKeys.luckyWheelDraws });
+}
+
 // Single-pass invalidation predicate for both notification-related caches —
 // avoids triggering two separate refetch cycles.
 const isNotificationsQuery = (q: { queryKey: readonly unknown[] }) => {
   const k = q.queryKey[0];
-  return k === 'notifications' || k === 'notifications-unread-count';
+  return k === queryKeys.notifications[0] || k === queryKeys.unreadCount[0];
 };
+
+/** The notification feed and the unread badge, refetched together in one cycle. */
+export function invalidateNotifications(qc: QueryClient) {
+  return qc.invalidateQueries({ predicate: isNotificationsQuery });
+}
 
 // ── Stamps / loyalty cards ──
 
@@ -48,18 +60,15 @@ export function useStampsOverview(
 
 // ── Merchants (discover) ──
 
-/**
- * `scope` is the client id, or 'guest': the list differs per account (deal
- * titles, blocked merchants), so a login never shows the guest list.
- */
-export function useMerchants(scope: string, enabled = true) {
+/** Keyed by client: the list differs per account (deal titles, blocked merchants). */
+export function useMerchants(clientId: string | undefined) {
   return useQuery<Merchant[]>({
-    queryKey: [...queryKeys.merchants, scope],
+    queryKey: [...queryKeys.merchants, clientId],
     queryFn: () => api.getMerchants(),
     // 5 min, like the server cache: the list itself changes rarely, but it
     // carries the deal badges, which go stale much faster.
     staleTime: 5 * 60 * 1000,
-    enabled,
+    enabled: !!clientId,
   });
 }
 
@@ -78,9 +87,6 @@ export function useNotifications(enabled = true) {
     staleTime: 15 * 1000, // 15s — WS/FCM invalidates on new notifications, low staleTime ensures fast background refetch
     // Limit cache lifetime to prevent unbounded memory growth from infinite scroll
     gcTime: 5 * 60 * 1000, // 5 min — discard old pages sooner to limit memory
-    // Keeps the previous page data visible while the next page is loading
-    // — prevents the list from flashing empty between page transitions.
-    placeholderData: keepPreviousData,
     enabled,
   });
 }
@@ -163,7 +169,7 @@ export function useMarkNotificationAsRead() {
     onError: (_err, _vars, ctx) => restoreNotifications(queryClient, ctx),
     onSettled: () => {
       // Single predicate invalidates both notification queries in one cycle.
-      queryClient.invalidateQueries({ predicate: isNotificationsQuery });
+      invalidateNotifications(queryClient);
     },
   });
 }
@@ -181,7 +187,7 @@ export function useMarkAllNotificationsAsRead() {
     },
     onError: (_err, _vars, ctx) => restoreNotifications(queryClient, ctx),
     onSettled: () => {
-      queryClient.invalidateQueries({ predicate: isNotificationsQuery });
+      invalidateNotifications(queryClient);
     },
   });
 }
@@ -199,7 +205,7 @@ export function useDismissNotification() {
     },
     onError: (_err, _vars, ctx) => restoreNotifications(queryClient, ctx),
     onSettled: () => {
-      queryClient.invalidateQueries({ predicate: isNotificationsQuery });
+      invalidateNotifications(queryClient);
     },
   });
 }
@@ -216,16 +222,21 @@ export function useDismissAllNotifications() {
     },
     onError: (_err, _vars, ctx) => restoreNotifications(queryClient, ctx),
     onSettled: () => {
-      queryClient.invalidateQueries({ predicate: isNotificationsQuery });
+      invalidateNotifications(queryClient);
     },
   });
 }
 
 // ── Merchant detail ──
 
+/**
+ * Signed out (a shared link), the public payload has no card fields: it is
+ * cached apart, so the member payload is fetched right after login.
+ */
 export function useMerchantById(id: string | undefined, enabled = true) {
+  const signedOut = useAuthStore((s) => !s.client);
   return useQuery<Merchant>({
-    queryKey: queryKeys.merchant(id),
+    queryKey: [...queryKeys.merchant(id), signedOut],
     queryFn: () => api.getMerchantById(id!),
     staleTime: 30_000,
     enabled: enabled && !!id,

@@ -14,6 +14,7 @@ export type InboxCategory =
   | 'OFFER'
   | 'NEWS'
   | 'REMINDER'
+  | 'BOOKING'
   | 'ADMIN';
 
 export interface AdminNotification {
@@ -37,7 +38,7 @@ const INBOX_PAGE_SIZE = 20;
 
 export function useAdminNotifications() {
   return useInfiniteQuery<AdminNotificationsPage>({
-    queryKey: [...queryKeys.adminNotifications, 'feed'],
+    queryKey: queryKeys.adminNotificationFeed,
     queryFn: async ({ pageParam }) => {
       const res = await api.get('/merchant/admin-notifications', {
         params: { page: pageParam, limit: INBOX_PAGE_SIZE },

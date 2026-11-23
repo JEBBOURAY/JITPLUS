@@ -1,7 +1,6 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
-  TextInput,
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
@@ -13,7 +12,9 @@ import {
   BackHandler,
   type LayoutChangeEvent,
 } from 'react-native';
+import { TextInput } from '@/components/AppText';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { resetTo } from '@/utils/navReset';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowRight, Check } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -631,7 +632,7 @@ export default function RegisterScreen() {
       <LanguagePickerModal visible={showLangPicker} onClose={() => setShowLangPicker(false)} />
 
       {welcomeName !== null && (
-        <WelcomeOverlay storeName={welcomeName} onDone={() => router.replace('/setup')} />
+        <WelcomeOverlay storeName={welcomeName} onDone={() => resetTo('/setup')} />
       )}
     </View>
   );

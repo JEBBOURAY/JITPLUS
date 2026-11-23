@@ -1,10 +1,11 @@
 import axios from 'axios';
+import i18n from '@/i18n';
 import { createApiClient, resolveApiUrl, resolveServerBaseUrl } from '@jitplus/shared/src/apiFactory';
-import { logInfo, logApiError } from '@/utils/devLogger';
+import { logInfo, logApiError, logApiResponse } from '@/utils/devLogger';
 import {
   getToken, setToken, removeToken,
   getRefreshToken, setRefreshToken, removeRefreshToken,
-  getStoredToken, clearAuth, setRememberMe, persistSession,
+  clearAuth, setRememberMe, persistSession,
   setEmailOtpNewUser, getEmailOtpNewUser, clearEmailOtpNewUser,
   setCachedProfile, getCachedProfile,
 } from './storage';
@@ -14,8 +15,10 @@ import { createMerchantMethods } from './merchants';
 import { createNotificationMethods } from './notifications';
 import { createLuckyWheelMethods } from './lucky-wheel';
 import { createScratchMethods } from './scratch';
+import { createCollectionMethods } from './collections';
 import { createDealMethods } from './deals';
 import { createStampCodeMethods } from './stamp-codes';
+import { createBookingMethods } from './booking';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
@@ -68,11 +71,21 @@ const http = createApiClient({
   authRoutes: AUTH_ROUTES,
 });
 
+// Server errors and sign-up emails follow the language chosen in the app, which
+// the device's Accept-Language does not reflect (and Android does not send it).
+http.interceptors.request.use((req) => {
+  req.headers['x-lang'] = i18n.locale;
+  // Sign-in forms show a 429 at once: it can come from the handler itself (OTP
+  // cooldown, daily cap), and waiting on Retry-After froze the button up to 30 s.
+  if (AUTH_ROUTES.some((route) => req.url?.includes(route))) req.__retryCount = 1;
+  return req;
+});
+
 // ── Dev-mode request/response logging ──
 if (IS_DEV) {
   logInfo('API', 'Base URL: ' + resolveApiUrl(ENV_URL, IS_DEV));
   http.interceptors.response.use(
-    (res) => { logInfo('API', `${res.config.method?.toUpperCase()} ${res.config.url} → ${res.status}`); return res; },
+    (res) => { logApiResponse('API', res); return res; },
     (error) => { logApiError('API', error); return Promise.reject(error); },
   );
 }
@@ -82,7 +95,7 @@ export const api = {
   setOnUnauthorized(callback: () => void) { onUnauthorized = callback; },
 
   // Token / session management
-  getStoredToken, clearAuth,
+  getToken, clearAuth,
   setRememberMe, persistSession,
   setEmailOtpNewUser, getEmailOtpNewUser, clearEmailOtpNewUser,
   setCachedProfile, getCachedProfile,
@@ -94,6 +107,8 @@ export const api = {
   ...createNotificationMethods(http),
   ...createLuckyWheelMethods(http),
   ...createScratchMethods(http),
+  ...createCollectionMethods(http),
   ...createDealMethods(http),
   ...createStampCodeMethods(http),
+  ...createBookingMethods(http),
 };

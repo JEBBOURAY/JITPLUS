@@ -2,14 +2,12 @@ import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '@/components/AppText';
 import React, { useCallback } from 'react';
 import { haptic } from '@/utils/haptics';
-import { CreditCard, Compass, BadgePercent, Bell, QrCode } from 'lucide-react-native';
+import { CreditCard, Compass, BadgePercent, CalendarDays, QrCode } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { ms, hp } from '@/utils/responsive';
-import { useUnreadNotificationCount } from '@/hooks/useQueryHooks';
-import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 const ICONS: Record<string, LucideIcon> = {
@@ -17,7 +15,7 @@ const ICONS: Record<string, LucideIcon> = {
   deals: BadgePercent,
   qr: QrCode,
   discover: Compass,
-  notifications: Bell,
+  rdv: CalendarDays,
 };
 
 const LABEL_KEYS: Record<string, string> = {
@@ -25,7 +23,7 @@ const LABEL_KEYS: Record<string, string> = {
   deals: 'tabs.deals',
   qr: 'tabs.qr',
   discover: 'tabs.discover',
-  notifications: 'tabs.notifs',
+  rdv: 'tabs.rdv',
 };
 
 const QR_BG_ACTIVE = { backgroundColor: palette.violet } as const;
@@ -35,9 +33,6 @@ const FOCUSED_ICON_BG = { backgroundColor: `${palette.violet}15` } as const;
 export default React.memo(function CustomTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { client } = useAuth();
-  const { data: unreadData } = useUnreadNotificationCount(!!client);
-  const unreadCount = unreadData?.unreadCount ?? 0;
   const insets = useSafeAreaInsets();
 
   const handleTabPress = useCallback((route: BottomTabBarProps['state']['routes'][number], index: number) => {
@@ -129,13 +124,6 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
                     color={isFocused ? palette.violet : theme.textMuted}
                     strokeWidth={1.5}
                   />
-                  {route.name === 'notifications' && unreadCount > 0 && (
-                    <View style={styles.badge} accessibilityLabel={t('notifications.unreadCount', { count: unreadCount })}>
-                      <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </Text>
-                    </View>
-                  )}
                 </View>
                 <Text
                   maxFontSizeMultiplier={1.3}
@@ -214,25 +202,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
-  },
-  badge: {
-    position: 'absolute',
-    top: -ms(4),
-    right: ms(2),
-    minWidth: ms(18),
-    height: ms(18),
-    borderRadius: ms(9),
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: ms(4),
-    borderWidth: 1.5,
-    borderColor: '#fff',
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: ms(9),
-    fontWeight: '600',
-    lineHeight: ms(13),
   },
 });

@@ -7,7 +7,7 @@ function deal(overrides: Partial<DigestDeal> = {}): DigestDeal {
     id: 'd1',
     merchantId: 'm1',
     merchantName: 'SportZone',
-    category: 'SPORT',
+    categories: ['SPORT'],
     scope: 'LOCAL',
     title: '-30 % sur les baskets Run X',
     cityKeys: ['casablanca'],
@@ -40,11 +40,17 @@ describe('deal digest', () => {
   });
 
   it('filters deals by the client categories (empty = all) and blocked merchants', () => {
-    const sport = deal({ id: 's', category: 'SPORT', merchantId: 'm1' });
-    const food = deal({ id: 'f', category: 'RESTAURANT', merchantId: 'm2' });
+    const sport = deal({ id: 's', categories: ['SPORT'], merchantId: 'm1' });
+    const food = deal({ id: 'f', categories: ['RESTAURANT'], merchantId: 'm2' });
     expect(dealsForClient([sport, food], [], new Set()).map((d) => d.id)).toEqual(['s', 'f']);
     expect(dealsForClient([sport, food], ['RESTAURANT'], new Set()).map((d) => d.id)).toEqual(['f']);
     expect(dealsForClient([sport, food], [], new Set(['m1'])).map((d) => d.id)).toEqual(['f']);
+  });
+
+  it('matches a deal through a secondary category of its merchant, as the feed does', () => {
+    const cafeRestaurant = deal({ id: 'c', categories: ['CAFE', 'RESTAURANT'] });
+    expect(dealsForClient([cafeRestaurant], ['RESTAURANT'], new Set()).map((d) => d.id)).toEqual(['c']);
+    expect(dealsForClient([cafeRestaurant], ['SPORT'], new Set())).toEqual([]);
   });
 
   it('builds a single-deal message that opens the deal', () => {

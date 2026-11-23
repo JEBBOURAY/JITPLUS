@@ -5,7 +5,10 @@ import { MerchantCategory, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { invalidateMerchantListCache } from '../common/utils/merchant-list-cache';
-import { MERCHANT_REPOSITORY, type IMerchantRepository } from '../common/repositories';
+import {
+  MERCHANT_REPOSITORY, type IMerchantRepository,
+  TEAM_MEMBER_REPOSITORY, type ITeamMemberRepository,
+} from '../common/repositories';
 import { IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
 import { pickEmailLang } from '../mail/transactional-i18n';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
@@ -81,6 +84,7 @@ export class MerchantSignupService {
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
+    @Inject(TEAM_MEMBER_REPOSITORY) private teamMemberRepo: ITeamMemberRepository,
     @Inject(MAIL_PROVIDER) private mailProvider: IMailProvider,
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
@@ -186,10 +190,20 @@ export class MerchantSignupService {
       'socialLinks.website': socialLinks?.website,
     });
 
-    const [referral, phone] = await Promise.all([
+    const [referral, phone, teamMember] = await Promise.all([
       this.resolveSignupReferral(dto.referralCode),
       this.checkPhoneExists(dto.phoneNumber),
+      // Login looks up merchants before team members: a merchant created on a
+      // team member's email would shadow that member (they could no longer sign
+      // in, and their wrong attempts would lock the squatter's account).
+      this.teamMemberRepo.findFirst({
+        where: { email: { equals: account.email.trim(), mode: 'insensitive' } },
+        select: { id: true },
+      }),
     ]);
+    if (teamMember) {
+      throw new ConflictException('Un compte avec cet email existe déjà');
+    }
     if (phone.exists) {
       throw new ConflictException('Un compte commerçant avec ce numéro de téléphone existe déjà');
     }

@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { safeNotification } from '@/utils/haptics';
-import { getErrorMessage } from '@/utils/error';
+import { getErrorStatus } from '@jitplus/shared';
+import { getErrorDetails, getErrorMessage } from '@/utils/error';
 import { formatDateTime } from '@/utils/date';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useMessageDraft, type MessageDraft } from '@/hooks/useMessageDraft';
@@ -9,21 +10,20 @@ import { useBroadcastStatus, useCheckNotificationContent, useSendPushNotificatio
 import type { BroadcastStatus } from '@/types';
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
-type ApiError = { response?: { status?: number; data?: { code?: string; message?: unknown } } };
-const httpStatus = (err: unknown) => (err as ApiError)?.response?.status;
 
 /** Pause after a send, against an accidental second broadcast. */
 export const SEND_COOLDOWN_MS = 30_000;
 
 /** What to tell the merchant when the server refuses a notification. */
 function sendErrorMessage(err: unknown, t: Translate): string {
-  const status = httpStatus(err);
+  const status = getErrorStatus(err);
   // Server-side content filter rejection.
   if (status === 400) return getErrorMessage(err, t('messages.contentBlockedMsg'));
   if (status === 429) {
     // The daily broadcast cap carries its own explanation; the route throttle does not.
-    const data = (err as ApiError).response?.data;
-    return data?.code === 'PUSH_DAILY_LIMIT' && typeof data.message === 'string' ? data.message : t('messages.rateLimited');
+    return getErrorDetails(err).code === 'PUSH_DAILY_LIMIT'
+      ? getErrorMessage(err, t('messages.rateLimited'))
+      : t('messages.rateLimited');
   }
   return getErrorMessage(err, t('common.genericError'));
 }
@@ -83,7 +83,7 @@ export function useNotificationSend(accountId: string | undefined, enabled: bool
     try {
       await checkContent({ title: title.trim(), body: body.trim() });
     } catch (err: unknown) {
-      if (httpStatus(err) === 400) {
+      if (getErrorStatus(err) === 400) {
         safeNotification(Haptics.NotificationFeedbackType.Error);
         setFormError(sendErrorMessage(err, t));
         return;

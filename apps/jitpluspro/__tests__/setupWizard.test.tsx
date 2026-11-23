@@ -15,7 +15,11 @@ const mockRewardSave = jest.fn(async () => mockState.rewardSaveResult);
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
-jest.mock('expo-router', () => ({ useRouter: () => ({ replace: mockReplace, push: jest.fn() }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
+  // utils/navReset: no tabs underneath here (opened right after sign-up), so the wizard replaces itself.
+  router: { replace: (...args: unknown[]) => mockReplace(...args), push: jest.fn(), canDismiss: () => false, dismissTo: jest.fn(), dismissAll: jest.fn() },
+}));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 24, bottom: 16, left: 0, right: 0 }),
 }));
@@ -38,7 +42,7 @@ jest.mock('@/contexts/ThemeContext', () => ({
 jest.mock('@/hooks/useQueryHooks', () => ({
   useCompleteOnboarding: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
 }));
-jest.mock('@/utils/haptics', () => ({ hapticSuccess: jest.fn(), hapticLight: jest.fn() }));
+jest.mock('@/utils/haptics', () => ({ hapticSuccess: jest.fn(), hapticLight: jest.fn(), hapticError: jest.fn() }));
 
 // Each page is covered by its own screen; here only the navigation matters.
 jest.mock('@/components/setup/steps/BrandStep', () => ({

@@ -45,7 +45,14 @@ import { MerchantProfileData } from '../common/prisma-selects';
 
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB (sharp optimizes down to a small WebP)
-const MAX_GALLERY_PHOTOS = 5;
+const MAX_GALLERY_PHOTOS = 6;
+/** Image profile and folder of the uploads that are not attached to the merchant profile. */
+const DETACHED_UPLOADS: Partial<Record<UploadType, { profile: string; folder: string }>> = {
+  [UploadType.REWARD]: { profile: 'reward', folder: 'rewards' },
+  [UploadType.DEAL]: { profile: 'deal', folder: 'deals' },
+  // A product photo is shown small, like a reward.
+  [UploadType.COLLECTION]: { profile: 'reward', folder: 'collections' },
+};
 
 /** Detect MIME from magic bytes — supports JPEG, PNG, WebP only. */
 function detectMimeFromBuffer(buffer: Buffer): string | null {
@@ -133,6 +140,21 @@ export class MerchantController {
     // Rejects URLs the merchant neither uploaded nor already references, and
     // lists the files the update stops using (orphan cleanup).
     const current = await this.profileService.getProfile(user.userId);
+
+    // Logo, gallery and card background are Pro features. The upload route
+    // checks the plan, but a free upload (cover/reward/deal) could otherwise be
+    // re-pointed here. Removing or keeping existing images stays allowed (downgrades).
+    const currentGallery = Array.isArray(current.gallery) ? current.gallery : [];
+    const addsProImage =
+      (!!dto.logoUrl && dto.logoUrl !== current.logoUrl) ||
+      (!!dto.cardBackgroundUrl && dto.cardBackgroundUrl !== current.cardBackgroundUrl) ||
+      (dto.gallery?.some((url) => !currentGallery.includes(url)) ?? false);
+    if (addsProImage && !(await this.planService.isPremium(user.userId))) {
+      throw new BadRequestException(
+        'La personnalisation du logo est réservée au plan Pro. Contactez notre équipe sur WhatsApp pour activer votre abonnement.',
+      );
+    }
+
     const replaced = planProfileImageChanges(this.storageProvider, user.userId, current, dto);
 
     const updated = await this.profileService.updateProfile(user.userId, dto);
@@ -182,8 +204,11 @@ export class MerchantController {
       throw new BadRequestException('Le contenu du fichier ne correspond pas à un format image autorisé (JPG, PNG, WebP).');
     }
 
-    // Logo upload is a Premium feature; covers, reward and deal images are allowed on all plans.
-    if (query.type !== UploadType.COVER && query.type !== UploadType.REWARD && query.type !== UploadType.DEAL) {
+    // Uploaded then returned: the caller saves the URL with the reward, deal or collection.
+    const detached = query.type ? DETACHED_UPLOADS[query.type] : undefined;
+
+    // Logo upload is a Premium feature; covers and detached images are allowed on all plans.
+    if (query.type !== UploadType.COVER && !detached) {
       const isPremium = await this.planService.isPremium(user.userId);
       if (!isPremium) {
         throw new BadRequestException(
@@ -192,13 +217,13 @@ export class MerchantController {
       }
     }
 
-    // Gallery: upload photo, append to merchant.gallery array (cap 5), return updated gallery.
+    // Gallery: upload photo, append to merchant.gallery array (cap MAX_GALLERY_PHOTOS), return updated gallery.
     if (query.type === UploadType.GALLERY) {
       // Limit checked before uploading so a rejected request stores nothing.
       const current = await this.profileService.getProfile(user.userId);
       const existing = Array.isArray(current.gallery) ? current.gallery : [];
       if (existing.length >= MAX_GALLERY_PHOTOS) {
-        throw new BadRequestException('La galerie est limitée à 5 photos. Supprimez-en une avant d’ajouter.');
+        throw new BadRequestException(`La galerie est limitée à ${MAX_GALLERY_PHOTOS} photos. Supprimez-en une avant d’ajouter.`);
       }
       const optimized = await this.imageOptimizer.optimize(file, 'gallery');
       const imageUrl = await this.storageProvider.uploadFile(optimized, 'gallery', user.userId);
@@ -209,17 +234,9 @@ export class MerchantController {
       return { url: imageUrl, field: 'gallery', gallery: next };
     }
 
-    // Reward: just upload + return URL. The caller persists it via POST/PUT /rewards.
-    if (query.type === UploadType.REWARD) {
-      const optimized = await this.imageOptimizer.optimize(file, 'reward');
-      const imageUrl = await this.storageProvider.uploadFile(optimized, 'rewards', user.userId);
-      return { url: imageUrl, field: 'imageUrl' };
-    }
-
-    // Deal: upload + return URL, persisted by POST/PATCH /merchant/deals.
-    if (query.type === UploadType.DEAL) {
-      const optimized = await this.imageOptimizer.optimize(file, 'deal');
-      const imageUrl = await this.storageProvider.uploadFile(optimized, 'deals', user.userId);
+    if (detached) {
+      const optimized = await this.imageOptimizer.optimize(file, detached.profile);
+      const imageUrl = await this.storageProvider.uploadFile(optimized, detached.folder, user.userId);
       return { url: imageUrl, field: 'imageUrl' };
     }
 
@@ -303,15 +320,25 @@ export class MerchantController {
   @Get('clients')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async getClients(
-    @Query() { search, page, limit, view }: MerchantClientsQueryDto,
+    @Query() { search, page, limit, view, sort }: MerchantClientsQueryDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.clientService.getClients(user.userId, search, page, limit, view);
+    return this.clientService.getClients(user.userId, search, page, limit, view, sort);
+  }
+
+  @Get('clients/segments')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
+  async getClientSegments(@CurrentUser() user: JwtPayload) {
+    return this.clientService.getClientSegments(user.userId);
   }
 
   @Get('clients/scan')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
   async getClientsForScan(@Query('search') search: string, @CurrentUser() user: JwtPayload) {
+    // Raw query param (no DTO): bound it before it reaches the ILIKE queries.
+    if (typeof search === 'string' && search.length > 100) {
+      throw new BadRequestException('Recherche trop longue');
+    }
     return this.clientService.getClientsForScan(user.userId, search);
   }
 

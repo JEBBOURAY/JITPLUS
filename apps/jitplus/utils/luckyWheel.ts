@@ -2,6 +2,7 @@ export {
   LOST_COLOR,
   computeOddsBreakdown,
   prizeColor,
+  segmentTextColor,
   buildWheelSegments,
   pickTargetSegment,
   computeLandingRotation,

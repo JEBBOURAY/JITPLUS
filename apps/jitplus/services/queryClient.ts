@@ -2,6 +2,7 @@ import { QueryClient, QueryCache, MutationCache, onlineManager, focusManager } f
 import { AppState } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import * as Sentry from '@sentry/react-native';
+import { getErrorStatus } from '@jitplus/shared';
 
 // Sync React Query's online state with NetInfo — pauses mutations offline
 // and auto-replays them on reconnect.
@@ -25,9 +26,9 @@ focusManager.setEventListener((setFocused) => {
 // seized/rooted. AsyncStorage is unencrypted — shorter TTL = less recoverable data.
 export const CACHE_MAX_AGE = 4 * 60 * 60 * 1000;
 
+/** HTTP status of an axios error, or the `status` some non-axios errors carry. */
 function getStatus(error: unknown): number | undefined {
-  return (error as { response?: { status?: number } })?.response?.status
-    ?? (error as { status?: number })?.status;
+  return getErrorStatus(error) ?? (error as { status?: number } | null)?.status;
 }
 
 // Gateway statuses come from a proxy/load balancer (Cloud Run, carrier, Play pre-launch
@@ -48,7 +49,7 @@ export function isClientNetworkError(error: unknown): boolean {
 // from Cloud Run monitoring, not from one phone on a dead 3G link.
 export function isServerOrNetworkError(error: unknown): boolean {
   if (isClientNetworkError(error)) return false;
-  const status = (error as { response?: { status?: number } })?.response?.status;
+  const status = getErrorStatus(error);
   return !status || (status >= 500 && !GATEWAY_STATUSES.has(status));
 }
 
@@ -72,6 +73,10 @@ export const queryClient = new QueryClient({
       retry: (failureCount, error) => {
         const status = getStatus(error);
         if (status && status >= 400 && status < 500) return false;
+        // A timeout already cost 2 × 15 s (axios retries GETs once): more tries
+        // kept a dead connection (captive Wi-Fi) spinning ~95 s before the error.
+        const code = (error as { code?: string } | null)?.code;
+        if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') return false;
         return failureCount < 2;
       },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),

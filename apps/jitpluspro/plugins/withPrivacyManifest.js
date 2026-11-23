@@ -22,9 +22,13 @@ const PRIVACY_MANIFEST = `<?xml version="1.0" encoding="UTF-8"?>
 <dict>
 
     <!-- ── Tracking declaration ─────────────────────────────────── -->
-    <!-- App does NOT track users across apps/websites (no IDFA) -->
+    <!-- Meta SDK (ad attribution, SKAdNetwork) reads the IDFA once the ATT
+         prompt is accepted: that is tracking in Apple's sense. The Meta pod
+         ships its own manifest with its tracking domains. Keep App Store
+         Connect privacy labels in sync (Device ID + Product Interaction,
+         used for third-party advertising and tracking). -->
     <key>NSPrivacyTracking</key>
-    <false/>
+    <true/>
     <key>NSPrivacyTrackingDomains</key>
     <array/>
 
@@ -167,17 +171,33 @@ const PRIVACY_MANIFEST = `<?xml version="1.0" encoding="UTF-8"?>
             </array>
         </dict>
 
-        <!-- Device ID — FCM push token -->
+        <!-- Device ID — push token (app functionality) and advertising
+             identifier read by the Meta SDK after ATT consent (tracking) -->
         <dict>
             <key>NSPrivacyCollectedDataType</key>
             <string>NSPrivacyCollectedDataTypeDeviceID</string>
             <key>NSPrivacyCollectedDataTypeLinked</key>
             <false/>
             <key>NSPrivacyCollectedDataTypeTracking</key>
-            <false/>
+            <true/>
             <key>NSPrivacyCollectedDataTypePurposes</key>
             <array>
                 <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+                <string>NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising</string>
+            </array>
+        </dict>
+
+        <!-- Product interaction — Meta app events (install / activation) -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeProductInteraction</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising</string>
             </array>
         </dict>
 

@@ -1,22 +1,22 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { toast } from '@/components/ui/Toast';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
   Platform,
   Modal,
-  TextInput,
   Alert,
   KeyboardAvoidingView,
   RefreshControl,
   Linking,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import {
-  ArrowLeft,
+  AlertCircle,
   Phone,
   Mail,
   X,
@@ -25,13 +25,17 @@ import {
   PlusCircle,
   MinusCircle,
   MessageCircle,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { backToTabs } from '@/utils/navReset';
 import { useAuthStore } from '@/stores/authStore';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ActionButton } from '@/components/ui/ActionButton';
+import { StateMessage } from '@/components/ui/StateMessage';
+import { ScreenHeader } from '@/components/scratch/ScratchUI';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -108,7 +112,7 @@ export default function ClientDetailScreen() {
   useEffect(() => {
     if (!validId) {
       Alert.alert(t('common.error'), t('clientDetail.invalidClient'), [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK', onPress: () => (router.canGoBack() ? router.back() : backToTabs('/(tabs)/clients')) },
       ]);
     }
   }, [validId, t, router]);
@@ -118,6 +122,7 @@ export default function ClientDetailScreen() {
     isLoading: loading,
     refetch,
     isRefetching: refreshing,
+    error: loadError,
   } = useClientDetail(validId ? id : '');
 
   const adjustMutation = useAdjustStamps();
@@ -163,8 +168,7 @@ export default function ClientDetailScreen() {
                 note: adjustNote.trim() || undefined,
               });
               setAdjustModalVisible(false);
-              Alert.alert(
-                t('common.success'),
+              toast.success(
                 t(adjustMode === 'add' ? 'clientDetail.adjustSuccessAdd' : 'clientDetail.adjustSuccessRemove', { count }),
               );
             } catch (err: unknown) {
@@ -203,14 +207,10 @@ export default function ClientDetailScreen() {
       const waUrl = phoneDigits
         ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(message)}`
         : `whatsapp://send?text=${encodeURIComponent(message)}`;
+      // openURL directly: on iOS canOpenURL('whatsapp://') is always false
+      // (scheme not in LSApplicationQueriesSchemes); it rejects when WhatsApp is missing.
       try {
-        const can = await Linking.canOpenURL(waUrl);
-        if (can) {
-          await Linking.openURL(waUrl);
-        } else {
-          // Fallback: copy the link so the merchant can paste it manually
-          Alert.alert(t('quickAdd.waNotInstalled'), data.claim.url);
-        }
+        await Linking.openURL(waUrl);
       } catch {
         Alert.alert(t('quickAdd.waNotInstalled'), data.claim.url);
       }
@@ -232,24 +232,36 @@ export default function ClientDetailScreen() {
   // Guard: auth not ready
   if (shouldWait) return null;
 
-  // Guard: invalid or missing UUID — after all hooks
-  if (!validId) {
-    router.back();
-    return null;
-  }
+  // Guard: invalid or missing UUID — after all hooks. The alert above leaves
+  // the screen (going back during render popped two screens).
+  if (!validId) return null;
 
-  if (loading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-      </View>
-    );
-  }
+  const header = <ScreenHeader title={t('clientDetail.title')} />;
 
-  if (!client) {
+  // The header stays on the loading and error states so there is always a way back.
+  if (loading || !client) {
+    const notFound = (loadError as { response?: { status?: number } } | null)?.response?.status === 404;
     return (
-      <View style={[styles.centered, { backgroundColor: theme.bg }]}>
-        <Text style={[styles.notFound, { color: theme.textMuted }]}>{t('clientDetail.notFound')}</Text>
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
+        {header}
+        {loading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={theme.primary} />
+          </View>
+        ) : loadError && !notFound ? (
+          <StateMessage
+            Icon={AlertCircle}
+            title={t('clientDetail.loadError')}
+            hint={t('clientDetail.loadErrorHint')}
+            actionLabel={t('common.retry')}
+            ActionIcon={RefreshCw}
+            onAction={() => { refetch(); }}
+          />
+        ) : (
+          <View style={styles.centered}>
+            <Text style={[styles.notFound, { color: theme.textMuted }]}>{t('clientDetail.notFound')}</Text>
+          </View>
+        )}
       </View>
     );
   }
@@ -262,19 +274,7 @@ export default function ClientDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.headerBar, { flexDirection: dir.row, paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={HIT_SLOP_LARGE}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <ArrowLeft size={22} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>
-          {t('clientDetail.title')}
-        </Text>
-      </View>
+      {header}
 
       <ScrollView
         style={styles.body}
@@ -455,18 +455,6 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   notFound: { fontSize: 14, fontFamily: font.regular },
   flex1: { flex: 1 },
-
-  headerBar: {
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 18,
-    paddingBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontFamily: font.semibold,
-    letterSpacing: -0.3,
-  },
 
   body: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 8 },

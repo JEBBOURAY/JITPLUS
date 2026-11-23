@@ -1,9 +1,11 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, I18nManager } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import { X, ChevronRight } from 'lucide-react-native';
 import { usePersistedFlag } from '@/hooks/usePersistedFlag';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
 import { ms } from '@/utils/responsive';
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -37,7 +39,8 @@ export const ReminderBanner = React.memo(function ReminderBanner({
   const theme = useTheme();
   const { t } = useLanguage();
   const isDark = theme.mode === 'dark';
-  const isRTL = I18nManager.isRTL;
+  // The root view is forced LTR (app/_layout.tsx): mirror by hand, like every Pro screen.
+  const { isRTL, row, textAlign, flip } = useDir();
   const { value: dismissed, setValue: setDismissed } = usePersistedFlag(storageKey);
 
   const handleDismiss = useCallback(() => {
@@ -57,7 +60,7 @@ export const ReminderBanner = React.memo(function ReminderBanner({
       ]}
     >
       <TouchableOpacity
-        style={styles.closeBtn}
+        style={[styles.closeBtn, isRTL ? styles.closeBtnStart : styles.closeBtnEnd]}
         onPress={handleDismiss}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         accessibilityRole="button"
@@ -70,7 +73,7 @@ export const ReminderBanner = React.memo(function ReminderBanner({
         activeOpacity={onPress ? 0.7 : 1}
         onPress={onPress}
         disabled={!onPress}
-        style={styles.content}
+        style={[styles.content, isRTL ? styles.contentRtl : styles.contentLtr, { flexDirection: row }]}
         accessibilityRole={onPress ? 'button' : undefined}
         accessibilityLabel={`${title}. ${message}`}
       >
@@ -78,21 +81,21 @@ export const ReminderBanner = React.memo(function ReminderBanner({
           <Icon size={ms(16)} color="#7C3AED" strokeWidth={1.75} />
         </View>
         <View style={styles.textWrap}>
-          <Text style={[styles.title, { color: theme.text }]} maxFontSizeMultiplier={1.6} numberOfLines={1}>
+          <Text style={[styles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.6} numberOfLines={1}>
             {title}
           </Text>
-          <Text style={[styles.desc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6} numberOfLines={2}>
+          <Text style={[styles.desc, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.6} numberOfLines={2}>
             {message}
           </Text>
           {!!actionLabel && (
-            <View style={styles.actionRow}>
+            <View style={[styles.actionRow, { flexDirection: row }]}>
               <Text style={[styles.action, { color: '#7C3AED' }]} maxFontSizeMultiplier={1.4}>
                 {actionLabel}
               </Text>
               <ChevronRight
                 size={ms(14)}
                 color="#7C3AED"
-                style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+                style={flip}
               />
             </View>
           )}
@@ -113,12 +116,16 @@ const styles = StyleSheet.create({
       android: { elevation: 1 },
     }),
   },
-  closeBtn: { position: 'absolute', top: 8, right: 8, zIndex: 2, padding: 4 },
-  content: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, paddingRight: 32 },
+  closeBtn: { position: 'absolute', top: 8, zIndex: 2, padding: 4 },
+  closeBtnEnd: { right: 8 },
+  closeBtnStart: { left: 8 },
+  content: { alignItems: 'center', gap: 12, padding: 14 },
+  contentLtr: { paddingRight: 32 },
+  contentRtl: { paddingLeft: 32 },
   iconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   textWrap: { flex: 1 },
   title: { fontSize: ms(13), fontFamily: 'Lexend_600SemiBold' },
   desc: { fontSize: ms(12), fontFamily: 'Lexend_400Regular', marginTop: 1 },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 4 },
+  actionRow: { alignItems: 'center', gap: 2, marginTop: 4 },
   action: { fontSize: ms(12), fontFamily: 'Lexend_600SemiBold' },
 });

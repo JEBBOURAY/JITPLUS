@@ -17,7 +17,7 @@ export type CouponRewardType = (typeof COUPON_REWARD_TYPES)[number];
 export const COUPON_STATUSES = ['ACTIVE', 'REDEEMED', 'EXPIRED', 'CANCELLED'] as const;
 export type CouponStatus = (typeof COUPON_STATUSES)[number];
 
-export const COUPON_SOURCES = ['SCRATCH_CARD', 'LUCKY_WHEEL', 'MANUAL'] as const;
+export const COUPON_SOURCES = ['SCRATCH_CARD', 'LUCKY_WHEEL', 'MANUAL', 'COLLECTION'] as const;
 export type CouponSource = (typeof COUPON_SOURCES)[number];
 
 /** Usage conditions copied onto a coupon when it is won. */

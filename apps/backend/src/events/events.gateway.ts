@@ -16,10 +16,12 @@ import {
 import { USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, getAdminDashboardOrigin } from '../common/constants';
 import {
   WS_EVENTS,
+  BookingChangedPayload,
   StampsUpdatedPayload,
   NotificationNewPayload,
   TransactionRecordedPayload,
   CouponUpdatedPayload,
+  CollectionUpdatedPayload,
   ScratchCardsChangedPayload,
   CouponRedeemedPayload,
 } from './events.types';
@@ -120,6 +122,21 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     return type === USER_TYPE_MERCHANT || type === USER_TYPE_TEAM_MEMBER;
   }
 
+  /**
+   * Mirrors JwtStrategy.validate: only a session token of a room-joining type,
+   * signed for that type's audience, may hold a socket. Other JWTs sharing the
+   * secret (e.g. the 365-day email-unsubscribe token: aud jitplus-client, a
+   * `purpose`, no type/sub) pass jwtService.verify but must be refused.
+   */
+  private static isSessionToken(payload: Record<string, unknown>): boolean {
+    const expectedAud = EventsGateway.isMerchantSide(payload.type)
+      ? 'jitplus-merchant'
+      : payload.type === 'client' ? 'jitplus-client' : undefined;
+    const aud = payload.aud as string | string[] | undefined;
+    const audOk = expectedAud !== undefined && (Array.isArray(aud) ? aud.includes(expectedAud) : aud === expectedAud);
+    return typeof payload.sub === 'string' && !!payload.sub && audOk && payload.purpose === undefined;
+  }
+
   private kick(socket: Socket, message: string) {
     socket.emit('auth_error', { message });
     socket.disconnect(true);
@@ -138,6 +155,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     if (!sockets) return;
 
     const bySession = new Map<string, Socket[]>();
+    // Client sockets bound to a ClientSession: logout, password reset, ban or
+    // account deletion delete that row, and the socket must stop receiving
+    // client:<id> events then, not only when the access token expires.
+    const byClientSession = new Map<string, { clientId: string; sockets: Socket[] }>();
     for (const [, socket] of sockets) {
       const token = EventsGateway.extractToken(socket);
       if (!token) {
@@ -150,6 +171,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           const list = bySession.get(payload.jti) ?? [];
           list.push(socket);
           bySession.set(payload.jti, list);
+        } else if (payload.type === 'client' && payload.sid) {
+          const entry = byClientSession.get(payload.sid) ?? { clientId: payload.sub as string, sockets: [] as Socket[] };
+          entry.sockets.push(socket);
+          byClientSession.set(payload.sid, entry);
         }
       } catch {
         this.logger.debug(`WS token expired/revoked for ${socket.data.userId}, disconnecting ${socket.id}`);
@@ -172,6 +197,22 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         }
       }
     }
+
+    if (!this.clientSessionRepo) return;
+    const sids = [...byClientSession.keys()];
+    for (let i = 0; i < sids.length; i += EventsGateway.SESSION_QUERY_CHUNK) {
+      const chunk = sids.slice(i, i + EventsGateway.SESSION_QUERY_CHUNK);
+      const alive = await this.clientSessionRepo.findMany({
+        where: { id: { in: chunk } },
+        select: { id: true, clientId: true },
+      });
+      const aliveOwner = new Map(alive.map((s) => [s.id, s.clientId]));
+      for (const sid of chunk) {
+        const entry = byClientSession.get(sid)!;
+        if (aliveOwner.get(sid) === entry.clientId) continue;
+        for (const socket of entry.sockets) this.kick(socket, 'Session revoked');
+      }
+    }
   }
 
   async handleConnection(client: Socket) {
@@ -184,6 +225,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       }
 
       const payload = this.jwtService.verify(token, this.verifyOptions);
+      if (!EventsGateway.isSessionToken(payload)) {
+        this.kick(client, 'Invalid or expired token');
+        return;
+      }
 
       const userId = payload.sub;
       const userType = payload.type as string;
@@ -256,6 +301,20 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       .emit(WS_EVENTS.NOTIFICATION_NEW, payload);
   }
 
+  /**
+   * Same event for many clients, one emit per 250 rooms: with the Postgres
+   * adapter each emit is a NOTIFY round-trip, so a per-client loop costs N of them.
+   * The payload carries no clientId (the room already targets the client).
+   */
+  async emitNotificationNewToClients(clientIds: readonly string[], payload: Omit<NotificationNewPayload, 'clientId'>) {
+    const BATCH = 250;
+    for (let i = 0; i < clientIds.length; i += BATCH) {
+      const rooms = clientIds.slice(i, i + BATCH).map((id) => `client:${id}`);
+      this.server.to(rooms).emit(WS_EVENTS.NOTIFICATION_NEW, payload);
+      if (i + BATCH < clientIds.length) await new Promise((r) => setImmediate(r));
+    }
+  }
+
   /** Notify a merchant that a transaction was recorded (useful for multi-device) */
   emitTransactionRecorded(merchantId: string, payload: TransactionRecordedPayload) {
     this.server
@@ -269,6 +328,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     this.server.to(ids.map((id) => `client:${id}`)).emit(WS_EVENTS.COUPON_UPDATED, payload);
   }
 
+  emitCollectionUpdated(clientId: string, payload: CollectionUpdatedPayload) {
+    this.server.to(`client:${clientId}`).emit(WS_EVENTS.COLLECTION_UPDATED, payload);
+  }
+
   emitScratchCardsChanged(clientIds: string | string[], payload: ScratchCardsChangedPayload) {
     const ids = Array.isArray(clientIds) ? clientIds : [clientIds];
     if (ids.length === 0) return;
@@ -277,5 +340,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
   emitCouponRedeemed(merchantId: string, payload: CouponRedeemedPayload) {
     this.server.to(`merchant:${merchantId}`).emit(WS_EVENTS.COUPON_REDEEMED, payload);
+  }
+
+  emitBookingChanged(merchantId: string, clientId: string | null, payload: BookingChangedPayload) {
+    this.server.to(`merchant:${merchantId}`).emit(WS_EVENTS.BOOKING_CHANGED, payload);
+    if (clientId) this.server.to(`client:${clientId}`).emit(WS_EVENTS.CLIENT_BOOKING_CHANGED, payload);
   }
 }

@@ -10,44 +10,39 @@
  */
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
 import {
-  View, Text, Pressable, ScrollView, Modal, FlatList, StyleSheet, LayoutAnimation,
-  useWindowDimensions, type NativeSyntheticEvent, type NativeScrollEvent, type StyleProp, type TextStyle,
+  View,
+  Pressable,
+  ScrollView,
+  Modal,
+  FlatList,
+  StyleSheet,
+  LayoutAnimation,
+  useWindowDimensions,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
+  type StyleProp,
+  type TextStyle,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  ChevronDown,
+  ChevronUp,
   Clock,
-  ChevronRight,
   Gift,
   MapPin,
   Navigation,
   Phone,
-  Ticket,
   Trophy,
   ShoppingBag,
   X as XIcon,
-  Instagram,
-  Music2,
-  Facebook,
-  Youtube,
-  Ghost,
-  Wifi,
-  ParkingSquare,
-  TreePine,
-  Snowflake,
-  CreditCard,
-  Truck,
-  Utensils,
-  Leaf,
-  Accessibility,
-  Dog,
-  Baby,
-  CalendarCheck,
   type LucideIcon,
 } from 'lucide-react-native';
+import { MERCHANT_BADGE_ICONS, SOCIAL_NETWORK_ICONS } from '@jitplus/shared/src/fiche/ficheIcons';
 import {
-  WEEK_DAYS, describeWheelEnd, formatDaySlots, hasCoords, linkifyText, pluralKey, toTel, weekDayOf,
-  type FicheReward, type FicheTab, type MerchantBadge, type OpenStatus, type OpeningHours, type SocialNetwork, type SocialProfile,
+  WEEK_DAYS, describeWheelEnd, formatDaySlots, hasCoords, hasOpeningHours, linkifyText, pluralKey, toTel, weekDayOf,
+  type FicheReward, type FicheTab, type MerchantBadge, type OpeningHours, type SocialNetwork, type SocialProfile,
 } from '@jitplus/shared';
 import { openDirections, openFirst } from '@jitplus/shared/src/openLinks';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -68,64 +63,21 @@ const GRID_GAP = wp(4);
 /** Page side padding, on both sides. */
 const GRID_INSET = wp(16) * 2;
 const MAX_PRIZES = 6;
-export const TAB_BAR_HEIGHT = ms(48);
-
 function animateNext() {
   hapticLight();
   LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 }
 
-// ── Shell (jitplus FicheSection) ────────────────────────────────────────────
-
-/** Flat block of the page, separated from the next one by a hairline. */
-function FicheSection({ title, action, children }: {
-  title: string;
-  /** Link at the end of the title row, e.g. "Voir tout" toward a tab. */
-  action?: { label: string; onPress: () => void };
-  children: ReactNode;
-}) {
-  const theme = useClientTheme();
-  const dir = useDir();
-  return (
-    <View style={[s.section, { borderBottomColor: theme.border }]}>
-      <View style={[s.header, { flexDirection: dir.row }]}>
-        <Text style={[s.title, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} accessibilityRole="header">
-          {title}
-        </Text>
-        {action && (
-          <Pressable onPress={() => { hapticLight(); action.onPress(); }} hitSlop={10} accessibilityRole="button">
-            <Text style={[s.action, { color: theme.primary }]}>{action.label}</Text>
-          </Pressable>
-        )}
-      </View>
-      {children}
-    </View>
-  );
-}
-
-/** jitplus RewardThumb: reward picture, or a neutral gift icon. */
-function RewardThumb({ imageUrl }: { imageUrl?: string | null }) {
-  const theme = useClientTheme();
-  return (
-    <View style={[s.rewardThumb, { backgroundColor: theme.bgInput }]}>
-      {imageUrl ? (
-        <ExpoImage source={resolveImageUrl(imageUrl)} style={s.fill} contentFit="cover" cachePolicy="memory-disk" recyclingKey={imageUrl} />
-      ) : (
-        <Gift size={ms(20)} color={theme.textSecondary} strokeWidth={1.8} />
-      )}
-    </View>
-  );
-}
-
 // ── Tabs (jitplus MerchantTabs) ─────────────────────────────────────────────
+
+export const TAB_BAR_HEIGHT = ms(48);
 
 /** The preview never shows deals: only signed-in customers fetch them. */
 export type PreviewTab = Exclude<FicheTab, 'deals'>;
 
 const TAB_LABEL_KEYS: Record<PreviewTab, string> = {
-  overview: 'fiche.tabOverview',
+  shop: 'fiche.tabShop',
   loyalty: 'fiche.tabLoyalty',
-  info: 'fiche.tabInfo',
   photos: 'fiche.tabPhotos',
 };
 
@@ -168,116 +120,49 @@ export const FicheTabs = memo(function FicheTabs({ tabs, active, onChange }: {
   );
 });
 
-// ── Overview (jitplus MerchantLoyaltySummary, MerchantInfoSummary) ──────────
+// ── Shell (jitplus FicheSection) ────────────────────────────────────────────
 
-export const FicheLoyaltySummary = memo(function FicheLoyaltySummary({ rewards, earnLine, wheelEndsAt, onOpen }: {
-  rewards: FicheReward[];
-  earnLine: string;
-  wheelEndsAt?: string | null;
-  /** Opens the loyalty tab. */
-  onOpen: () => void;
+/** Flat block of the page, separated from the next one by a hairline. */
+function FicheSection({ title, action, children }: {
+  title?: string;
+  /** Link at the end of the title row, e.g. "Voir tout". */
+  action?: { label: string; onPress: () => void };
+  children: ReactNode;
 }) {
   const theme = useClientTheme();
-  const { t } = useLanguage();
   const dir = useDir();
-  const first = rewards[0];
   return (
-    <FicheSection title={t('fiche.loyaltyProgram')} action={{ label: t('fiche.seeAll'), onPress: onOpen }}>
-      <View style={[s.first, { flexDirection: dir.row }]}>
-        <RewardThumb imageUrl={first.imageUrl} />
-        <View style={s.flex}>
-          <Text style={[s.firstTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={2}>{first.titre}</Text>
-          <Text style={[s.firstMeta, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={2}>
-            {`${t(pluralKey('fiche.stampsCost', first.cout), { count: first.cout })} · ${earnLine}`}
+    <View style={[s.section, { borderBottomColor: theme.border }]}>
+      {!!title && (
+        <View style={[s.header, { flexDirection: dir.row }]}>
+          <Text style={[s.title, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} accessibilityRole="header">
+            {title}
           </Text>
+          {action && (
+            <Pressable onPress={() => { hapticLight(); action.onPress(); }} hitSlop={10} accessibilityRole="button">
+              <Text style={[s.action, { color: theme.primary }]}>{action.label}</Text>
+            </Pressable>
+          )}
         </View>
-      </View>
-      {!!wheelEndsAt && (
-        <Pressable
-          onPress={() => { hapticLight(); onOpen(); }}
-          style={({ pressed }) => [s.wheelRow, { flexDirection: dir.row, borderTopColor: theme.border, opacity: pressed ? 0.6 : 1 }]}
-          accessibilityRole="button"
-        >
-          <Ticket size={ms(18)} color={theme.textSecondary} strokeWidth={2} />
-          <Text style={[s.wheelRowText, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1}>
-            {`${t('fiche.luckyWheelLabel')} · ${describeWheelEnd(wheelEndsAt, t, 'fiche')}`}
-          </Text>
-          <ChevronRight size={ms(16)} color={theme.textMuted} strokeWidth={2} style={dir.flip} />
-        </Pressable>
       )}
-    </FicheSection>
-  );
-});
-
-function InfoRow({ Icon, title, trailing, onPress, label }: {
-  Icon: LucideIcon;
-  title: string;
-  trailing?: ReactNode;
-  onPress?: () => void;
-  label: string;
-}) {
-  const theme = useClientTheme();
-  const dir = useDir();
-  return (
-    <Pressable
-      onPress={onPress && (() => { hapticLight(); onPress(); })}
-      disabled={!onPress}
-      style={({ pressed }) => [s.infoRow, { flexDirection: dir.row }, pressed && s.pressed]}
-      accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityLabel={label}
-    >
-      <Icon size={ms(20)} color={theme.textSecondary} strokeWidth={1.8} />
-      <Text style={[s.infoTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={2}>{title}</Text>
-      {trailing}
-    </Pressable>
+      {children}
+    </View>
   );
 }
 
-/**
- * First address and today's hours. The open status is already in the hero, so
- * it is not repeated here.
- */
-export const FicheInfoSummary = memo(function FicheInfoSummary({ hours, status, store, merchantName, onOpen }: {
-  hours: OpeningHours | null | undefined;
-  status: OpenStatus | null;
-  /** First active store. */
-  store: FicheStore | undefined;
-  merchantName: string;
-  /** Opens the info tab. */
-  onOpen: () => void;
-}) {
+/** jitplus RewardThumb: reward picture, or a neutral gift icon. */
+function RewardThumb({ imageUrl }: { imageUrl?: string | null }) {
   const theme = useClientTheme();
-  const { t } = useLanguage();
-  const dir = useDir();
-  if (!status && !store) return null;
-
-  const todaySlots = hours ? formatDaySlots(hours[weekDayOf(new Date())]) : null;
-  const storeName = store?.nom || merchantName;
-  const address = store ? store.adresse || [store.quartier, store.ville].filter(Boolean).join(', ') || storeName : '';
-  const target = store && hasCoords(store) ? store : null;
-
   return (
-    <FicheSection title={t('fiche.tabInfo')} action={{ label: t('fiche.seeAll'), onPress: onOpen }}>
-      {store && (
-        <InfoRow
-          Icon={MapPin}
-          title={address}
-          onPress={target ? () => { void openDirections(target.latitude, target.longitude, storeName); } : undefined}
-          label={target ? `${t('fiche.directions')} ${storeName}` : address}
-        />
+    <View style={[s.rewardThumb, { backgroundColor: theme.bgInput }]}>
+      {imageUrl ? (
+        <ExpoImage source={resolveImageUrl(imageUrl)} style={s.fill} contentFit="cover" cachePolicy="memory-disk" recyclingKey={imageUrl} />
+      ) : (
+        <Gift size={ms(20)} color={theme.textSecondary} strokeWidth={1.8} />
       )}
-      {status && (
-        <InfoRow
-          Icon={Clock}
-          title={`${t('fiche.today')} · ${todaySlots ?? t('fiche.dayClosed')}`}
-          trailing={<ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} style={dir.flip} />}
-          onPress={onOpen}
-          label={t('fiche.hoursTitle')}
-        />
-      )}
-    </FicheSection>
+    </View>
   );
-});
+}
 
 // ── Loyalty (jitplus MerchantLoyaltyCard, visitor) ──────────────────────────
 
@@ -375,17 +260,22 @@ export const FicheLuckyWheel = memo(function FicheLuckyWheel({ wheel }: { wheel:
       : []),
   ];
   const prizes = wheel.prizes.slice(0, MAX_PRIZES);
+  const label = t('fiche.luckyWheelLabel');
+  // Merchants often keep the default name: do not print "Roue de la chance" twice.
+  const showName = !!wheel.name && wheel.name.trim().toLowerCase() !== label.toLowerCase();
 
   return (
-    <FicheSection title={t('fiche.luckyWheelLabel')}>
-      <Text style={[s.wheelName, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={2}>{wheel.name}</Text>
+    <FicheSection title={label}>
+      {showName && (
+        <Text style={[s.wheelName, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={2}>{wheel.name}</Text>
+      )}
       {!!wheel.description && (
         <Text style={[s.wheelDescription, { color: theme.textSecondary, textAlign: dir.textAlign }]} numberOfLines={3}>
           {wheel.description}
         </Text>
       )}
 
-      <View style={s.lines}>
+      <View style={[s.lines, (showName || !!wheel.description) && s.linesSpaced]}>
         {facts.map(({ key, Icon, label }) => (
           <View key={key} style={[s.line, { flexDirection: dir.row }]}>
             <Icon size={ms(15)} color={theme.textMuted} strokeWidth={2} />
@@ -397,7 +287,7 @@ export const FicheLuckyWheel = memo(function FicheLuckyWheel({ wheel }: { wheel:
       {prizes.length > 0 && (
         <>
           <Text style={[s.wheelSubheading, { color: theme.text, textAlign: dir.textAlign }]}>{t('fiche.luckyWheelPrizes')}</Text>
-          <View style={s.lines}>
+          <View style={[s.lines, s.linesSpaced]}>
             {prizes.map((prize) => (
               <View key={prize.id} style={[s.line, { flexDirection: dir.row }]}>
                 <Gift size={ms(15)} color={theme.textMuted} strokeWidth={2} />
@@ -415,28 +305,12 @@ export const FicheLuckyWheel = memo(function FicheLuckyWheel({ wheel }: { wheel:
 
 // ── About (jitplus MerchantAbout, MerchantSocialLinks, LinkifiedText) ───────
 
-const BADGE_ICONS: Record<MerchantBadge, LucideIcon> = {
-  WIFI: Wifi,
-  PARKING: ParkingSquare,
-  TERRASSE: TreePine,
-  CLIMATISE: Snowflake,
-  CARTE_BANCAIRE: CreditCard,
-  LIVRAISON: Truck,
-  TAKEAWAY: ShoppingBag,
-  HALAL: Utensils,
-  VEGETARIEN: Leaf,
-  ACCESS_PMR: Accessibility,
-  PETS_OK: Dog,
-  KID_FRIENDLY: Baby,
-  RESERVATION: CalendarCheck,
-};
-
-const NETWORK_UI: Record<SocialNetwork, { Icon: LucideIcon; labelKey: string }> = {
-  instagram: { Icon: Instagram, labelKey: 'fiche.openInstagram' },
-  tiktok: { Icon: Music2, labelKey: 'fiche.openTiktok' },
-  facebook: { Icon: Facebook, labelKey: 'fiche.openFacebook' },
-  snapchat: { Icon: Ghost, labelKey: 'fiche.openSnapchat' },
-  youtube: { Icon: Youtube, labelKey: 'fiche.openYoutube' },
+const NETWORK_LABEL_KEYS: Record<SocialNetwork, string> = {
+  instagram: 'fiche.openInstagram',
+  tiktok: 'fiche.openTiktok',
+  facebook: 'fiche.openFacebook',
+  snapchat: 'fiche.openSnapchat',
+  youtube: 'fiche.openYoutube',
 };
 
 function LinkifiedText({ text, style, linkColor, numberOfLines }: {
@@ -503,7 +377,7 @@ export const FicheAbout = memo(function FicheAbout({ description, badges, profil
           {/* Two columns, like the amenities list of a maps listing. */}
           <View style={[s.badges, { flexDirection: dir.row }]}>
             {badges.map((code) => {
-              const Icon = BADGE_ICONS[code];
+              const Icon = MERCHANT_BADGE_ICONS[code];
               return (
                 <View key={code} style={[s.badge, { flexDirection: dir.row }]}>
                   <Icon size={ms(18)} color={theme.textSecondary} strokeWidth={1.8} />
@@ -519,7 +393,8 @@ export const FicheAbout = memo(function FicheAbout({ description, badges, profil
         <FicheSection title={t('fiche.followUs')}>
           <View style={[s.socials, { flexDirection: dir.row }]}>
             {profiles.map(({ network, handle, urls }) => {
-              const { Icon, labelKey } = NETWORK_UI[network];
+              const Icon = SOCIAL_NETWORK_ICONS[network];
+              const labelKey = NETWORK_LABEL_KEYS[network];
               return (
                 <Pressable
                   key={network}
@@ -635,34 +510,7 @@ export const FicheGallery = memo(function FicheGallery({ images }: { images: str
   );
 });
 
-// ── Opening hours (jitplus MerchantOpeningHours) ────────────────────────────
-
-/** The whole week, today in bold. The open/closed status is already in the hero. */
-export const FicheHours = memo(function FicheHours({ hours }: { hours: OpeningHours }) {
-  const theme = useClientTheme();
-  const { t } = useLanguage();
-  const dir = useDir();
-  const today = weekDayOf(new Date());
-
-  return (
-    <FicheSection title={t('fiche.hoursTitle')}>
-      {WEEK_DAYS.map((day) => {
-        const slots = formatDaySlots(hours[day]);
-        const fontFamily = day === today ? font.semibold : font.regular;
-        return (
-          <View key={day} style={[s.hoursRow, { flexDirection: dir.row }]}>
-            <Text style={[s.hoursDay, { color: theme.text, fontFamily }]}>{t(`fiche.days.${day}`)}</Text>
-            <Text style={[s.hoursSlots, { color: slots ? theme.text : theme.textMuted, fontFamily, textAlign: dir.isRTL ? 'left' : 'right' }]}>
-              {slots ?? t('fiche.dayClosed')}
-            </Text>
-          </View>
-        );
-      })}
-    </FicheSection>
-  );
-});
-
-// ── Locations (jitplus MerchantLocations) ───────────────────────────────────
+// ── Shop info (jitplus MerchantShopInfo) ────────────────────────────────────
 
 interface FicheStore {
   id: string;
@@ -676,21 +524,27 @@ interface FicheStore {
 }
 
 /**
- * With a single store, the quick actions already call it and open directions:
- * only the address is listed. The client also sees its distance to each store.
+ * jitplus MerchantShopInfo: practical info as a maps listing shows it, one row
+ * per address (tap for directions), then today's hours opening onto the week.
+ * The client also sees its distance to each store.
  */
-export const FicheLocations = memo(function FicheLocations({ stores, merchantName }: {
+export const FicheShopInfo = memo(function FicheShopInfo({ stores, hours, merchantName }: {
   stores: FicheStore[];
+  hours: OpeningHours | null | undefined;
   merchantName: string;
 }) {
   const theme = useClientTheme();
   const { t } = useLanguage();
   const dir = useDir();
-  if (stores.length === 0) return null;
+  const [weekOpen, setWeekOpen] = useState(false);
+  const showHours = hasOpeningHours(hours);
+  if (stores.length === 0 && !showHours) return null;
   const multiple = stores.length > 1;
+  const today = weekDayOf(new Date());
+  const Chevron = weekOpen ? ChevronUp : ChevronDown;
 
   return (
-    <FicheSection title={multiple ? `${t('fiche.otherLocationsTitle')} (${stores.length})` : t('fiche.locationTitle')}>
+    <FicheSection>
       {stores.map((store, i) => {
         const name = store.nom || merchantName;
         const address = store.adresse || [store.quartier, store.ville].filter(Boolean).join(', ');
@@ -701,7 +555,8 @@ export const FicheLocations = memo(function FicheLocations({ stores, merchantNam
           hapticLight();
           void openDirections(store.latitude, store.longitude, name);
         };
-        const showName = multiple || (!!store.nom && store.nom !== merchantName);
+        // Without an address the name is the only line, so the row is never blank.
+        const showName = multiple || !address || (!!store.nom && store.nom !== merchantName);
         return (
           <Pressable
             key={store.id}
@@ -753,11 +608,53 @@ export const FicheLocations = memo(function FicheLocations({ stores, merchantNam
           </Pressable>
         );
       })}
+
+      {showHours && (
+        <View style={stores.length > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border }}>
+          <Pressable
+            onPress={() => { animateNext(); setWeekOpen((v) => !v); }}
+            style={({ pressed }) => [s.location, { flexDirection: dir.row }, pressed && s.pressed]}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: weekOpen }}
+            accessibilityLabel={t('fiche.hoursTitle')}
+          >
+            <Clock size={ms(20)} color={theme.textSecondary} strokeWidth={1.8} />
+            <Text style={[s.locationName, s.flex, { color: theme.text, fontFamily: font.regular, textAlign: dir.textAlign }]} numberOfLines={1}>
+              {`${t('fiche.today')} · ${formatDaySlots(hours![today]) ?? t('fiche.dayClosed')}`}
+            </Text>
+            <Chevron size={ms(18)} color={theme.textMuted} strokeWidth={2} />
+          </Pressable>
+          {weekOpen && (
+            <View style={[s.week, dir.isRTL ? { paddingRight: WEEK_INDENT } : { paddingLeft: WEEK_INDENT }]}>
+              {WEEK_DAYS.map((day) => {
+                const slots = formatDaySlots(hours![day]);
+                const fontFamily = day === today ? font.semibold : font.regular;
+                return (
+                  <View key={day} style={[s.hoursRow, { flexDirection: dir.row }]}>
+                    <Text style={[s.hoursDay, { color: theme.text, fontFamily }]}>{t(`fiche.days.${day}`)}</Text>
+                    <Text style={[s.hoursSlots, { color: slots ? theme.text : theme.textMuted, fontFamily, textAlign: dir.isRTL ? 'left' : 'right' }]}>
+                      {slots ?? t('fiche.dayClosed')}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      )}
     </FicheSection>
   );
 });
 
+/** Week list aligned past the clock icon. */
+const WEEK_INDENT = ms(20) + wp(14);
+
 const s = StyleSheet.create({
+  tabsContent: { flexGrow: 1, paddingHorizontal: wp(4) },
+  tab: { flexGrow: 1, height: TAB_BAR_HEIGHT, paddingHorizontal: wp(12), alignItems: 'center', justifyContent: 'flex-end' },
+  tabLabel: { fontSize: ms(14), marginBottom: hp(12) },
+  tabIndicator: { alignSelf: 'stretch', height: 2 },
+  week: { paddingBottom: hp(10) },
   flex: { flex: 1 },
   fill: { width: '100%', height: '100%' },
   pressed: { opacity: 0.6 },
@@ -767,18 +664,6 @@ const s = StyleSheet.create({
   title: { flex: 1, fontSize: ms(17), fontFamily: font.semibold, letterSpacing: -0.2 },
   action: { fontSize: ms(14), fontFamily: font.semibold },
 
-  tabsContent: { flexGrow: 1, paddingHorizontal: wp(4) },
-  tab: { flexGrow: 1, height: TAB_BAR_HEIGHT, paddingHorizontal: wp(12), alignItems: 'center', justifyContent: 'flex-end' },
-  tabLabel: { fontSize: ms(14), marginBottom: hp(12) },
-  tabIndicator: { alignSelf: 'stretch', height: 2 },
-
-  first: { alignItems: 'center', gap: wp(12) },
-  firstTitle: { fontSize: ms(15), lineHeight: ms(20), fontFamily: font.semibold },
-  firstMeta: { fontSize: ms(13), lineHeight: ms(18), fontFamily: font.regular, marginTop: hp(2) },
-  wheelRow: { alignItems: 'center', gap: wp(12), marginTop: hp(14), paddingTop: hp(14), borderTopWidth: StyleSheet.hairlineWidth },
-  wheelRowText: { flex: 1, fontSize: ms(14), fontFamily: font.medium },
-  infoRow: { alignItems: 'center', gap: wp(16), paddingVertical: hp(10) },
-  infoTitle: { flex: 1, fontSize: ms(15), lineHeight: ms(20), fontFamily: font.regular },
 
   steps: { gap: hp(12) },
   step: { alignItems: 'center', gap: wp(12) },
@@ -797,7 +682,8 @@ const s = StyleSheet.create({
 
   wheelName: { fontSize: ms(15), lineHeight: ms(20), fontFamily: font.semibold },
   wheelDescription: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular, marginTop: hp(4) },
-  lines: { gap: hp(8), marginTop: hp(12) },
+  lines: { gap: hp(8) },
+  linesSpaced: { marginTop: hp(12) },
   line: { alignItems: 'center', gap: wp(10) },
   lineText: { flex: 1, fontSize: ms(14), fontFamily: font.regular },
   wheelSubheading: { fontSize: ms(14), fontFamily: font.semibold, marginTop: hp(16) },
@@ -824,7 +710,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center',
   },
 
-  hoursRow: { alignItems: 'center', justifyContent: 'space-between', gap: wp(12), paddingVertical: hp(6) },
+  hoursRow: { alignItems: 'center', justifyContent: 'space-between', gap: wp(12), paddingVertical: hp(4) },
   hoursDay: { fontSize: ms(14) },
   hoursSlots: { flexShrink: 1, fontSize: ms(14) },
 

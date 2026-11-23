@@ -6,6 +6,7 @@ import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminInsightsService } from './admin-insights.service';
 import { AdminDetailsService } from './admin-details.service';
 import { InsightsQueryDto } from './dto/insights-query.dto';
+import { SignupFunnelService } from '../client-auth/signup-funnel.service';
 
 /** Global stats, product insights and navigation alert badges. */
 @ApiTags('Admin')
@@ -16,6 +17,7 @@ export class AdminDashboardController {
     private readonly dashboardService: AdminDashboardService,
     private readonly insightsService: AdminInsightsService,
     private readonly detailsService: AdminDetailsService,
+    private readonly signupFunnel: SignupFunnelService,
   ) {}
 
   @Get('stats')
@@ -30,6 +32,14 @@ export class AdminDashboardController {
   @ApiOperation({ summary: 'Product analytics: growth, activation, retention, games, geography' })
   async getInsights(@Query() query: InsightsQueryDto) {
     return this.insightsService.getInsights(query.days ?? 30);
+  }
+
+  @Get('stats/signup-funnel')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'JitPlus sign-up funnel: people per step, method and platform' })
+  async getSignupFunnel(@Query() query: InsightsQueryDto) {
+    const days = query.days ?? 30;
+    return { days, rows: await this.signupFunnel.totals(days) };
   }
 
   @Get('alerts')

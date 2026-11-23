@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
-import { moroccoCityLabel } from '@jitplus/shared/src/deals';
+import { moroccoCityLabel, type DealOffer } from '@jitplus/shared/src/deals';
 import { getAdminDeals, getDealReports, removeDeal, restoreDeal } from '../api';
-import type { AdminDealDisplayStatus, AdminDealFilter, AdminDealReport, AdminDealRow, Pagination as PaginationInfo } from '../types';
+import type { AdminDealDisplayStatus, AdminDealFilter, AdminDealModeration, AdminDealRow, Pagination as PaginationInfo } from '../types';
 import { C, S } from '../theme';
 import { fmtDateTime, fmtDateShort, fmtNumber, tableCellStyle, tableHeaderStyle } from '../utils/format';
 import { useDebouncedInput, useUrlFilters } from '../utils/useUrlFilters';
@@ -50,6 +50,16 @@ function safeHttps(url: string | null): string | null {
   }
 }
 
+/** "-30 % · 120 → 84", enough to compare two versions of an offer. */
+function offerSummary(o: DealOffer): string {
+  const parts = [
+    o.percentOff != null ? `-${o.percentOff} %` : null,
+    o.buyQty != null && o.freeQty != null ? `${o.buyQty} + ${o.freeQty} offert` : null,
+    o.originalPrice != null ? (o.dealPrice != null ? `${fmtNumber(o.originalPrice)} → ${fmtNumber(o.dealPrice)}` : fmtNumber(o.originalPrice)) : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : o.type;
+}
+
 function where(d: AdminDealRow): string {
   if (d.scope === 'ONLINE') return 'En ligne';
   const cities = d.cityKeys.map((k) => moroccoCityLabel(k) || k);
@@ -64,7 +74,7 @@ export default function Deals() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [reports, setReports] = useState<Record<string, AdminDealReport[] | 'loading' | 'error'>>({});
+  const [moderation, setModeration] = useState<Record<string, AdminDealModeration | 'loading' | 'error'>>({});
   const [confirm, setConfirm] = useState<{ deal: AdminDealRow; action: 'remove' | 'restore' } | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, showToast] = useToast();
@@ -88,13 +98,14 @@ export default function Deals() {
   const toggle = async (d: AdminDealRow) => {
     const next = expanded === d.id ? null : d.id;
     setExpanded(next);
-    if (!next || d.reportCount === 0 || Array.isArray(reports[d.id])) return;
-    setReports((r) => ({ ...r, [d.id]: 'loading' }));
+    // Loaded even without a report: the offer may have been edited.
+    if (!next || typeof moderation[d.id] === 'object') return;
+    setModeration((m) => ({ ...m, [d.id]: 'loading' }));
     try {
       const res = await getDealReports(d.id);
-      setReports((r) => ({ ...r, [d.id]: res.reports }));
+      setModeration((m) => ({ ...m, [d.id]: res }));
     } catch {
-      setReports((r) => ({ ...r, [d.id]: 'error' }));
+      setModeration((m) => ({ ...m, [d.id]: 'error' }));
     }
   };
 
@@ -108,8 +119,8 @@ export default function Deals() {
       } else {
         await restoreDeal(confirm.deal.id);
         showToast('Bon plan rétabli, ses signalements ont été effacés.');
-        setReports((r) => {
-          const { [confirm.deal.id]: _, ...rest } = r;
+        setModeration((m) => {
+          const { [confirm.deal.id]: _, ...rest } = m;
           return rest;
         });
       }
@@ -199,7 +210,7 @@ export default function Deals() {
                         ) : null}
                       </td>
                     </tr>
-                    {expanded === d.id && <DealDetails deal={d} reports={reports[d.id]} />}
+                    {expanded === d.id && <DealDetails deal={d} moderation={moderation[d.id]} />}
                   </React.Fragment>
                 );
               })}
@@ -237,7 +248,7 @@ export default function Deals() {
   );
 }
 
-function DealDetails({ deal, reports }: { deal: AdminDealRow; reports: AdminDealReport[] | 'loading' | 'error' | undefined }) {
+function DealDetails({ deal, moderation }: { deal: AdminDealRow; moderation: AdminDealModeration | 'loading' | 'error' | undefined }) {
   const link = safeHttps(deal.linkUrl);
   const ended = deal.endedReason ? ENDED_REASONS[deal.endedReason] ?? `Motif : ${deal.endedReason}` : null;
   return (
@@ -253,21 +264,21 @@ function DealDetails({ deal, reports }: { deal: AdminDealRow; reports: AdminDeal
               </a>
             )}
             <span style={{ color: C.textMuted }}>
-              Créé le {fmtDateTime(deal.createdAt)} · {fmtNumber(deal.linkClickCount)} clic(s) sur le lien · {deal.merchant.email}
+              Créé le {fmtDateTime(deal.createdAt)} · {fmtNumber(deal.linkClickCount)} clic(s) sur le lien · {fmtNumber(deal.claimCount)} utilisation(s) · {deal.merchant.email}
             </span>
             {ended && <span style={{ color: deal.status === 'REMOVED' ? C.red : C.textMuted }}>{ended}</span>}
           </div>
           <div>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Signalements</div>
-            {deal.reportCount === 0 ? (
-              <span style={{ color: C.textMuted }}>Aucun signalement.</span>
-            ) : reports === 'loading' || reports === undefined ? (
+            {moderation === 'loading' || moderation === undefined ? (
               <span style={{ color: C.textMuted }}>Chargement…</span>
-            ) : reports === 'error' ? (
+            ) : moderation === 'error' ? (
               <span style={{ color: C.red }}>Impossible de charger les signalements.</span>
+            ) : moderation.reports.length === 0 ? (
+              <span style={{ color: C.textMuted }}>Aucun signalement.</span>
             ) : (
               <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {reports.map((r) => (
+                {moderation.reports.map((r) => (
                   <li key={r.id}>
                     <strong>{REPORT_REASONS[r.reason] ?? r.reason}</strong>
                     <span style={{ color: C.textMuted }}>
@@ -278,6 +289,19 @@ function DealDetails({ deal, reports }: { deal: AdminDealRow; reports: AdminDeal
                   </li>
                 ))}
               </ul>
+            )}
+            {typeof moderation === 'object' && moderation.offerChanges.length > 0 && (
+              <>
+                <div style={{ fontWeight: 600, margin: '14px 0 8px' }}>Offre modifiée après publication</div>
+                <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {moderation.offerChanges.map((c) => (
+                    <li key={c.id}>
+                      {offerSummary(c.before)} <span style={{ color: C.textMuted }}>devient</span> <strong>{offerSummary(c.after)}</strong>
+                      <span style={{ color: C.textMuted }}> · {fmtDateTime(c.createdAt)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         </div>

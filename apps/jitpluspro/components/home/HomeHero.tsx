@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { Text } from '@/components/AppText';
 import { TrendingUp, TrendingDown } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

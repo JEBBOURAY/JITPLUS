@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, Animated, StyleSheet } from 'react-native';
+import { View, Pressable, Animated, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { X, Smartphone, ArrowRight } from 'lucide-react-native';
 import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

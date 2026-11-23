@@ -4,7 +4,9 @@ import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/authStore';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { haptic, HapticStyle } from '@/utils/haptics';
-import { getPermissionStatus, isNativePushRuntimeAvailable } from '@/utils/notifications';
+import {
+  canAskPermission, getPermissionStatus, isNativePushRuntimeAvailable, registerForPushNotifications,
+} from '@/utils/notifications';
 
 export type PreferenceKey = 'shareInfoMerchants' | 'notifPush' | 'notifEmail';
 
@@ -27,7 +29,15 @@ export function usePreferenceToggle() {
 
     // Enabling the DB flag alone is misleading when the OS blocks notifications.
     if (key === 'notifPush' && next && isNativePushRuntimeAvailable()) {
-      const granted = await getPermissionStatus();
+      let granted = await getPermissionStatus();
+      // iOS defers the prompt, so the usual state here is "undetermined": ask now
+      // (Settings has no Notifications row for an app that never asked).
+      if (!granted && await canAskPermission()) {
+        const pushToken = await registerForPushNotifications();
+        if (!pushToken) return;
+        api.updatePushToken(pushToken).catch(() => {});
+        granted = true;
+      }
       if (!granted) {
         Alert.alert(t('profile.pushPermissionTitle'), t('profile.pushPermissionBody'), [
           { text: t('common.cancel'), style: 'cancel' },

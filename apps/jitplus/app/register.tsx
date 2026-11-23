@@ -1,310 +1,234 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View,
-  
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Alert,
   Animated,
-  Image,
   ScrollView,
-  Keyboard, I18nManager,
+  Keyboard,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { router } from 'expo-router';
-import { ArrowRight, Mail, ChevronLeft, Check } from 'lucide-react-native';
+import { Mail, ArrowLeft, Check } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
+import { api } from '@/services/api';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
+import { wp, hp, ms, fontSize } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
-import BrandText from '@/components/BrandText';
-
+import { suggestEmail } from '@/utils/emailSuggestion';
 import FormError from '@/components/FormError';
+import { TermsCheckbox } from '@/components/completeProfile/TermsCheckbox';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAppleAuth } from '@/hooks/useAppleAuth';
-import { GoogleLogo } from '@/components/GoogleLogo';
-import { AppleLogo } from '@/components/AppleLogo';
-import { haptic } from '@/utils/haptics';
+import LoginBackdrop from '@jitplus/shared/src/login/LoginBackdrop';
+import LoginHeader, { staticHeaderAnims } from '@/components/login/LoginHeader';
+import KhatamDivider from '@/components/login/KhatamDivider';
+import SocialAuthButtons from '@/components/login/SocialAuthButtons';
+import AuthPrimaryButton from '@/components/login/AuthPrimaryButton';
+import { authStyles } from '@/components/login/authUi';
+import { DIR_FLIP } from '@/utils/rtl';
 import { SPRING_SMOOTH, rnSpring } from '@/utils/motion';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
-const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
-
+/** Sign-up, in the look of the login screen (zellige, brass arch, khatam divider). */
 export default function RegisterScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const { sendOtpEmail } = useAuth();
+  const dark = theme.mode === 'dark';
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [focused, setFocused] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const setSignupTermsAccepted = useAuthStore((s) => s.setSignupTermsAccepted);
+  // A double tap would send twice; the second answer (otpWait) opened a second code screen.
+  const submittingRef = useRef(false);
 
-  // Google auth — shared hook (no stale closures, no eslint-disable)
   const google = useGoogleAuth({ actionLabel: t('register.signUpButton') });
-
-  // Apple auth — iOS only
   const apple = useAppleAuth({ actionLabel: t('register.signUpButton') });
 
-  // Sync google hook errors/loading into local state
-  useEffect(() => { if (google.error) setError(google.error); }, [google.error]);
-  // Bidirectional sync: also reset to false so the form unlocks after Google cancel/error
-  useEffect(() => { setIsLoading(google.isLoading); }, [google.isLoading]);
+  // One sign-up at a time: email, Google and Apple lock each other out.
+  const busy = isLoading || google.isLoading || apple.isLoading;
+  const shownError = error || google.error || apple.error;
 
-  // Animations
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
-
+  // The arch is already drawn (the login intro played); only the form slides in.
+  const [headerAnims] = useState(staticHeaderAnims);
+  const [compact] = useState(() => new Animated.Value(1));
+  const [formAnim] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    const anim = Animated.stagger(150, [
-      Animated.spring(fadeAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
-      Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) }),
-    ]);
+    const anim = Animated.spring(formAnim, { toValue: 1, useNativeDriver: true, ...rnSpring(SPRING_SMOOTH) });
     anim.start();
     return () => anim.stop();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [formAnim]);
+
+  // First step of the admin sign-up funnel.
+  useEffect(() => { api.trackSignup('screen_opened', 'all'); }, []);
 
   const emailValid = isValidEmail(email);
+  const emailSuggestion = emailValid ? suggestEmail(email) : null;
+  const canSubmit = emailValid && termsAccepted;
+
+  const requireTerms = () => {
+    if (termsAccepted) return true;
+    setError(t('register.termsRequired'));
+    return false;
+  };
+
+  // Google / Apple open without the box: complete-profile asks for the terms
+  // when it was left unticked here, and skips the question when it was ticked.
+  const beforeSocialPrompt = () => {
+    setError('');
+    setSignupTermsAccepted(termsAccepted);
+    return true;
+  };
 
   const handleRegister = async () => {
-    if (!termsAccepted) {
-      setError(t('register.termsRequired'));
-      return;
-    }
+    if (busy || !requireTerms()) return;
     if (!emailValid) {
       setError(t('login.invalidEmail'));
       return;
     }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     Keyboard.dismiss();
     setIsLoading(true);
     setError('');
     const normalizedEmail = email.trim().toLowerCase();
 
     const result = await sendOtpEmail(normalizedEmail, true);
+    submittingRef.current = false;
     setIsLoading(false);
-    if (result.success) {
+    // otpWait: a code was sent less than a minute ago and is still valid.
+    if (result.success || result.code === 'error.auth.otpWait') {
       router.push({
         pathname: '/verify-otp',
-        params: { telephone: normalizedEmail, isEmail: '1', isRegister: '1' },
+        params: { telephone: normalizedEmail, isRegister: '1' },
       });
+    } else if (result.isNetworkError) {
+      Alert.alert(t('common.networkError'), result.error);
     } else {
-      if (result.isNetworkError) {
-        Alert.alert(t('common.networkError'), result.error);
-      } else {
-        setError(result.error || t('common.genericError'));
-      }
+      setError(result.error || t('common.genericError'));
     }
+  };
+
+  const formStyle = {
+    opacity: formAnim,
+    transform: [{ translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
   };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <LoginBackdrop dark={dark} />
       <SafeAreaView style={styles.safe}>
+        {/* Same back button, pinned at the same place, as verify-otp and set-password. */}
+        <TouchableOpacity
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/login'))}
+          style={[styles.backBtn, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <ArrowLeft size={ms(22)} color={theme.text} style={DIR_FLIP} />
+        </TouchableOpacity>
+
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
+          style={styles.safe}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* Back button */}
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backBtn}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={t('common.back')}
-            >
-              <ChevronLeft size={ms(24)} color={theme.text} strokeWidth={2} style={DIR_FLIP} />
-            </TouchableOpacity>
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <LoginHeader dark={dark} anims={headerAnims} compact={compact} isCompact taglineColor={theme.textMuted} />
 
-            {/* Logo */}
-            <Animated.View style={[styles.header, {
-              opacity: fadeAnim,
-              transform: [{
-                scale: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }),
-              }],
-            }]}>
-              <Image
-                source={require('@/assets/images/jitpluslogo-app.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-              <BrandText size={24} />
-            </Animated.View>
-
-            {/* Form */}
-            <Animated.View style={[styles.formSection, {
-              opacity: slideAnim,
-              transform: [{ translateY: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
-            }]}>
+            <Animated.View style={[styles.formSection, formStyle]}>
               <Text style={[styles.title, { color: theme.text }]}>{t('register.title')}</Text>
-              <Text style={[styles.subtitle, { color: theme.inputPlaceholder }]}>
-                {t('register.subtitle')}
-              </Text>
+              <Text style={[styles.subtitle, { color: theme.textMuted }]}>{t('register.subtitle')}</Text>
 
-              {/* Google Sign-In */}
-              <TouchableOpacity
-                style={[styles.googleBtn, { backgroundColor: theme.bgCard, borderColor: theme.inputBorder }]}
-                onPress={() => {
-                  if (!termsAccepted) { setError(t('register.termsRequired')); return; }
-                  haptic();
-                  google.promptGoogle();
-                }}
-                disabled={isLoading}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={t('register.signUpWithGoogle')}
-              >
-                {google.isLoading ? (
-                  <>
-                    <ActivityIndicator size="small" color={theme.text} />
-                    <Text style={[styles.googleBtnText, { color: theme.text, opacity: 0.7 }]}>
-                      {t('login.googleLoginInProgress')}
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <GoogleLogo size={ms(20)} />
-                    <Text style={[styles.googleBtnText, { color: theme.text }]}>{t('register.signUpWithGoogle')}</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <SocialAuthButtons
+                google={google}
+                apple={apple}
+                googleLabel={t('register.signUpWithGoogle')}
+                appleLabel={t('register.signUpWithApple')}
+                disabled={busy}
+                onBeforePrompt={beforeSocialPrompt}
+              />
 
-              {/* Apple Sign-In — iOS only */}
-              {apple.isAvailable && (
+              <KhatamDivider label={t('common.or')} lineColor={theme.inputBorder} textColor={theme.textMuted} dark={dark} />
+
+              <View style={[authStyles.inputWrapper, styles.emailField, {
+                backgroundColor: theme.inputBg,
+                borderColor: error && !emailValid ? theme.danger : focused || emailValid ? palette.violet : theme.inputBorder,
+              }]}>
+                <Mail size={ms(17)} color={palette.violet} strokeWidth={1.75} />
+                <TextInput
+                  style={[authStyles.inputField, { color: theme.text }]}
+                  placeholder={t('login.emailPlaceholder')}
+                  placeholderTextColor={theme.inputPlaceholder}
+                  value={email}
+                  onChangeText={(text) => { setEmail(text); setError(''); }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="emailAddress"
+                  autoComplete="email"
+                  importantForAutofill="yes"
+                  maxLength={254}
+                  returnKeyType="done"
+                  onSubmitEditing={handleRegister}
+                  onFocus={() => setFocused(true)}
+                  onBlur={() => setFocused(false)}
+                />
+                {emailValid && <Check size={ms(16)} color={palette.violet} strokeWidth={2.5} />}
+              </View>
+
+              {emailSuggestion && (
                 <TouchableOpacity
-                  style={[styles.googleBtn, { backgroundColor: '#000', borderColor: '#000' }]}
-                  onPress={() => {
-                    if (!termsAccepted) { setError(t('register.termsRequired')); return; }
-                    haptic();
-                    apple.promptApple();
-                  }}
-                  disabled={isLoading}
-                  activeOpacity={0.7}
+                  onPress={() => { setEmail(emailSuggestion); setError(''); }}
+                  style={styles.suggestion}
                   accessibilityRole="button"
-                  accessibilityLabel={t('register.signUpWithApple')}
                 >
-                  {apple.isLoading ? (
-                    <>
-                      <ActivityIndicator size="small" color="#fff" />
-                      <Text style={[styles.googleBtnText, { color: '#fff', opacity: 0.7 }]}>
-                        {t('login.googleLoginInProgress')}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <AppleLogo size={ms(20)} color="#fff" />
-                      <Text style={[styles.googleBtnText, { color: '#fff' }]}>{t('register.signUpWithApple')}</Text>
-                    </>
-                  )}
+                  <Text style={[styles.suggestionText, { color: theme.textSecondary }]}>
+                    {t('register.didYouMean')}{' '}
+                    <Text style={{ color: palette.violet, fontWeight: '600' }}>{emailSuggestion}</Text>
+                  </Text>
                 </TouchableOpacity>
               )}
 
-              {/* Separator */}
-              <View style={styles.separator}>
-                <View style={[styles.separatorLine, { backgroundColor: theme.inputBorder }]} />
-                <Text style={[styles.separatorText, { color: theme.inputPlaceholder }]}>{t('common.or')}</Text>
-                <View style={[styles.separatorLine, { backgroundColor: theme.inputBorder }]} />
-              </View>
+              <TermsCheckbox
+                theme={theme}
+                t={t}
+                checked={termsAccepted}
+                onToggle={() => { setTermsAccepted((v) => !v); setError(''); }}
+                style={styles.terms}
+              />
 
-              {/* Email input */}
-              <View style={styles.inputContainer}>
-                <View style={[styles.inputWrapper, {
-                  backgroundColor: theme.inputBg,
-                  borderColor: error ? theme.danger : emailValid ? palette.violet : theme.inputBorder,
-                  borderWidth: emailValid ? 2 : 1.5,
-                }]}>
-                  <Mail size={ms(18)} color={emailValid ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
-                  <TextInput
-                    style={[styles.emailInput, { color: theme.text }]}
-                    placeholder={t('login.emailPlaceholder')}
-                    placeholderTextColor={theme.inputPlaceholder}
-                    value={email}
-                    onChangeText={(text) => { setEmail(text); setError(''); }}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    textContentType="emailAddress"
-                    autoComplete="email"
-                    importantForAutofill="yes"
-                    maxLength={254}
-                  />
-                </View>
-              </View>
+              <FormError message={shownError} />
 
-              {/* Terms acceptance */}
-              <TouchableOpacity
-                style={styles.termsRow}
-                onPress={() => { setTermsAccepted(!termsAccepted); setError(''); }}
-                activeOpacity={0.7}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: termsAccepted }}
-              >
-                <View style={[styles.checkbox, {
-                  backgroundColor: termsAccepted ? theme.primary : 'transparent',
-                  borderColor: termsAccepted ? theme.primary : theme.inputBorder,
-                }]}>
-                  {termsAccepted && <Check size={ms(14)} color="#fff" strokeWidth={3} />}
-                </View>
-                <Text style={[styles.termsText, { color: theme.textSecondary }]}>
-                  {t('register.acceptTerms')}
-                  <Text
-                    style={{ color: theme.primary, textDecorationLine: 'underline' }}
-                    onPress={() => router.push('/legal/terms')}
-                  >
-                    {t('register.termsLink')}
-                  </Text>
-                  {t('register.termsAnd')}
-                  <Text
-                    style={{ color: theme.primary, textDecorationLine: 'underline' }}
-                    onPress={() => router.push('/legal/privacy')}
-                  >
-                    {t('register.privacyLink')}
-                  </Text>
-                </Text>
-              </TouchableOpacity>
-
-              {/* Error */}
-              <FormError message={error} />
-
-              {/* Register button */}
-              <TouchableOpacity
+              <AuthPrimaryButton
+                label={t('register.signUpButton')}
                 onPress={handleRegister}
-                disabled={isLoading}
-                activeOpacity={0.85}
-                style={[styles.button, {
-                  backgroundColor: emailValid ? palette.violet : '#D4D0E8',
-                }]}
-              >
-                {isLoading ? <ActivityIndicator color="#fff" /> : (
-                  <>
-                    <Text style={[styles.buttonText, { opacity: emailValid ? 1 : 0.5 }]}>
-                      {t('register.signUpButton')}
-                    </Text>
-                    <ArrowRight size={ms(18)} color={emailValid ? '#fff' : 'rgba(255,255,255,0.5)'} style={DIR_FLIP} />
-                  </>
-                )}
+                active={canSubmit}
+                loading={isLoading}
+                disabled={busy}
+              />
+
+              {/* dismissTo: register is also opened from shared deal / merchant pages,
+                  where back() returned there instead of the login screen. */}
+              <TouchableOpacity activeOpacity={0.7} onPress={() => router.dismissTo('/login')} style={styles.footer} accessibilityRole="button">
+                <Text style={styles.footerText}>
+                  <Text style={{ color: theme.textMuted }}>{t('register.alreadyHaveAccount')} </Text>
+                  <Text style={styles.footerLink}>{t('register.loginLink')}</Text>
+                </Text>
               </TouchableOpacity>
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
-
-        {/* Footer – anchored at the bottom */}
-        <View style={styles.footerContainer}>
-          <Text style={styles.footerText}>{t('register.alreadyHaveAccount')}{' '}</Text>
-          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()}>
-            <Text style={styles.footerLink}>{t('register.loginLink')}</Text>
-          </TouchableOpacity>
-        </View>
       </SafeAreaView>
     </View>
   );
@@ -313,83 +237,25 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safe: { flex: 1 },
-  scrollContent: {
-    flexGrow: 1, justifyContent: 'center', paddingHorizontal: wp(24), paddingVertical: hp(12),
-  },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: wp(24), paddingTop: hp(8), paddingBottom: hp(36) },
 
   backBtn: {
-    width: ms(40), height: ms(40), borderRadius: ms(20),
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: hp(8),
+    width: ms(44), height: ms(44), borderRadius: ms(22), borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center', marginLeft: wp(16), marginTop: hp(8),
   },
 
-  // Logo
-  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', marginBottom: hp(32) },
-  logoImage: { width: ms(48), height: ms(48), marginRight: ms(8) },
-
-  // Form
   formSection: { paddingHorizontal: wp(4) },
-  title: {
-    fontSize: ms(26), fontWeight: '600', letterSpacing: -0.3,
-    marginBottom: hp(8),
-  },
-  subtitle: {
-    fontSize: fontSize.sm, lineHeight: ms(22),
-    marginBottom: hp(24),
-  },
+  title: { fontSize: ms(24), fontWeight: '600', letterSpacing: -0.3, textAlign: 'center', marginBottom: hp(6) },
+  subtitle: { fontSize: fontSize.sm, lineHeight: ms(21), textAlign: 'center', marginBottom: hp(20) },
 
-  // Input
-  inputContainer: { marginBottom: hp(16) },
-  inputWrapper: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: radius.lg, paddingHorizontal: wp(14), height: hp(58),
-  },
-  emailInput: {
-    flex: 1, fontSize: fontSize.md, fontWeight: '500', marginLeft: wp(10),
-  },
+  emailField: { marginBottom: hp(12) },
 
-  // Google button
-  googleBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    height: hp(54), borderRadius: radius.lg, gap: wp(10),
-    marginBottom: hp(12), borderWidth: 1.5,
-  },
-  googleBtnText: { fontSize: fontSize.md, fontWeight: '600', letterSpacing: 0.2 },
+  suggestion: { marginTop: -hp(4), marginBottom: hp(12) },
+  suggestionText: { fontSize: fontSize.sm },
 
-  // Separator
-  separator: {
-    flexDirection: 'row', alignItems: 'center',
-    marginVertical: hp(8), gap: wp(12), marginBottom: hp(16),
-  },
-  separatorLine: { flex: 1, height: 1 },
-  separatorText: { fontSize: fontSize.sm, fontWeight: '500' },
+  terms: { marginTop: 0, marginBottom: hp(14) },
 
-  // Terms checkbox
-  termsRow: {
-    flexDirection: 'row', alignItems: 'flex-start', marginBottom: hp(16), gap: wp(10),
-  },
-  checkbox: {
-    width: ms(22), height: ms(22), borderRadius: ms(6),
-    borderWidth: 2, alignItems: 'center', justifyContent: 'center',
-    marginTop: ms(1),
-  },
-  termsText: {
-    flex: 1, fontSize: fontSize.sm, lineHeight: ms(20),
-  },
-
-  // Button
-  button: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderRadius: radius.lg, height: hp(56), gap: wp(8),
-    paddingHorizontal: wp(20),
-  },
-  buttonText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '600' },
-
-  // Footer
-  footerContainer: {
-    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    paddingTop: hp(12), paddingBottom: hp(32),
-  },
-  footerText: { fontSize: fontSize.sm, color: palette.gray500 },
-  footerLink: { fontSize: fontSize.sm, color: palette.violet, fontWeight: '600' },
+  footer: { marginTop: hp(20), paddingVertical: hp(6) },
+  footerText: { fontSize: fontSize.sm, textAlign: 'center' },
+  footerLink: { color: palette.violet, fontWeight: '600' },
 });

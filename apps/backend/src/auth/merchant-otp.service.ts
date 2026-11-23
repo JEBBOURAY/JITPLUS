@@ -1,4 +1,6 @@
 import { Injectable, BadRequestException, HttpException, HttpStatus, Logger, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
 import {
@@ -8,11 +10,12 @@ import {
 } from '../common/repositories';
 import { IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
 import { pickEmailLang } from '../mail/transactional-i18n';
-import { BCRYPT_SALT_ROUNDS, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS } from '../common/constants';
-import { hashOtp, checkOtpCode, otpDbOps } from '../common/utils/otp.helper';
+import { BCRYPT_SALT_ROUNDS, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS } from '../common/constants';
+import { hashOtp, checkOtpCode, otpDbOps, otpSentRecently, isDecoyOtp } from '../common/utils/otp.helper';
 import { OtpSendLimiter } from '../common/coordination/otp-send-limiter.service';
 import { errMsg } from '../common/utils';
 import { maskEmail } from '../common/utils/pii-mask';
+import { evictSessionCache } from '../common/utils/session-cache';
 
 /** Merchant email OTP flows: email verification and forgot / reset password. */
 @Injectable()
@@ -25,18 +28,20 @@ export class MerchantOtpService {
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(MAIL_PROVIDER) private mailProvider: IMailProvider,
     private otpSendLimiter: OtpSendLimiter,
+    @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
 
   // ── Shared OTP helpers ───────────────────────────────────────
 
   /** Generate, upsert, and send an OTP email. Enforces daily limit + cooldown. */
   private async sendOtpForEmail(email: string, logLabel: string): Promise<void> {
-    await this.otpSendLimiter.consume(email);
-
     const existingOtp = await this.otpRepo.findUnique({ where: { email } });
-    if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
+    // A JitPlus decoy row (no code was sent) must not hold the merchant back.
+    if (existingOtp && !isDecoyOtp(existingOtp) && otpSentRecently(existingOtp)) {
       throw new HttpException('Veuillez patienter avant de renvoyer un code.', HttpStatus.TOO_MANY_REQUESTS);
     }
+    // After the cooldown check: a refused request sends nothing and must not use up the daily quota.
+    await this.otpSendLimiter.consume(email);
 
     const code = randomInt(OTP_MIN, OTP_MAX).toString();
     const codeHash = hashOtp(code);
@@ -49,7 +54,7 @@ export class MerchantOtpService {
     await this.otpRepo.upsert({
       where: { email },
       create: { email, code: codeHash, expiresAt },
-      update: { code: codeHash, expiresAt, attempts: 0 },
+      update: { code: codeHash, expiresAt, attempts: 0, createdAt: new Date() },
     });
 
     try {
@@ -169,20 +174,35 @@ export class MerchantOtpService {
 
     const merchant = await this.merchantRepo.findUnique({
       where: { email: normalizedEmail },
-      select: { id: true },
+      select: { id: true, emailVerified: true },
     });
 
-    await this.txRunner.run(async (tx) => {
+    const revokedTokenIds = await this.txRunner.run(async (tx) => {
       await tx.otp.delete({ where: { id: otpId } });
       await tx.merchant.update({
         where: { email: normalizedEmail },
-        data: { password: hashedPassword },
+        // Proving inbox ownership also lifts a brute-force lock (otherwise an
+        // attacker can keep the owner out by spamming wrong passwords), and
+        // drops the push token so revoked devices stop receiving merchant pushes.
+        // If the address was never verified, whoever set it on this account
+        // may not own it: the Google/Apple identities linked before this inbox
+        // proof are dropped, so the inbox owner is left as the only credential
+        // holder (otherwise a squatter keeps a Google login on the account the
+        // real owner just recovered).
+        data: {
+          password: hashedPassword, failedLoginAttempts: 0, lockedUntil: null, pushToken: null,
+          emailVerified: true,
+          ...(merchant && !merchant.emailVerified ? { googleId: null, appleId: null } : {}),
+        },
       });
       // Invalidate all existing sessions for security (account may be compromised)
-      if (merchant) {
-        await tx.deviceSession.deleteMany({ where: { merchantId: merchant.id } });
-      }
+      if (!merchant) return [];
+      const rows = await tx.deviceSession.findMany({ where: { merchantId: merchant.id }, select: { tokenId: true } });
+      await tx.deviceSession.deleteMany({ where: { merchantId: merchant.id } });
+      return rows.map((r) => r.tokenId);
     });
+    // Old access tokens must fail now, not when the per-instance cache expires.
+    await evictSessionCache(this.cache, revokedTokenIds);
 
     this.logger.log(`Password reset successful for ${maskEmail(normalizedEmail)}`);
 

@@ -71,6 +71,7 @@ export const TX_TYPE_LABELS: Record<string, string> = {
   LOYALTY_PROGRAM_CHANGE: 'Changement de programme',
   LUCKY_WHEEL_WIN: 'Gain roue de la fortune',
   COUPON_REDEEM: 'Coupon utilisé',
+  WELCOME_BONUS: 'Cadeau de bienvenue',
 };
 
 export const TX_TYPE_COLOR: Record<string, string> = {
@@ -80,6 +81,7 @@ export const TX_TYPE_COLOR: Record<string, string> = {
   LOYALTY_PROGRAM_CHANGE: C.textMuted,
   LUCKY_WHEEL_WIN: C.primary,
   COUPON_REDEEM: C.cyan,
+  WELCOME_BONUS: C.green,
 };
 
 export const CHANNEL_LABELS: Record<string, string> = {

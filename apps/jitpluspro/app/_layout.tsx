@@ -4,8 +4,14 @@ import { Lexend_400Regular } from '@expo-google-fonts/lexend/400Regular';
 import { Lexend_500Medium } from '@expo-google-fonts/lexend/500Medium';
 import { Lexend_600SemiBold } from '@expo-google-fonts/lexend/600SemiBold';
 import { Lexend_700Bold } from '@expo-google-fonts/lexend/700Bold';
+// Lexend has no Arabic glyphs: components/AppText swaps each weight for Cairo in Arabic.
+import { Cairo_400Regular } from '@expo-google-fonts/cairo/400Regular';
+import { Cairo_500Medium } from '@expo-google-fonts/cairo/500Medium';
+import { Cairo_600SemiBold } from '@expo-google-fonts/cairo/600SemiBold';
+import { Cairo_700Bold } from '@expo-google-fonts/cairo/700Bold';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { openRoute, resetTo } from '@/utils/navReset';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
@@ -37,6 +43,7 @@ import { useSplashStore } from '@/stores/splashStore';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { DemoHintHost } from '@/components/demo/DemoHint';
+import { ToastHost } from '@/components/ui/Toast';
 import { Notifications, isExpoGo, setupAndroidChannels } from '@/utils/notifications';
 import AppErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
@@ -68,6 +75,8 @@ onlineManager.setEventListener((setOnline) => {
 const PERSISTED_KEYS = new Set([
   'plan', 'referral', 'stores', 'rewards',
   'dashboard-kpis',
+  // Small counts shown on Home: the figures paint at launch instead of a skeleton.
+  'home-stats', 'admin-notif-unread-count',
 ]);
 const persistOptions = {
   persister: asyncStoragePersister,
@@ -283,6 +292,10 @@ export default function RootLayout() {
     Lexend_500Medium,
     Lexend_600SemiBold,
     Lexend_700Bold,
+    Cairo_400Regular,
+    Cairo_500Medium,
+    Cairo_600SemiBold,
+    Cairo_700Bold,
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -326,9 +339,8 @@ function SplashGate({ children }: { children: React.ReactNode }) {
   // Latched: once auth has resolved the app stays mounted, under the splash while it opens.
   const [appMounted, setAppMounted] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
-  useEffect(() => {
-    if (!loading) setAppMounted(true);
-  }, [loading]);
+  // Set during render (not in an effect) so the app mounts in the same pass auth resolves.
+  if (!loading && !appMounted) setAppMounted(true);
   // Screens under the splash (login) start their intro as soon as it opens.
   const openSplash = useCallback(() => useSplashStore.getState().markDone(), []);
   const finishSplash = useCallback(() => {
@@ -385,16 +397,16 @@ const PUBLIC_ROUTES = new Set(['login', 'register', 'verify-email', 'forgot-pass
 function AuthRedirectGuard() {
   const hasMerchant = useAuthStore((s) => !!s.merchant);
   const loading = useAuthStore((s) => s.loading);
-  const router = useRouter();
   const segments = useSegments();
 
   useEffect(() => {
     if (loading) return;
     const firstSegment = segments[0] ?? '';
     if (!hasMerchant && !PUBLIC_ROUTES.has(firstSegment)) {
-      router.replace('/login');
+      // Whole history: private screens must not come back with Back / swipe.
+      resetTo('/login');
     }
-  }, [loading, hasMerchant, segments, router]);
+  }, [loading, hasMerchant, segments]);
 
   return null;
 }
@@ -532,6 +544,10 @@ function ThemedNavigator() {
       logInfo('Notifications', 'Notification received:', notification.request.content);
       if (notifDebounceTimer) clearTimeout(notifDebounceTimer);
       notifDebounceTimer = setTimeout(() => invalidateAdminNotifications(queryClient), 300);
+      // Booking push in the foreground: refresh the agenda and the pending badge too.
+      if ((notification.request.content.data as Record<string, unknown> | undefined)?.event === 'booking') {
+        queryClient.invalidateQueries({ queryKey: queryKeys.bookingRoot });
+      }
     });
 
     // Route notification tap to the correct merchant-app screen.
@@ -551,17 +567,26 @@ function ThemedNavigator() {
           return;
         }
 
-        // 1. Action-based deep links from scheduled campaigns / reminders
+        // 1. Booking push: open the booking itself when its id is known.
+        const bookingId = typeof data?.bookingId === 'string' ? data.bookingId : undefined;
+        if (action === 'open_agenda' && bookingId) {
+          // Tapped from the background: the socket may have missed the change.
+          queryClient.invalidateQueries({ queryKey: queryKeys.bookingRoot });
+          router.push({ pathname: '/agenda/[id]', params: { id: bookingId } });
+          return;
+        }
+
+        // 2. Action-based deep links from scheduled campaigns / reminders
         if (action) {
           const route = routeForAction(action);
           if (route) {
-            router.push(route);
+            openRoute(route);
             return;
           }
           logWarn('Notifications', 'Unknown FCM action:', action);
         }
 
-        // 2. Default (admin broadcasts included): open the in-app admin notifications feed so the user
+        // 3. Default (admin broadcasts included): open the in-app admin notifications feed so the user
         // can still find the message — never the generic home tab.
         router.push('/admin-notifications');
       } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
@@ -587,7 +612,7 @@ function ThemedNavigator() {
             navigateByPayload(response.notification.request.content.data as Record<string, unknown> | undefined);
           }, 500);
         }
-      });
+      }).catch((e) => logWarn('Notifications', 'Cold-start response lookup failed', e));
     }
 
     return () => {
@@ -611,12 +636,17 @@ function ThemedNavigator() {
         <StatusBarMemo isDark={isDark} />
         <Stack screenOptions={screenOptions}>
           <Stack.Screen name="login" options={{ animation: 'fade' }} />
-          <Stack.Screen name="register" options={{ animation: 'slide_from_bottom' }} />
+          {/* No iOS swipe-back on these: it skipped the wizard / landed a signed-in
+              merchant on login, with no confirmation (BackHandler is Android-only). */}
+          <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="register" options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+          <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
           <Stack.Screen name="verify-email" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="scan-qr" options={{ animation: 'slide_from_bottom' }} />
         </Stack>
         <AuthRedirectGuard />
         <DemoHintHost />
+        <ToastHost />
       </View>
     </NavThemeProvider>
   );

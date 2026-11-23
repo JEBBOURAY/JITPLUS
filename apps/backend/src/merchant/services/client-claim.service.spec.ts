@@ -45,6 +45,7 @@ function setup(remaining: { cards: number; tx: number; claims: number }) {
       count: jest.fn().mockResolvedValue(0),
     },
     coupon: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    collectionProgress: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn(), deleteMany: jest.fn() },
   };
   const txRunner = { run: jest.fn((fn: (t: unknown) => unknown) => fn(tx)) };
   const service = new ClientClaimService({} as any, {} as any, {} as any, txRunner as any, {} as any);
@@ -63,6 +64,7 @@ describe('ClientClaimService.consumeClaim', () => {
     expect(tx.luckyWheelTicket.updateMany).toHaveBeenCalledWith({ where: { clientId: ANON, campaign: { merchantId: MERCHANT_A } }, data: { clientId: REAL } });
     expect(tx.scratchCard.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { clientId: ANON, merchantId: MERCHANT_A } }));
     expect(tx.coupon.updateMany).toHaveBeenCalledWith({ where: { clientId: ANON, merchantId: MERCHANT_A }, data: { clientId: REAL } });
+    expect(tx.collectionProgress.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { clientId: ANON, merchantId: MERCHANT_A } }));
     // Merchant B's data is still there → the anonymous shell (and its phone) survives
     expect(tx.client.update).not.toHaveBeenCalled();
     expect(MERCHANT_B).toBeDefined();

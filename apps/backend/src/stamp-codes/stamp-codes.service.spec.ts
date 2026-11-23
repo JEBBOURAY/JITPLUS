@@ -71,10 +71,14 @@ describe('StampCodesService', () => {
     await expect(premium.service.getQuota('m1')).resolves.toMatchObject({ limit: null, remaining: null });
   });
 
+  // Needs Node tzdata >= 2026c (Morocco UTC+1 until 2026-09-20, UTC+0 after).
   it('computes the calendar month in Morocco time', () => {
-    // 31 Oct 23:30 UTC is already 1 Nov 00:30 in Morocco
+    // UTC+1 era: 31 Aug 23:30 UTC is already 1 Sep 00:30 in Morocco
+    const summer = currentMonthWindow(Date.UTC(2026, 7, 31, 23, 30));
+    expect(summer.start.toISOString()).toBe('2026-08-31T23:00:00.000Z');
+    // UTC+0 since 2026-09-20: 31 Oct 23:30 UTC is still October
     const { start, end } = currentMonthWindow(Date.UTC(2026, 9, 31, 23, 30));
-    expect(start.toISOString()).toBe('2026-10-31T23:00:00.000Z');
-    expect(end.toISOString()).toBe('2026-11-30T23:00:00.000Z');
+    expect(start.toISOString()).toBe('2026-10-01T00:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-11-01T00:00:00.000Z');
   });
 });

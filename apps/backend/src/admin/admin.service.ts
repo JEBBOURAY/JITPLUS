@@ -5,8 +5,8 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { ADMIN_USER_REPOSITORY, type IAdminUserRepository } from '../common/repositories';
-import { checkLockout, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
-import { MS_PER_DAY, MAX_LOGIN_ATTEMPTS, LOGIN_LOCKOUT_MINUTES } from '../common/constants';
+import { checkLockout, recordFailedLogin, resetLoginAttempts, LockoutDbOps, prismaLockoutOps } from '../common/utils/login-lockout.helper';
+import { MS_PER_DAY } from '../common/constants';
 import { maskEmail } from '../common/utils/pii-mask';
 
 /** Single response for every failed admin login (no account-state oracle). */
@@ -33,10 +33,15 @@ export class AdminAuthService {
   ) {}
 
   /**
-   * Revoke an admin session by blacklisting its jti in cache.
-   * The JWT remains cryptographically valid but will be rejected by JwtStrategy.
+   * Revoke the admin's tokens. The source of truth is Admin.tokensValidAfter,
+   * checked by AdminGuard on every request: it holds on every instance and
+   * across restarts (the in-memory cache alone did not — security audit
+   * 2026-11-21). Every token of this admin issued before now is rejected.
+   * The cache entry keeps the immediate local rejection in JwtStrategy.
    */
-  async logout(jti: string): Promise<{ message: string }> {
+  async logout(jti: string | undefined, adminId: string): Promise<{ message: string }> {
+    await this.adminRepo.update({ where: { id: adminId }, data: { tokensValidAfter: new Date() } });
+    if (!jti) return { message: 'Déconnecté' };
     await this.cache.set(`admin-revoked:${jti}`, true, ADMIN_REVOKE_TTL);
     await this.cache.del(`admin-session:${jti}`);
     this.logger.log(`Admin session revoked (jti: ${jti})`);
@@ -52,18 +57,7 @@ export class AdminAuthService {
 
   /** Lockout DB ops for Admin model */
   private get adminLockoutOps(): LockoutDbOps {
-    return {
-      incrementFailedAttempts: (id, newAttempts, lockedUntil) =>
-        this.adminRepo.update({
-          where: { id },
-          data: { failedLoginAttempts: newAttempts, ...(lockedUntil && { lockedUntil }) },
-        }).then(() => {}),
-      resetFailedAttempts: (id) =>
-        this.adminRepo.update({
-          where: { id },
-          data: { failedLoginAttempts: 0, lockedUntil: null },
-        }).then(() => {}),
-    };
+    return prismaLockoutOps(this.adminRepo);
   }
 
   async login(email: string, password: string) {
@@ -94,12 +88,8 @@ export class AdminAuthService {
     // locked, deactivated): no oracle on the account state.
     if (!admin || locked || !passwordValid || !admin.isActive) {
       if (admin && !locked && !passwordValid) {
-        const newAttempts = (admin.failedLoginAttempts || 0) + 1;
-        const lockedUntil = newAttempts >= MAX_LOGIN_ATTEMPTS
-          ? new Date(Date.now() + LOGIN_LOCKOUT_MINUTES * 60_000)
-          : undefined;
-        await this.adminLockoutOps.incrementFailedAttempts(admin.id, newAttempts, lockedUntil);
-        if (lockedUntil) this.logger.warn(`Admin account ${maskEmail(admin.email)} locked after ${newAttempts} failed attempts`);
+        const { attempts, locked: nowLocked } = await recordFailedLogin(admin, this.adminLockoutOps);
+        if (nowLocked) this.logger.warn(`Admin account ${maskEmail(admin.email)} locked after ${attempts} failed attempts`);
       }
       throw new UnauthorizedException(ADMIN_LOGIN_FAILED);
     }
@@ -114,6 +104,9 @@ export class AdminAuthService {
       type: 'admin' as const,
       role: 'admin' as const,
       jti,
+      // Millisecond issue time: `iat` is whole seconds, too coarse to order a
+      // login against a logout in the same second (AdminGuard).
+      iatMs: Date.now(),
     };
 
     const token = this.jwtService.sign(payload);

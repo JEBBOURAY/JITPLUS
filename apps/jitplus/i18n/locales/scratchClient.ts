@@ -44,9 +44,6 @@ export const scratchClientFr = {
       missedCancelled: 'Annulée',
     },
   },
-  home: {
-    cta: 'Gratter',
-  },
   claim: {
     pending: 'Une carte à gratter vous attend',
     cta: 'Gratter ma carte',
@@ -63,8 +60,6 @@ export const scratchClientFr = {
     expiresToday: 'Expire aujourd\'hui',
     usedOn: 'Utilisé le %{date}',
     cancelledBadge: 'Annulé par le commerçant',
-    copyCode: 'Copier le code',
-    copied: 'Code copié',
     error: 'Impossible de charger vos coupons.',
   },
 };
@@ -114,9 +109,6 @@ export const scratchClientEn: typeof scratchClientFr = {
       missedCancelled: 'Cancelled',
     },
   },
-  home: {
-    cta: 'Scratch',
-  },
   claim: {
     pending: 'A scratch card is waiting for you',
     cta: 'Scratch my card',
@@ -133,8 +125,6 @@ export const scratchClientEn: typeof scratchClientFr = {
     expiresToday: 'Expires today',
     usedOn: 'Used on %{date}',
     cancelledBadge: 'Cancelled by the merchant',
-    copyCode: 'Copy code',
-    copied: 'Code copied',
     error: 'Could not load your coupons.',
   },
 };
@@ -184,9 +174,6 @@ export const scratchClientAr: typeof scratchClientFr = {
       missedCancelled: 'تلغات',
     },
   },
-  home: {
-    cta: 'حك',
-  },
   claim: {
     pending: 'بطاقة د الحك كتسناك',
     cta: 'حك البطاقة ديالي',
@@ -203,8 +190,6 @@ export const scratchClientAr: typeof scratchClientFr = {
     expiresToday: 'كيسلا اليوم',
     usedOn: 'تستعمل نهار %{date}',
     cancelledBadge: 'تلغا من عند التاجر',
-    copyCode: 'كوبي الكود',
-    copied: 'الكود تكوبيا',
     error: 'ما قدرناش نجيبو الكوبونات ديالك.',
   },
 };

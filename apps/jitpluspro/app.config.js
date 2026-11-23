@@ -14,6 +14,11 @@ module.exports = ({ config }) => {
   if (process.env.EAS_BUILD_PLATFORM === 'android' && !GOOGLE_MAPS_KEY_ANDROID) {
     throw new Error('Android EAS build has no Google Maps key: set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY or EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID.');
   }
+  // Same on iOS: without a key the plugin skips the Google Maps pod while
+  // SafeMapView uses PROVIDER_GOOGLE.
+  if (process.env.EAS_BUILD_PLATFORM === 'ios' && !GOOGLE_MAPS_KEY_IOS) {
+    throw new Error('iOS EAS build has no Google Maps key: set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY or EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS.');
+  }
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
   const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID || '2706696686345947';
@@ -45,7 +50,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.7.7',
+    version: '1.7.8',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
     scheme: 'jitpluspro',
@@ -64,11 +69,13 @@ module.exports = ({ config }) => {
       backgroundColor: '#FFFFFF',
     },
     ios: {
-      supportsTablet: false,
+      // Native iPad app: phones stay in portrait, iPads rotate (withTabletRotation below).
+      supportsTablet: true,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '38',
-      // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
+      buildNumber: '39',
+      // Full screen only on iPad: no Split View / Slide Over, so layouts only meet
+      // the four full-screen sizes.
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
       usesNonExemptEncryption: false,
@@ -93,7 +100,7 @@ module.exports = ({ config }) => {
         FacebookClientToken: META_CLIENT_TOKEN,
         FacebookDisplayName: META_DISPLAY_NAME,
         NSUserTrackingUsageDescription:
-          'Cette autorisation permet a JitPlus Pro de mesurer les performances des campagnes publicitaires et d ameliorer l acquisition de clients.',
+          "Cette autorisation permet à JitPlus Pro de mesurer les performances de ses campagnes publicitaires et d'améliorer l'acquisition de clients.",
         // "Affiche réseaux sociaux": lets the app see whether Instagram / Facebook
         // can receive a story. The Facebook plugin appends its own schemes.
         LSApplicationQueriesSchemes: ['instagram-stories', 'facebook-stories'],
@@ -121,7 +128,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 40,
+      versionCode: 41,
       // Keeps the cached plan / clients / dashboard data out of Google Drive
       // and adb backups, like the client app (security audit 2026-11-05).
       allowBackup: false,
@@ -195,9 +202,12 @@ module.exports = ({ config }) => {
         'expo-tracking-transparency',
         {
           userTrackingPermission:
-            'Cette autorisation permet a JitPlus Pro de mesurer les performances des campagnes publicitaires et d ameliorer l acquisition de clients.',
+            "Cette autorisation permet à JitPlus Pro de mesurer les performances de ses campagnes publicitaires et d'améliorer l'acquisition de clients.",
         },
       ],
+      // iOS: no Meta SDK auto-start / auto events before the ATT answer.
+      // Must stay BEFORE react-native-fbsdk-next (see the plugin header).
+      './plugins/withFacebookIOSConsent',
       [
         'react-native-fbsdk-next',
         {
@@ -314,6 +324,8 @@ module.exports = ({ config }) => {
       '../../packages/shared/expo-plugins/withMoroccoRegion',
       // Enable RTL support on Android — required for Arabic/Darija layout
       '../../packages/shared/expo-plugins/withSupportsRTL',
+      // Tablets rotate (iPad + Android >= 600 dp), phones stay in portrait
+      '../../packages/shared/expo-plugins/withTabletRotation',
       // Raise the Android Java heap limit (256 MB → ~512 MB) — mitigation for
       // OutOfMemoryError (Sentry JITPLUSPRO-MOBILE-S).
       './plugins/withLargeHeap',

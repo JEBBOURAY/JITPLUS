@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Clock } from 'lucide-react-native';
 import { JitBell, JitPremium } from '@/components/icons';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
@@ -18,7 +19,7 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/stores/authStore';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useAdminNotifUnreadCount, useHomeStats, useRewards } from '@/hooks/useQueryHooks';
+import { useAdminNotifUnreadCount, useHomeStats, usePendingBookingsCount, useRewards } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import MerchantLogo from '@/components/MerchantLogo';
 import TipsCarousel from '@/components/TipsCarousel';
@@ -36,6 +37,7 @@ import { useDir } from '@/hooks/useDir';
 import { wordInitials } from '@/utils/initials';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { DemoVideoModal } from '@/components/demo/DemoVideoModal';
+import { rankByUsage, useToolUsage } from '@/hooks/useToolUsage';
 
 const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
 // Reserve space below the fixed header.
@@ -44,6 +46,7 @@ const TOP_BAR_HEIGHT = 68;
 const FAB_CLEARANCE = 78;
 // Illustrations of the tool cards.
 const TOOL_IMAGE = {
+  agenda: require('@/assets/images/tools/agenda.png'),
   loyalty: require('@/assets/images/tools/fidelite.png'),
   games: require('@/assets/images/tools/jeux.png'),
   deals: require('@/assets/images/tools/bons_plans.png'),
@@ -118,6 +121,8 @@ export default function HomeScreen() {
   const { data: rewards } = useRewards();
   // Owner only: a team member cannot create the reward, so the flag would be noise.
   const loyaltyTodo = !isTeamMember && rewards !== undefined && rewards.length === 0;
+  // Booking requests waiting for an answer: flagged on the Agenda card.
+  const pendingBookings = usePendingBookingsCount(!!merchant);
   const onRefresh = useGuardedCallback(async () => {
     await refetchStats();
   }, [refetchStats]);
@@ -137,11 +142,29 @@ export default function HomeScreen() {
     : guideLeft <= 0
       ? t('home.toolSetupDone')
       : t(guideLeft === 1 ? 'home.toolSetupLeft_one' : 'home.toolSetupLeft_other', { count: guideLeft });
-  const tools = useMemo<Tool[]>(
-    () => [
-      // Opens the step guide rendered by HomeGuide below.
-      { key: 'guide', label: t('home.setupLabel'), hint: guideHint, image: TOOL_IMAGE.guide, onPress: openGuide, progress: guideProgress ?? undefined },
-      { key: 'demos', label: t('home.qaDemos'), hint: t('home.toolDemosHint'), image: TOOL_IMAGE.demos, route: '/demo-videos' },
+  // The start guide leads until it is finished, then drops to the end. The
+  // last known state is kept on the device so a finished guide does not show
+  // first for a moment while the progress loads. Team members cannot finish
+  // it (owner steps), so for them it always sits at the end.
+  const { value: guideDoneSaved, setValue: setGuideDoneSaved } = usePersistedFlag(
+    `${ASYNC_STORAGE_KEYS.START_GUIDE_DONE}_${merchant?.id ?? 'anon'}`,
+  );
+  const guideDoneLive = guideProgress ? guideLeft <= 0 : null;
+  useEffect(() => {
+    if (guideDoneLive != null && guideDoneSaved != null && guideDoneLive !== guideDoneSaved) setGuideDoneSaved(guideDoneLive);
+  }, [guideDoneLive, guideDoneSaved, setGuideDoneSaved]);
+  const guideDone = guideDoneLive ?? guideDoneSaved;
+  const newcomer = !isTeamMember && !guideDone;
+  // Every other tool is ranked by how often this merchant opens it; never-used
+  // ones keep the default order below.
+  const { usage: toolUsage, record: recordToolUse } = useToolUsage(merchant?.id);
+  const tools = useMemo<Tool[]>(() => {
+    // Opens the step guide rendered by HomeGuide below.
+    const guide: Tool = { key: 'guide', label: t('home.setupLabel'), hint: guideHint, image: TOOL_IMAGE.guide, onPress: openGuide, progress: guideProgress ?? undefined };
+    const demos: Tool = { key: 'demos', label: t('home.qaDemos'), hint: t('home.toolDemosHint'), image: TOOL_IMAGE.demos, route: '/demo-videos' };
+    // One-time setup, changed rarely.
+    const setup: Tool[] = [
+      { key: 'stores', label: t('home.qaStore'), hint: t('home.toolStoreHint'), image: TOOL_IMAGE.stores, route: '/stores' },
       {
         key: 'loyalty',
         label: t('home.qaLoyalty'),
@@ -150,17 +173,34 @@ export default function HomeScreen() {
         route: '/settings',
         alert: loyaltyTodo,
       },
-      { key: 'stores', label: t('home.qaStore'), hint: t('home.toolStoreHint'), image: TOOL_IMAGE.stores, route: '/stores' },
       { key: 'plv', label: t('home.qaPlv'), hint: t('home.toolPlvHint'), image: TOOL_IMAGE.plv, route: '/posters' },
-      { key: 'stampCodes', label: t('home.qaStampCodes'), hint: t('home.toolStampCodesHint'), image: TOOL_IMAGE.stampCodes, route: '/stamp-codes' },
       { key: 'team', label: t('home.qaTeam'), hint: t('home.toolTeamHint'), image: TOOL_IMAGE.team, route: '/team' },
+    ];
+    // Daily work first, then what brings customers back.
+    const daily: Tool[] = [
+      {
+        key: 'agenda',
+        label: t('home.qaAgenda'),
+        hint: pendingBookings > 0
+          ? t(pendingBookings === 1 ? 'home.toolAgendaPending_one' : 'home.toolAgendaPending_other', { count: pendingBookings })
+          : t('home.toolAgendaHint'),
+        image: TOOL_IMAGE.agenda,
+        route: '/agenda',
+        alert: pendingBookings > 0,
+      },
+      { key: 'stampCodes', label: t('home.qaStampCodes'), hint: t('home.toolStampCodesHint'), image: TOOL_IMAGE.stampCodes, route: '/stamp-codes' },
       // Owner only: a team member cannot send notifications.
       ...(isTeamMember ? [] : [{ key: 'messages', label: t('home.qaMessages'), hint: t('home.toolMessagesHint'), image: TOOL_IMAGE.messages, route: '/messages' }]),
-      { key: 'games', label: t('home.qaGames'), hint: t('home.toolGamesHint'), image: TOOL_IMAGE.games, route: '/games' },
       { key: 'deals', label: t('home.qaDeals'), hint: t('home.toolDealsHint'), image: TOOL_IMAGE.deals, route: '/deals' },
-    ],
-    [t, loyaltyTodo, openGuide, guideHint, guideProgress, isTeamMember],
-  );
+      { key: 'games', label: t('home.qaGames'), hint: t('home.toolGamesHint'), image: TOOL_IMAGE.games, route: '/games' },
+    ];
+    // Default order: a newcomer sets things up first, then daily work.
+    const others = newcomer ? [demos, ...setup, ...daily] : [...daily, ...setup, demos];
+    const ranked = rankByUsage(others, toolUsage ?? {}, Date.now());
+    return newcomer ? [guide, ...ranked] : [...ranked, guide];
+  }, [t, loyaltyTodo, openGuide, guideHint, guideProgress, newcomer, isTeamMember, pendingBookings, toolUsage]);
+  // Wait for the saved usage and guide state so the cards do not jump on launch.
+  const toolsReady = !merchant?.id || (toolUsage !== null && (isTeamMember || guideDone !== null));
 
   const trialDaysLeft = isTrial ? daysRemaining : null;
   const today = new Date();
@@ -224,9 +264,10 @@ export default function HomeScreen() {
             </View>
           )}
 
-          <ToolsGrid title={t('home.tools')} tools={tools} />
+          {toolsReady && <ToolsGrid title={t('home.tools')} tools={tools} onUse={recordToolUse} />}
 
-          {!activeOnboardingSurface && showTrialBanner && (
+          {/* No plan upsell on iOS (App Store 3.1.1 / 3.1.3). */}
+          {!activeOnboardingSurface && showTrialBanner && Platform.OS !== 'ios' && (
             <View style={styles.bannerWrap}>
               <TrialEndBanner
                 daysRemaining={trialDaysLeft}
@@ -236,7 +277,7 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {!activeOnboardingSurface && isFreePlan && (
+          {!activeOnboardingSurface && isFreePlan && Platform.OS !== 'ios' && (
             <View style={styles.bannerWrap}>
               <ProUpgradeBanner onPress={goToPlan} />
             </View>
@@ -286,11 +327,15 @@ export default function HomeScreen() {
             {unreadCount > 0 && (
               <View
                 style={[
-                  styles.iconBtnDot,
-                  dir.isRTL ? { left: -3 } : { right: -3 },
+                  styles.iconBtnBadge,
+                  dir.isRTL ? { left: -6 } : { right: -6 },
                   { borderColor: palette.violetDeep, backgroundColor: theme.danger },
                 ]}
-              />
+              >
+                <Text style={styles.iconBtnBadgeText} maxFontSizeMultiplier={1.2} numberOfLines={1}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
             )}
           </TouchableOpacity>
         </View>
@@ -370,12 +415,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconBtnDot: {
+  iconBtnBadge: {
     position: 'absolute',
-    top: -3,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    top: -6,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
     borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    lineHeight: 13,
+    fontFamily: font.semibold,
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
   },
 });

@@ -24,8 +24,10 @@ import { GeocodeModule } from './geocode/geocode.module';
 import { LuckyWheelModule } from './lucky-wheel/lucky-wheel.module';
 import { DeeplinkModule } from './deeplink/deeplink.module';
 import { ScratchCardModule } from './scratch-card/scratch-card.module';
+import { CollectionsModule } from './collections/collections.module';
 import { StampCodesModule } from './stamp-codes/stamp-codes.module';
 import { DealsModule } from './deals/deals.module';
+import { BookingModule } from './booking/booking.module';
 import { MerchantInboxModule } from './merchant-inbox/merchant-inbox.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
@@ -91,6 +93,8 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
         QR_HMAC_SECRET: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().min(32).required(), otherwise: Joi.string().optional() }),
         // Signs coupon QR codes; falls back to QR_HMAC_SECRET (tokens are domain-separated with "c1:")
         COUPON_HMAC_SECRET: Joi.string().min(32).allow('').optional(),
+        // Keys the welcome-gift identity hashes; falls back to JWT_SECRET (domain-separated)
+        WELCOME_BONUS_HMAC_SECRET: Joi.string().min(32).allow('').optional(),
         // SECURITY: Sentry DSN is required in production for error monitoring
         SENTRY_DSN: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().uri().required(), otherwise: Joi.string().optional() }),
         // SECURITY: Dev auth bypass must NEVER be enabled in production
@@ -133,8 +137,10 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     LuckyWheelModule,
     DeeplinkModule,
     ScratchCardModule,
+    CollectionsModule,
     StampCodesModule,
     DealsModule,
+    BookingModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

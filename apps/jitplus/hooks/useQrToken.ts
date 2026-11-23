@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
 import { api } from '@/services/api';
-import { QR_TOKEN_KEY } from '@/services/api/storage';
+import { clearCachedQrToken, getCachedQrToken, setCachedQrToken } from '@/services/api/storage';
 import { getRefreshDelayS } from '@/utils/qrScan';
 
 export type QrErrorKind = 'offline' | 'server' | null;
+
+/** Same margin as the refresh timer (getRefreshDelayS): past it a token is treated as expired. */
+const QR_STALE_MARGIN_S = 10;
 
 /**
  * Loads the client's QR token while the screen is focused.
@@ -19,6 +21,8 @@ export function useQrToken(clientId: string | undefined) {
   const [qrLoading, setQrLoading] = useState(true);
   // Null for v1 permanent tokens.
   const [qrExpiresAt, setQrExpiresAt] = useState<number | null>(null);
+  const qrExpiresAtRef = useRef<number | null>(null);
+  useEffect(() => { qrExpiresAtRef.current = qrExpiresAt; }, [qrExpiresAt]);
   const [qrError, setQrError] = useState<QrErrorKind>(null);
   const [isOffline, setIsOffline] = useState(false);
   const qrErrorRef = useRef<QrErrorKind>(null);
@@ -38,7 +42,7 @@ export function useQrToken(clientId: string | undefined) {
     const loadQrToken = async () => {
       let cachedV1: string | null = null;
       try {
-        const cached = Platform.OS === 'web' ? null : await SecureStore.getItemAsync(QR_TOKEN_KEY);
+        const cached = await getCachedQrToken();
         if (cached && cached.startsWith('v1.')) {
           cachedV1 = cached;
           setQrValue(`jitplus://scan/${cached}`);
@@ -59,16 +63,9 @@ export function useQrToken(clientId: string | undefined) {
       setIsOffline(false);
       setQrError(null);
       try {
-        const resp = await api.getQrToken();
-        const qrToken = resp.qr_token;
-        const expiresAt = (resp as { expiresAt?: number }).expiresAt;
-        if (Platform.OS !== 'web') {
-          if (qrToken.startsWith('v1.')) {
-            await SecureStore.setItemAsync(QR_TOKEN_KEY, qrToken);
-          } else {
-            await SecureStore.deleteItemAsync(QR_TOKEN_KEY).catch(() => {});
-          }
-        }
+        const { qr_token: qrToken, expiresAt } = await api.getQrToken();
+        if (qrToken.startsWith('v1.')) await setCachedQrToken(qrToken);
+        else await clearCachedQrToken();
         setQrValue(`jitplus://scan/${qrToken}`);
         setQrExpiresAt(typeof expiresAt === 'number' ? expiresAt : null);
       } catch (e) {
@@ -99,9 +96,27 @@ export function useQrToken(clientId: string | undefined) {
     fetchQrToken();
   }, [fetchQrToken]);
 
+  // Back on the tab, or the app back from the background: a v2 token that is
+  // expired (or about to be) must not stay on screen while the next one loads,
+  // the cashier would scan a code the server rejects.
+  const dropStaleToken = useCallback(() => {
+    const exp = qrExpiresAtRef.current;
+    if (exp != null && exp - Date.now() / 1000 <= QR_STALE_MARGIN_S) {
+      setQrValue(null);
+      setQrLoading(true);
+    }
+  }, []);
+
   useFocusEffect(useCallback(() => {
     isFocusedRef.current = true;
+    dropStaleToken();
     fetchQrToken();
+    // iOS keeps the screen focused across background: refresh on resume.
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      dropStaleToken();
+      fetchQrToken();
+    });
     // Recover automatically when the connection comes back.
     const unsubscribeNet = NetInfo.addEventListener((state) => {
       const offline = state.isConnected === false;
@@ -114,8 +129,9 @@ export function useQrToken(clientId: string | undefined) {
     return () => {
       isFocusedRef.current = false;
       unsubscribeNet();
+      appStateSub.remove();
     };
-  }, [fetchQrToken]));
+  }, [fetchQrToken, dropStaleToken]));
 
   // `qrValue` is a dependency so every new token restarts the countdown bar too.
   const refreshDelayMs = useMemo(

@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { View, Pressable, ScrollView, StyleSheet, Platform, I18nManager } from 'react-native';
+import { View, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { MapPin, ChevronRight } from 'lucide-react-native';
 import { Text } from '@/components/AppText';
 import MerchantLogo from '@/components/MerchantLogo';
@@ -8,9 +8,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Merchant } from '@/types';
 import { pointKey, pointName } from '@/utils/merchantPoint';
 import { ms, fontSize as FS } from '@/utils/responsive';
+import { DIR_FLIP } from '@/utils/rtl';
 
-// Directional arrows point the reading way: Arabic reloads the app with forceRTL.
-const DIR_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 const ResultRow = memo(function ResultRow({ merchant, onPress }: {
   merchant: Merchant;

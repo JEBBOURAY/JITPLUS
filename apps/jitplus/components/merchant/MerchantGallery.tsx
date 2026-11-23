@@ -12,7 +12,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { wp, hp, ms } from '@/utils/responsive';
+import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import FicheSection from './FicheSection';
 
 const COLUMNS = 3;
@@ -105,7 +105,7 @@ function MerchantGallery({ images }: Props) {
 
   return (
     <>
-      <FicheSection title={`${t('merchant.galleryTitle')} (${images.length})`}>
+      <FicheSection title={`${t('merchant.galleryTitle')} (${images.length})`} variant="plain">
         <View style={styles.grid}>
           {images.map((url, i) => (
             <Pressable
@@ -134,14 +134,14 @@ function MerchantGallery({ images }: Props) {
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
-  thumb: { borderRadius: ms(4), overflow: 'hidden' },
+  thumb: { borderRadius: radius.sm, overflow: 'hidden' },
   viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' },
   viewerTop: {
     position: 'absolute', left: wp(16), right: wp(16),
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   counter: { paddingHorizontal: wp(12), paddingVertical: hp(6), borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.14)' },
-  counterText: { color: '#fff', fontSize: ms(13) },
+  counterText: { color: '#fff', fontSize: fontSize.sm },
   close: {
     width: ms(40), height: ms(40), borderRadius: ms(20),
     backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center',

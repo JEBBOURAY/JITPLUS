@@ -17,6 +17,10 @@ export interface MerchantLoyalty {
   earned: number;
   earnLine: string;
   validityLine: string | null;
+  /** Welcome gift this client can still get here. */
+  welcomeOffer: NonNullable<Merchant['welcomeOffer']> | null;
+  /** Welcome gift reserved on the card, not spendable until the first QR scan. */
+  lockedWelcome: NonNullable<Merchant['cardWelcomeBonus']> | null;
 }
 
 /** Loyalty state of the page, computed once for the overview and the loyalty tab. */
@@ -46,6 +50,8 @@ export function useMerchantLoyalty(merchant: Merchant | undefined): MerchantLoya
       earned: Math.min(balance, goal),
       earnLine,
       validityLine,
+      welcomeOffer: merchant.welcomeOffer ?? null,
+      lockedWelcome: isMember ? merchant.cardWelcomeBonus ?? null : null,
     };
   }, [merchant, t, locale]);
 }

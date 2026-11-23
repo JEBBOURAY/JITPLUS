@@ -15,9 +15,13 @@ import {
   NotificationNewPayload,
   ScratchCardsChangedPayload,
   CouponUpdatedPayload,
+  CollectionUpdatedPayload,
 } from '@jitplus/shared/src/realtime';
-import { queryKeys } from './useQueryHooks';
+import { invalidateNotifications, invalidateStamps, queryKeys } from './useQueryHooks';
 import { invalidateScratchCards, scratchKeys } from './useScratchHooks';
+import { invalidateCollections } from './useCollectionHooks';
+import { invalidateBookings } from './useBookingHooks';
+import { BOOKING_WS_EVENTS, type BookingChangedPayload } from '@jitplus/shared/src/booking';
 import { useWsStore } from '@/stores/wsStore';
 import type { NotificationsResponse, StampsOverview } from '@/types';
 import type { InfiniteData } from '@tanstack/react-query';
@@ -44,12 +48,6 @@ function refreshUnread(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
 }
 
-/** A stamp can grant a lucky-wheel ticket: the wallet and the tickets move together. */
-function invalidateStamps(queryClient: ReturnType<typeof useQueryClient>) {
-  queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
-  queryClient.invalidateQueries({ queryKey: queryKeys.luckyWheelDraws });
-}
-
 /**
  * Everything the socket keeps fresh. The socket is closed while the app is in
  * the background, so events sent meanwhile are lost: catch up on reconnect.
@@ -58,8 +56,9 @@ function invalidateLiveData(queryClient: ReturnType<typeof useQueryClient>) {
   invalidateStamps(queryClient);
   invalidateScratchCards(queryClient);
   queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
-  queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-  refreshUnread(queryClient);
+  invalidateNotifications(queryClient);
+  invalidateBookings(queryClient);
+  invalidateCollections(queryClient);
 }
 
 /**
@@ -102,10 +101,13 @@ export function useRealtimeEvents(socket: Socket | null) {
 
     // ── New notification received ────────────────────────────
     const onNotificationNew = (payload: NotificationNewPayload) => {
+      // The foreground push may have refetched the list first: never count or show it twice.
+      const cached = queryClient.getQueryData<InfiniteData<NotificationsResponse>>(queryKeys.notifications);
+      if (cached?.pages.some((p) => p.notifications.some((n) => n.id === payload.notificationId))) return;
       optimisticIncrementUnread(queryClient);
 
-      // Optimistic insert into the first page of the infinite notifications cache
-      // instead of invalidating the entire cache (avoids a full refetch).
+      // Shown at once from the socket payload, then replaced by the real row
+      // (merchant, type, link) from the refetch below.
       queryClient.setQueryData<InfiniteData<NotificationsResponse>>(
         queryKeys.notifications,
         (old) => {
@@ -132,6 +134,7 @@ export function useRealtimeEvents(socket: Socket | null) {
           };
         },
       );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications, exact: true });
     };
 
     // ── Scratch cards changed (received / cancelled / extended) ──
@@ -146,15 +149,32 @@ export function useRealtimeEvents(socket: Socket | null) {
     const onCouponUpdated = (payload: CouponUpdatedPayload) => {
       queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
       queryClient.invalidateQueries({ queryKey: scratchKeys.coupon(payload.couponId) });
+      invalidateCollections(queryClient, payload.merchantId);
       if (__DEV__) {
         console.log('[RT] Coupon updated:', payload.couponId, payload.status);
       }
     };
 
+    // ── A product of a collection ticked at the till (and the gift when it completes) ──
+    const onCollectionUpdated = (payload: CollectionUpdatedPayload) => {
+      invalidateCollections(queryClient, payload.merchantId);
+      if (payload.couponId) queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
+    };
+
+    // ── Booking created / confirmed / declined / cancelled ──
+    const onBookingChanged = (payload: BookingChangedPayload) => {
+      invalidateBookings(queryClient, payload.merchantId);
+      if (__DEV__) {
+        console.log('[RT] Booking changed:', payload.bookingId, payload.status);
+      }
+    };
+
     socket.on(WS_EVENTS.STAMPS_UPDATED, onStampsUpdated);
+    socket.on(BOOKING_WS_EVENTS.CLIENT_CHANGED, onBookingChanged);
     socket.on(WS_EVENTS.NOTIFICATION_NEW, onNotificationNew);
     socket.on(WS_EVENTS.SCRATCH_CARDS_CHANGED, onScratchCardsChanged);
     socket.on(WS_EVENTS.COUPON_UPDATED, onCouponUpdated);
+    socket.on(WS_EVENTS.COLLECTION_UPDATED, onCollectionUpdated);
 
     return () => {
       socket.off('connect', onConnect);
@@ -163,6 +183,8 @@ export function useRealtimeEvents(socket: Socket | null) {
       socket.off(WS_EVENTS.NOTIFICATION_NEW, onNotificationNew);
       socket.off(WS_EVENTS.SCRATCH_CARDS_CHANGED, onScratchCardsChanged);
       socket.off(WS_EVENTS.COUPON_UPDATED, onCouponUpdated);
+      socket.off(WS_EVENTS.COLLECTION_UPDATED, onCollectionUpdated);
+      socket.off(BOOKING_WS_EVENTS.CLIENT_CHANGED, onBookingChanged);
       setWsConnected(false);
     };
   }, [socket, queryClient, setWsConnected]);
@@ -188,12 +210,17 @@ export function handleFcmDataPayload(
       break;
     case 'lucky_wheel_ticket':
     case 'stamps_expiring':
+    case 'welcome_bonus':
       invalidateStamps(queryClient);
       refreshUnread(queryClient);
       break;
+    // Booking confirmed / declined / cancelled / reminders: also written in the feed.
+    case 'booking':
+      invalidateBookings(queryClient, data.merchantId);
+      invalidateNotifications(queryClient);
+      break;
     case 'notification_new':
-      refreshUnread(queryClient);
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      invalidateNotifications(queryClient);
       break;
     // Automated campaign events — invalidate relevant caches
     case 'welcome_series':
@@ -203,8 +230,7 @@ export function handleFcmDataPayload(
     case 'admin_broadcast':
     // The daily deals digest also writes an entry in the notifications tab.
     case 'deals_digest':
-      refreshUnread(queryClient);
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      invalidateNotifications(queryClient);
       break;
     case 'reward_reminder':
       invalidateStamps(queryClient);
@@ -226,8 +252,16 @@ export function handleFcmDataPayload(
       }
       refreshUnread(queryClient);
       break;
+    case 'collection_progress':
+    case 'collection_completed':
+      invalidateCollections(queryClient, data.merchantId);
+      if (data.couponId) queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
+      refreshUnread(queryClient);
+      break;
     case 'coupon_redeemed':
       queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
+      // A collection gift used at the till changes the collections history.
+      invalidateCollections(queryClient, data.merchantId);
       if (data.couponId) {
         queryClient.invalidateQueries({ queryKey: scratchKeys.coupon(data.couponId) });
       }
@@ -239,8 +273,7 @@ export function handleFcmDataPayload(
       break;
     default:
       // Unknown events still write an entry in the notifications tab.
-      refreshUnread(queryClient);
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      invalidateNotifications(queryClient);
       if (__DEV__) console.log('[FCM] Unhandled event type:', data.event);
   }
 }
@@ -275,10 +308,20 @@ export function pushStampsEventFromNotification(
   });
 }
 
+/** Background time past which the app catches up on live data when it comes back. */
+const FOREGROUND_REFRESH_AFTER_MS = 5 * 60 * 1000;
 /**
- * Invalidate notification-related caches when the app returns to foreground
- * after being in background for more than 5 minutes.
- * Avoids unnecessary refetches for quick app switches (e.g. phone calls).
+ * The socket is closed in background and reconnects on resume, and its
+ * reconnection already refetches the live data (useRealtimeEvents). Give it
+ * this long before catching up over HTTP instead.
+ */
+const SOCKET_CATCH_UP_GRACE_MS = 5_000;
+
+/**
+ * Catch up on live data when the app returns to foreground after more than
+ * 5 minutes in background (quick app switches, e.g. phone calls, refetch
+ * nothing). Only when the WebSocket did not come back: its reconnection
+ * already did the same refetch.
  */
 export function useAppForegroundRefresh() {
   const queryClient = useQueryClient();
@@ -286,25 +329,34 @@ export function useAppForegroundRefresh() {
   const backgroundSince = useRef<number>(Date.now());
 
   useEffect(() => {
+    let catchUpTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearCatchUp = () => {
+      if (catchUpTimer) clearTimeout(catchUpTimer);
+      catchUpTimer = null;
+    };
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (nextState.match(/inactive|background/)) {
         backgroundSince.current = Date.now();
+        // Left again before the grace ended: the next resume decides.
+        if (nextState === 'background') clearCatchUp();
       }
       if (
         appState.current.match(/inactive|background/) &&
-        nextState === 'active'
+        nextState === 'active' &&
+        Date.now() - backgroundSince.current > FOREGROUND_REFRESH_AFTER_MS
       ) {
-        // Only invalidate if app was in background for more than 5 minutes
-        const elapsed = Date.now() - backgroundSince.current;
-        if (elapsed > 5 * 60 * 1000) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-          queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
-          queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
-        }
+        clearCatchUp();
+        catchUpTimer = setTimeout(() => {
+          catchUpTimer = null;
+          if (!useWsStore.getState().connected) invalidateLiveData(queryClient);
+        }, SOCKET_CATCH_UP_GRACE_MS);
       }
       appState.current = nextState;
     });
 
-    return () => subscription.remove();
+    return () => {
+      clearCatchUp();
+      subscription.remove();
+    };
   }, [queryClient]);
 }

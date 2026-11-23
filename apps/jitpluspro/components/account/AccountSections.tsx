@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Switch, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image, Switch, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import { LogOut, Smartphone, Bell, Shield, Moon, Globe } from 'lucide-react-native';
 import { JitGames, JitGift, JitLock } from '@/components/icons';
 import InfoRow from '@/components/InfoRow';

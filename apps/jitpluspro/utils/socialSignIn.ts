@@ -60,6 +60,14 @@ export interface AppleTokenData {
   rawNonce: string;
 }
 
+/**
+ * Apple sends the name only on the very first authorization of an Apple ID.
+ * When that first attempt is a login without an account, the merchant then
+ * signs in again from the register screen and Apple returns no name: keep it
+ * for the session, keyed by the Apple user id.
+ */
+const appleNameCache = new Map<string, { givenName?: string; familyName?: string }>();
+
 export async function requestAppleCredential(t: Translate): Promise<SignInOutcome<AppleTokenData>> {
   if (!AppleAuthentication || Platform.OS !== 'ios') return { ok: false, error: t('appleAuth.notAvailable') };
   try {
@@ -73,14 +81,20 @@ export async function requestAppleCredential(t: Translate): Promise<SignInOutcom
       nonce: await sha256Hex(rawNonce),
     });
     if (!credential.identityToken) return { ok: false, error: t('appleAuth.noToken') };
+    let givenName = credential.fullName?.givenName ?? undefined;
+    let familyName = credential.fullName?.familyName ?? undefined;
+    if (credential.user) {
+      if (givenName || familyName) {
+        appleNameCache.set(credential.user, { givenName, familyName });
+      } else {
+        const cached = appleNameCache.get(credential.user);
+        givenName = cached?.givenName;
+        familyName = cached?.familyName;
+      }
+    }
     return {
       ok: true,
-      value: {
-        identityToken: credential.identityToken,
-        givenName: credential.fullName?.givenName ?? undefined,
-        familyName: credential.fullName?.familyName ?? undefined,
-        rawNonce,
-      },
+      value: { identityToken: credential.identityToken, givenName, familyName, rawNonce },
     };
   } catch (e: unknown) {
     if ((e as { code?: string } | null)?.code === 'ERR_REQUEST_CANCELED') return { ok: false };

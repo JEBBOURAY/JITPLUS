@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { haptic, hapticSuccess, HapticStyle } from '@/utils/haptics';
 // react-native-view-shot is NOT available in Expo Go SDK 51+
@@ -77,7 +77,17 @@ export function useQrCardExport(t: Translate) {
     try {
       const perm = await MediaLibrary.requestPermissionsAsync(true);
       if (!perm.granted) {
-        Alert.alert(t('qr.permissionDeniedTitle'), t('qr.permissionDeniedMsg'));
+        // iOS asks only once: after a refusal, only Settings can grant it.
+        Alert.alert(
+          t('qr.permissionDeniedTitle'),
+          t('qr.permissionDeniedMsg'),
+          perm.canAskAgain
+            ? undefined
+            : [
+                { text: t('common.cancel'), style: 'cancel' },
+                { text: t('profile.openSettings'), onPress: () => { Linking.openSettings().catch(() => {}); } },
+              ],
+        );
         return;
       }
       // Since expo-media-library 57, the legacy saveToLibraryAsync() exported

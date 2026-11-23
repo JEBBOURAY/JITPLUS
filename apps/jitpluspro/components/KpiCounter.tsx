@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, Animated, AccessibilityInfo, type StyleProp, type TextStyle } from 'react-native';
+import { Animated, AccessibilityInfo, type StyleProp, type TextStyle } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getIntlLocale } from '@/config/currency';
 import { EASE_OUT } from '@/utils/motion';

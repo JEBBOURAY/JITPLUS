@@ -81,6 +81,7 @@ const FORCE_PREFIX = [
   'expo-modules-core',                  // native module proxy / view adapter
   'expo-linear-gradient',               // native ExpoLinearGradient
   'lucide-react-native',
+  'react-native-svg',                   // native RNSVG* views; packages/shared imports it too
 ];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {

@@ -1,9 +1,11 @@
 import {
   DEAL_WIZARD_STEPS,
+  dealActions,
   dealErrorAction,
   dealFormReducer,
   dealFormToInput,
   dealFormToPatch,
+  dealHasPaidPrice,
   dealLimitReached,
   dealsForTab,
   formFromDeal,
@@ -48,6 +50,8 @@ const deal = (patch: Partial<MerchantDealDto>): MerchantDealDto => ({
   percentOff: 30,
   buyQty: null,
   freeQty: null,
+  priceFrom: false,
+  priceUnit: null,
   startsAt: '2026-10-07T23:00:00.000Z',
   endsAt: '2026-10-15T22:59:59.000Z',
   startsOn: '2026-10-08',
@@ -55,7 +59,7 @@ const deal = (patch: Partial<MerchantDealDto>): MerchantDealDto => ({
   status: 'ACTIVE',
   displayStatus: 'LIVE',
   endedReason: null,
-  stats: { views: 0, linkClicks: 0, directions: 0, shares: 0 },
+  stats: { views: 0, linkClicks: 0, directions: 0, calls: 0, shares: 0, claims: 0 },
   createdAt: '2026-10-08T08:00:00.000Z',
   ...patch,
 });
@@ -77,7 +81,8 @@ describe('validateDealStep: offer', () => {
 
   it('checks the percentage range', () => {
     expect(validateDealStep(formOf({ percentOff: '' }), 'offer', TODAY)?.key).toBe('deals.wizard.errors.percentRange');
-    expect(validateDealStep(formOf({ percentOff: '0' }), 'offer', TODAY)?.key).toBe('deals.wizard.errors.percentRange');
+    expect(validateDealStep(formOf({ percentOff: '4' }), 'offer', TODAY)?.key).toBe('deals.wizard.errors.percentRange');
+    expect(validateDealStep(formOf({ percentOff: '5' }), 'offer', TODAY)).toBeNull();
     expect(validateDealStep(formOf({ percentOff: '100' }), 'offer', TODAY)?.key).toBe('deals.wizard.errors.percentRange');
     expect(validateDealStep(formOf({ percentOff: '99' }), 'offer', TODAY)).toBeNull();
   });
@@ -87,6 +92,20 @@ describe('validateDealStep: offer', () => {
     expect(validateDealStep(drop('', '10'), 'offer', TODAY)?.key).toBe('deals.wizard.errors.pricesRequired');
     expect(validateDealStep(drop('100', '100'), 'offer', TODAY)?.key).toBe('deals.wizard.errors.priceNotLower');
     expect(validateDealStep(drop('99,90', '49,5'), 'offer', TODAY)).toBeNull();
+  });
+
+  it('refuses a free promo price and a discount under the minimum, as the backend does', () => {
+    const drop = (originalPrice: string, dealPrice: string) => formOf({ type: 'PRICE_DROP', originalPrice, dealPrice });
+    expect(validateDealStep(drop('100', '0'), 'offer', TODAY)?.key).toBe('deals.wizard.errors.priceFree');
+    expect(validateDealStep(drop('100', '99,60'), 'offer', TODAY)).toEqual({ key: 'deals.wizard.errors.discountTooSmall', params: { min: 5 } });
+    expect(validateDealStep(drop('100', '95'), 'offer', TODAY)).toBeNull();
+  });
+
+  it('accepts an optional price on a percentage or a "buy X get Y" deal, never zero', () => {
+    expect(validateDealStep(formOf({ originalPrice: '120' }), 'offer', TODAY)).toBeNull();
+    expect(validateDealStep(formOf({ originalPrice: '0' }), 'offer', TODAY)?.key).toBe('deals.wizard.errors.priceInvalid');
+    expect(validateDealStep(formOf({ type: 'BUY_X_GET_Y', originalPrice: '25' }), 'offer', TODAY)).toBeNull();
+    expect(validateDealStep(formOf({ type: 'FREE_ITEM', originalPrice: '0' }), 'offer', TODAY)?.key).toBe('deals.wizard.errors.priceInvalid');
   });
 
   it('checks quantities and the optional free item value', () => {
@@ -153,13 +172,20 @@ describe('validateDealDates', () => {
 
 describe('offer payload', () => {
   it('sends only the fields of the chosen type', () => {
-    const form = formOf({ type: 'BUY_X_GET_Y', percentOff: '30', originalPrice: '100', dealPrice: '50', buyQty: '2', freeQty: '1' });
-    expect(offerOf(form)).toEqual({ type: 'BUY_X_GET_Y', buyQty: 2, freeQty: 1 });
-    expect(offerOf(formOf({ type: 'PRICE_DROP', originalPrice: '99,999', dealPrice: '49.5' }))).toEqual({
+    const noDisplay = { priceFrom: false, priceUnit: null };
+    const form = formOf({ type: 'BUY_X_GET_Y', percentOff: '30', originalPrice: '', dealPrice: '50', buyQty: '2', freeQty: '1' });
+    expect(offerOf(form)).toEqual({ type: 'BUY_X_GET_Y', buyQty: 2, freeQty: 1, originalPrice: null, ...noDisplay });
+    expect(offerOf(formOf({ type: 'PRICE_DROP', originalPrice: '99,999', dealPrice: '49.5', priceFrom: true, priceUnit: 'KG' }))).toEqual({
       type: 'PRICE_DROP',
       originalPrice: 100,
       dealPrice: 49.5,
+      priceFrom: true,
+      priceUnit: 'KG',
     });
+    // "À partir de" and the unit mean nothing without a price the client pays.
+    expect(offerOf(formOf({ priceFrom: true, priceUnit: 'KG' }))).toEqual({ type: 'PERCENT_OFF', percentOff: 30, originalPrice: null, ...noDisplay });
+    expect(dealHasPaidPrice(formOf({ originalPrice: '120' }))).toBe(true);
+    expect(dealHasPaidPrice(formOf({ type: 'FREE_ITEM', originalPrice: '120' }))).toBe(false);
     expect(offerOf(formOf({ type: 'FREE_ITEM', originalPrice: '' }))).toEqual({ type: 'FREE_ITEM', originalPrice: null });
     expect(offerOf(formOf({ type: 'OTHER', percentOff: '30' }))).toEqual({ type: 'OTHER' });
   });
@@ -167,6 +193,11 @@ describe('offer payload', () => {
   it('computes the percentage of a price drop for the preview', () => {
     const offer = previewOffer(formOf({ type: 'PRICE_DROP', originalPrice: '200', dealPrice: '150' }));
     expect(offer).toMatchObject({ type: 'PRICE_DROP', originalPrice: 200, dealPrice: 150, percentOff: 25, buyQty: null });
+  });
+
+  it('computes the promo price of a percentage that gives its price for the preview', () => {
+    expect(previewOffer(formOf({ originalPrice: '99,90' }))).toMatchObject({ percentOff: 30, originalPrice: 99.9, dealPrice: 69.93 });
+    expect(previewOffer(formOf())).toMatchObject({ originalPrice: null, dealPrice: null });
   });
 
   it('builds the create body: trimmed texts, nulls for empty fields, stores only when chosen', () => {
@@ -185,7 +216,9 @@ describe('offer payload', () => {
       endsOn: '2026-10-15',
     });
     expect(input).not.toHaveProperty('storeIds');
-    expect(input).not.toHaveProperty('originalPrice');
+    // Sent as null so that an edit can remove the optional price.
+    expect(input.originalPrice).toBeNull();
+    expect(input).not.toHaveProperty('dealPrice');
 
     expect(dealFormToInput(formOf({ allStores: false, storeIds: ['s1', 's1', 's2'] })).storeIds).toEqual(['s1', 's2']);
     expect(dealFormToInput(formOf({ scope: 'ONLINE', allStores: false, storeIds: ['s1'] }))).toMatchObject({ allStores: true });
@@ -242,6 +275,10 @@ describe('deal list', () => {
     expect(dealsForTab(deals, 'live').map((d) => d.id)).toEqual(['live-soon', 'live-late']);
     expect(dealsForTab(deals, 'scheduled').map((d) => d.id)).toEqual(['sched']);
     expect(dealsForTab(deals, 'ended').map((d) => d.id)).toEqual(['removed', 'ended-old']);
+  });
+
+  it('counts link clicks, directions and calls as actions, not shares or uses', () => {
+    expect(dealActions({ views: 50, linkClicks: 1, directions: 2, calls: 3, shares: 10, claims: 4 })).toBe(6);
   });
 
   it('reports the limit reached, active deals first', () => {

@@ -46,3 +46,25 @@ export function resolveIncomingUrl(url: string): string | null {
 
   return null;
 }
+
+/**
+ * Route params that make a screen ACT on arrival (`join=1` enrols the user in
+ * the merchant's programme). They are only ever set in-app (pendingDeal after a
+ * guest sign-up); a URL from outside must never carry them, or a crafted link
+ * such as `jitplus:///merchant/<id>?join=1` (not matched by SHARE_LINK_RE, so
+ * routed as-is by expo-router) would enrol whoever taps it without a prompt.
+ */
+const AUTO_ACTION_PARAMS = ['join'];
+
+/** Removes {@link AUTO_ACTION_PARAMS} from the query of an incoming URL/path. */
+export function stripAutoActionParams(url: string): string {
+  const q = url.indexOf('?');
+  if (q === -1) return url;
+  const hashAt = url.indexOf('#', q);
+  const query = url.slice(q + 1, hashAt === -1 ? undefined : hashAt);
+  const kept = query
+    .split('&')
+    .filter((pair) => pair && !AUTO_ACTION_PARAMS.includes(safeDecode(pair.split('=')[0]).toLowerCase()));
+  const hash = hashAt === -1 ? '' : url.slice(hashAt);
+  return url.slice(0, q) + (kept.length ? `?${kept.join('&')}` : '') + hash;
+}

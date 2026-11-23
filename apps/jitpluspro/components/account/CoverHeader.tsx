@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Camera, Edit3, ArrowLeft } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';

@@ -1,4 +1,5 @@
 import { AxiosError } from 'axios';
+import { getErrorStatus, isInternalErrorMessage } from '@jitplus/shared';
 import i18n from '@/i18n';
 
 /* ── Fallback patterns for any English strings that slip through ── */
@@ -27,16 +28,9 @@ function translateIfEnglish(msg: string): string {
   return sanitizeInternalError(msg);
 }
 
-/**
- * Filter out internal server error details that should never be shown to users.
- * Uses an allowlist approach: only messages matching safe patterns are passed through.
- */
+/** Internal server details (stack, SQL, paths) are never shown to users. */
 function sanitizeInternalError(msg: string): string {
-  const internalPatterns = /Error:|Exception|at\s+\w|SELECT|INSERT|UPDATE|DELETE|prisma|TypeError|Cannot read|stack.*trace|ECONNREFUSED|\bport\b.*\d{4}/i;
-  if (internalPatterns.test(msg)) return i18n.t('errors.generic');
-  // Also block messages that look like file paths or stack traces
-  if (/\/[\w-]+\/[\w-]+\.(js|ts)|\\[\w-]+\\[\w-]+\.(js|ts)/i.test(msg)) return i18n.t('errors.generic');
-  return msg;
+  return isInternalErrorMessage(msg) ? i18n.t('errors.generic') : msg;
 }
 
 /**
@@ -74,16 +68,18 @@ export function extractErrorMessage(error: unknown): string {
   return i18n.t('errors.generic');
 }
 
-/**
- * Check if an error is a network/connectivity error (language-independent).
- */
-export function isNetworkError(error: unknown): boolean {
-  if (error instanceof AxiosError) {
-    return error.message === 'Network Error' || error.code === 'ECONNABORTED' || !error.response;
-  }
-  if (error instanceof Error) {
-    return error.message === 'Network Error';
-  }
-  return false;
+/** Stable key sent by the server next to the translated message (e.g. error.auth.otpWait). */
+export function extractErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof AxiosError)) return undefined;
+  const code = (error.response?.data as { code?: unknown } | undefined)?.code;
+  return typeof code === 'string' ? code : undefined;
 }
+
+/** The server answered 404: the item does not exist (or no longer does). */
+export function isNotFoundError(error: unknown): boolean {
+  return getErrorStatus(error) === 404;
+}
+
+/** No answer from the server (offline, timeout, DNS…): the shared check. */
+export { isNetworkError } from '@jitplus/shared';
 

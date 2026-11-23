@@ -1,7 +1,7 @@
 import { resolveNotificationRoute } from '@/utils/notificationRouting';
 
 const ID = '3f2b8c1e-9a4d-4e2b-8f1a-0c5d6e7f8a9b';
-const FEED = '/(tabs)/notifications';
+const FEED = '/notifications';
 
 describe('resolveNotificationRoute', () => {
   it('maps campaign actions to their screens', () => {
@@ -12,6 +12,12 @@ describe('resolveNotificationRoute', () => {
     expect(resolveNotificationRoute({ action: 'open_coupons' })).toBe('/coupons');
   });
 
+  it('opens a booking only for a valid id', () => {
+    expect(resolveNotificationRoute({ event: 'booking', action: 'open_booking', bookingId: ID, merchantId: ID }))
+      .toEqual({ pathname: '/bookings/[id]', params: { id: ID } });
+    expect(resolveNotificationRoute({ action: 'open_booking', bookingId: 'nope' })).toBe('/bookings');
+  });
+
   it('opens the merchant only for a valid id', () => {
     expect(resolveNotificationRoute({ action: 'open_card', merchantId: ID }))
       .toEqual({ pathname: '/merchant/[id]', params: { id: ID } });
@@ -19,6 +25,13 @@ describe('resolveNotificationRoute', () => {
     expect(resolveNotificationRoute({ event: 'stamps_updated', merchantId: ID }))
       .toEqual({ pathname: '/merchant/[id]', params: { id: ID } });
     expect(resolveNotificationRoute({ event: 'reward_available', merchantId: 'x' })).toBe(FEED);
+  });
+
+  it('opens the merchant for a collection step and the coupon for a completed collection', () => {
+    expect(resolveNotificationRoute({ event: 'collection_progress', action: 'open_card', merchantId: ID }))
+      .toEqual({ pathname: '/merchant/[id]', params: { id: ID } });
+    expect(resolveNotificationRoute({ event: 'collection_completed', action: 'open_coupon', couponId: ID, merchantId: ID }))
+      .toEqual({ pathname: '/coupons/[id]', params: { id: ID } });
   });
 
   it('routes scratch cards by card id, then campaign id', () => {

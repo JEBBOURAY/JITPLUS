@@ -5,9 +5,14 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
-  ActivityIndicator, StyleSheet, Keyboard, Platform,
+  View,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+  Keyboard,
+  Platform,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { Search, X, Info } from 'lucide-react-native';
 import { JitPin } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';

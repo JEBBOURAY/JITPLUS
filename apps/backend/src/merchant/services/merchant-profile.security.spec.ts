@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
@@ -10,6 +10,7 @@ import {
   LOYALTY_CARD_REPOSITORY,
   TRANSACTION_REPOSITORY,
   TRANSACTION_RUNNER,
+  TEAM_MEMBER_REPOSITORY,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { AuditLogService } from '../../admin/audit-log.service';
@@ -23,6 +24,7 @@ describe('MerchantProfileService — re-authentication for sensitive changes', (
   let service: MerchantProfileService;
   let merchantRepo: { findUnique: jest.Mock; update: jest.Mock };
   let deviceSessionRepo: { findMany: jest.Mock; deleteMany: jest.Mock };
+  let teamMemberRepo: { findFirst: jest.Mock };
   let verifyIdToken: jest.Mock;
   let passwordHash: string;
 
@@ -35,6 +37,7 @@ describe('MerchantProfileService — re-authentication for sensitive changes', (
       findUnique: jest.fn(),
       update: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'm1', ...data })),
     };
+    teamMemberRepo = { findFirst: jest.fn().mockResolvedValue(null) };
     deviceSessionRepo = {
       findMany: jest.fn().mockResolvedValue([{ tokenId: 'other-session' }]),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -48,6 +51,7 @@ describe('MerchantProfileService — re-authentication for sensitive changes', (
         { provide: LOYALTY_CARD_REPOSITORY, useValue: {} },
         { provide: TRANSACTION_REPOSITORY, useValue: {} },
         { provide: TRANSACTION_RUNNER, useValue: {} },
+        { provide: TEAM_MEMBER_REPOSITORY, useValue: teamMemberRepo },
         { provide: CACHE_MANAGER, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn().mockResolvedValue(undefined) } },
         { provide: NotificationsService, useValue: {} },
         { provide: ConfigService, useValue: { get: jest.fn(() => 'google-client-id') } },
@@ -109,6 +113,27 @@ describe('MerchantProfileService — re-authentication for sensitive changes', (
         service.updateProfile('m1', { email: 'new@shop.ma', idToken: 'google-token' }),
       ).rejects.toThrow(UnauthorizedException);
       expect(merchantRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses an email already used by a team member of any merchant (login shadowing)', async () => {
+      merchantRepo.findUnique.mockResolvedValue(passwordAccount());
+      teamMemberRepo.findFirst.mockResolvedValue({ id: 'tm-other-shop' });
+
+      await expect(
+        service.updateProfile('m1', { email: 'staff@other-shop.ma', currentPassword: PASSWORD }),
+      ).rejects.toThrow(ConflictException);
+      expect(teamMemberRepo.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: { email: { equals: 'staff@other-shop.ma', mode: 'insensitive' } },
+      }));
+      expect(merchantRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('checks the team-member collision only after re-authentication', async () => {
+      merchantRepo.findUnique.mockResolvedValue(passwordAccount());
+      teamMemberRepo.findFirst.mockResolvedValue({ id: 'tm-other-shop' });
+
+      await expect(service.updateProfile('m1', { email: 'staff@other-shop.ma' })).rejects.toThrow(BadRequestException);
+      expect(teamMemberRepo.findFirst).not.toHaveBeenCalled();
     });
 
     it('does not ask for re-authentication when the email is unchanged', async () => {

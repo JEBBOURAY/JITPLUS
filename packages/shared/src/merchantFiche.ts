@@ -306,13 +306,16 @@ export function linkifyText(text: string): TextPart[] {
 
 // ── Page tabs ───────────────────────────────────────────────────────────────
 
-export type FicheTab = 'overview' | 'loyalty' | 'deals' | 'info' | 'photos';
+/**
+ * The shop (what the merchant says about it) and the loyalty program with its
+ * games never share a tab, so nothing is shown twice.
+ */
+export type FicheTab = 'shop' | 'loyalty' | 'deals' | 'photos';
 
 /** Tabs of the page in display order; a section with nothing to show gets no tab. */
 export function getFicheTabs({ hasDeals, photoCount }: { hasDeals: boolean; photoCount: number }): FicheTab[] {
-  const tabs: FicheTab[] = ['overview', 'loyalty'];
+  const tabs: FicheTab[] = ['shop', 'loyalty'];
   if (hasDeals) tabs.push('deals');
-  tabs.push('info');
   if (photoCount > 0) tabs.push('photos');
   return tabs;
 }

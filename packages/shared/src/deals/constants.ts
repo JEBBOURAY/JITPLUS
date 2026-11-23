@@ -15,7 +15,8 @@ export const DEAL_LIMITS = {
   MAX_DURATION_DAYS: 30,
   /** First day at most this many days ahead */
   MAX_SCHEDULE_DAYS: 30,
-  MIN_PERCENT: 1,
+  /** A smaller discount is not a deal worth a place in the feed */
+  MIN_PERCENT: 5,
   MAX_PERCENT: 99,
   MAX_QTY: 20,
   MAX_PRICE: 1_000_000,

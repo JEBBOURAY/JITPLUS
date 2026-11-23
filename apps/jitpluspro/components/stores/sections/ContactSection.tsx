@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { toast as notify } from '@/components/ui/Toast';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { Share2, Phone, Mail, ChevronRight } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -67,7 +69,7 @@ export default function ContactSection({ merchant }: { merchant: Merchant }) {
   const { invalid, toLinks, reset } = social;
   const save = useCallback(async () => {
     if (invalid.length > 0) {
-      Alert.alert(t('common.error'), t('storesHub.socialInvalid'));
+      notify.error(t('storesHub.socialInvalid'));
       return;
     }
     try {
@@ -77,7 +79,7 @@ export default function ContactSection({ merchant }: { merchant: Merchant }) {
       haptic();
       showToast(t('storePreview.savedToast'));
     } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err));
+      notify.error(getErrorMessage(err));
     }
   }, [invalid.length, toLinks, reset, update, updateMerchant, showToast, t]);
 

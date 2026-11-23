@@ -1,5 +1,7 @@
-import { useCallback, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, Alert, useWindowDimensions } from 'react-native';
+import { useCallback, useMemo, useReducer, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
+import { StyleSheet, Alert, useWindowDimensions } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Layers, Play, Plus, Save, type LucideIcon } from 'lucide-react-native';
 import { JitGift, JitPremium } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -19,7 +21,6 @@ import {
 import { getErrorMessage } from '@/utils/error';
 import { ms } from '@/utils/responsive';
 import { font } from '@/constants/design';
-import PremiumLockCard from '@/components/PremiumLockCard';
 import {
   Button,
   Chip,
@@ -39,11 +40,11 @@ import {
   ReviewBlock,
   ReviewLine,
   WizardFooter,
-  WizardLoading,
-  WizardMessage,
   WizardShell,
   useGameWizard,
+  useWizardTemplate,
 } from '@/components/games/GameWizard';
+import { GameLoadError, GameNoAccess, GameScreenLoading, GameScreenNotice, useBackTo } from '@/components/games/GameScreen';
 import { digitsOnly } from '@/components/games/gameForm';
 import { PrizeEditor, claimLabel } from '@/components/luckyWheel/PrizeEditor';
 import { WheelPreview } from '@/components/luckyWheel/WheelPreview';
@@ -104,8 +105,14 @@ export default function LuckyWheelWizard() {
   const [baseline, setBaseline] = useState(() => formSignature(form));
   const dirty = useMemo(() => formSignature(form) !== baseline, [form, baseline]);
   const [campaignId, setCampaignId] = useState<string | undefined>(editId);
-  const [template, setTemplate] = useState<WheelTemplate | null>(sourceId ? null : 'tiers');
-  const prizesTouchedRef = useRef(false);
+  const applyTemplatePrizes = useCallback((tpl: WheelTemplate) => {
+    dispatch({ type: 'SET_PRIZES', prizes: templatePrizes(tpl, labelOf), winRate: templateWinRate(tpl) });
+  }, [labelOf]);
+  const { template, choose: applyTemplate, markTouched: markPrizesTouched } = useWizardTemplate<WheelTemplate>({
+    initial: sourceId ? null : 'tiers',
+    apply: applyTemplatePrizes,
+    i18nPrefix: 'luckyWheel.wizard',
+  });
 
   // The API has no single-campaign route: the list is small and usually cached.
   const campaignsQuery = useLuckyWheelCampaigns(canManage && !!sourceId);
@@ -154,62 +161,32 @@ export default function LuckyWheelWizard() {
 
   const set = useCallback((patch: Partial<WheelForm>) => dispatch({ type: 'SET', patch }), []);
   const setPrize = useCallback((key: string, patch: Partial<WheelPrizeForm>) => {
-    prizesTouchedRef.current = true;
+    markPrizesTouched();
     dispatch({ type: 'SET_PRIZE', key, patch });
-  }, []);
+  }, [markPrizesTouched]);
   const removePrize = useCallback((key: string) => {
-    prizesTouchedRef.current = true;
+    markPrizesTouched();
     dispatch({ type: 'REMOVE_PRIZE', key });
-  }, []);
+  }, [markPrizesTouched]);
   const addPrize = useCallback(() => {
-    prizesTouchedRef.current = true;
+    markPrizesTouched();
     dispatch({ type: 'ADD_PRIZE' });
-  }, []);
+  }, [markPrizesTouched]);
 
-  const applyTemplate = useCallback((next: WheelTemplate) => {
-    if (next === template) return;
-    const apply = () => {
-      prizesTouchedRef.current = false;
-      setTemplate(next);
-      dispatch({ type: 'SET_PRIZES', prizes: templatePrizes(next, labelOf), winRate: templateWinRate(next) });
-    };
-    if (!prizesTouchedRef.current) return apply();
-    Alert.alert(t('luckyWheel.wizard.templateReplaceTitle'), t('luckyWheel.wizard.templateReplaceBody'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('luckyWheel.wizard.templateReplaceConfirm'), onPress: apply },
-    ]);
-  }, [template, labelOf, t]);
-
-  const leave = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/lucky-wheel');
-  }, [router]);
+  const leave = useBackTo('/lucky-wheel');
 
   const validate = useCallback(
     (s: WheelStep) => validateStep(form, s, today, originalStart),
     [form, today, originalStart],
   );
-  const {
-    step,
-    index: stepIndex,
-    isLast,
-    stepLabels,
-    heading,
-    hint,
-    nextLabel,
-    scrollRef,
-    goTo,
-    next,
-    back,
-    ensureValid,
-    allowLeave,
-  } = useGameWizard({
+  const wizard = useGameWizard({
     steps: WHEEL_STEPS,
     validate,
     dirty,
     onLeave: leave,
     i18nPrefix: 'luckyWheel.wizard',
   });
+  const { step, stepLabels, goTo, ensureValid, allowLeave } = wizard;
 
   /** Creates the campaign (as a draft) or updates it; returns its id. */
   const save = useCallback(async (): Promise<string> => {
@@ -235,10 +212,10 @@ export default function LuckyWheelWizard() {
     try {
       const id = await save();
       setBaseline(formSignature(form));
-      Alert.alert(editing && editing.status !== 'DRAFT' ? t('luckyWheel.wizard.saved') : t('luckyWheel.wizard.draftSaved'));
+      toast.success(editing && editing.status !== 'DRAFT' ? t('luckyWheel.wizard.saved') : t('luckyWheel.wizard.draftSaved'));
       openDetail(id);
     } catch (e) {
-      Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
+      toast.error(getErrorMessage(e, t('common.genericError')));
     }
   }, [busy, ensureValid, save, form, editing, openDetail, t]);
 
@@ -248,15 +225,9 @@ export default function LuckyWheelWizard() {
       setBaseline(formSignature(form));
       await statusMutation.mutateAsync({ id, status: 'ACTIVE' });
       const input = formToInput(form);
-      Alert.alert(t('luckyWheel.wizard.launchedTitle'), t('luckyWheel.wizard.launchedBody'), [
-        { text: t('luckyWheel.wizard.later'), style: 'cancel', onPress: () => openDetail(id) },
-        {
-          text: t('luckyWheel.wizard.notifyNow'),
-          onPress: () => push.prompt(input, () => openDetail(id)),
-        },
-      ], { cancelable: false });
+      push.offer(input, () => openDetail(id));
     } catch (e) {
-      Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
+      toast.error(getErrorMessage(e, t('common.genericError')));
     }
   }, [save, form, statusMutation, push, openDetail, t]);
 
@@ -277,36 +248,25 @@ export default function LuckyWheelWizard() {
     ? t('luckyWheel.wizard.titleEdit')
     : copyFrom ? t('luckyWheel.wizard.titleCopy') : t('luckyWheel.wizard.titleCreate');
 
-  if (!canManage) {
-    return (
-      <WizardMessage title={title} onBack={leave}>
-        {isTeamMember
-          ? <View style={styles.padded}><Notice text={t('luckyWheel.list.ownerOnly')} /></View>
-          : <PremiumLockCard titleKey="luckyWheel.list.premiumTitle" descriptionKey="luckyWheel.list.premiumDesc" />}
-      </WizardMessage>
-    );
-  }
+  if (!canManage) return <GameNoAccess title={title} onBack={leave} ns="luckyWheel" isTeamMember={isTeamMember} />;
 
-  if (sourceId && campaignsQuery.isLoading) return <WizardLoading />;
+  if (sourceId && campaignsQuery.isLoading) return <GameScreenLoading />;
 
   // Without the loaded campaign, saving would overwrite it with a blank wheel.
   if (sourceId && !source) {
     return (
-      <WizardMessage title={title} onBack={leave}>
-        <View style={[styles.padded, styles.gap]}>
-          <Notice tone="danger" text={t('luckyWheel.wizard.loadError')} />
-          <Button label={t('common.retry')} onPress={() => void campaignsQuery.refetch()} loading={campaignsQuery.isRefetching} />
-        </View>
-      </WizardMessage>
+      <GameLoadError
+        title={title}
+        onBack={leave}
+        text={t('luckyWheel.wizard.loadError')}
+        onRetry={() => void campaignsQuery.refetch()}
+        retrying={campaignsQuery.isRefetching}
+      />
     );
   }
 
   if (editing?.status === 'ENDED') {
-    return (
-      <WizardMessage title={title} onBack={leave}>
-        <View style={styles.padded}><Notice text={t('luckyWheel.wizard.notEditable')} /></View>
-      </WizardMessage>
-    );
+    return <GameScreenNotice title={title} onBack={leave} text={t('luckyWheel.wizard.notEditable')} />;
   }
 
   const previewSize = Math.min(width - 96, ms(290));
@@ -324,33 +284,17 @@ export default function LuckyWheelWizard() {
   const wheelName = form.name.trim() || t('luckyWheel.wizard.defaultName');
   const wheelDescription = form.description.trim();
 
-  let footer: ReactNode;
-  if (!isLast) {
-    footer = (
-      <WizardFooter onBack={stepIndex > 0 ? back : undefined} primary={{ label: nextLabel, onPress: next }} />
-    );
-  } else if (isLive) {
-    footer = <WizardFooter primary={{ icon: Save, label: t('luckyWheel.wizard.save'), onPress: handleSave, loading: busy }} />;
-  } else {
-    footer = (
-      <WizardFooter
-        secondary={{ icon: Save, label: t('luckyWheel.wizard.saveDraft'), onPress: handleSave, disabled: busy }}
-        primary={{ icon: Play, label: t('luckyWheel.wizard.launch'), onPress: handleLaunch, loading: busy }}
-      />
-    );
-  }
+  const lastFooter = isLive ? (
+    <WizardFooter primary={{ icon: Save, label: t('luckyWheel.wizard.save'), onPress: handleSave, loading: busy }} />
+  ) : (
+    <WizardFooter
+      secondary={{ icon: Save, label: t('luckyWheel.wizard.saveDraft'), onPress: handleSave, disabled: busy }}
+      primary={{ icon: Play, label: t('luckyWheel.wizard.launch'), onPress: handleLaunch, loading: busy }}
+    />
+  );
 
   return (
-    <WizardShell
-      title={title}
-      onBack={back}
-      stepLabels={stepLabels}
-      index={stepIndex}
-      heading={heading}
-      hint={hint}
-      scrollRef={scrollRef}
-      footer={footer}
-    >
+    <WizardShell title={title} wizard={wizard} lastFooter={lastFooter}>
       {step === 'prizes' && (
         <>
           {!sourceId && (
@@ -566,8 +510,6 @@ export default function LuckyWheelWizard() {
 }
 
 const styles = StyleSheet.create({
-  padded: { padding: 16 },
-  gap: { gap: 12 },
   bigValue: { fontSize: ms(22), fontFamily: font.semibold, textAlign: 'center' },
   timeline: { fontSize: ms(13), lineHeight: ms(20), fontFamily: font.medium },
 });

@@ -1,9 +1,12 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { MerchantCategory, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { errMsg } from '../common/utils';
+import { IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
+import { moroccoYmd } from '../common/utils/morocco-time';
+import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
 import type { DealCategoryCountsQueryDto, DealEventType, DealFeedQueryDto, DealPositionQueryDto, ReportDealDto } from './dto';
 import {
   DEAL_AUTO_HIDE_REPORTS,
@@ -11,35 +14,41 @@ import {
   DEAL_BADGES_CACHE_TTL,
   DEAL_CITIES_CACHE_TTL,
   DEAL_ENDING_SOON_HOURS,
-  DEAL_EVENT_DEDUP_MS,
   DEAL_FEED_MAX_PAGES,
   DEAL_FEED_PAGE_SIZE,
   DEAL_NEARBY_RADIUS_KM,
   DEAL_ONLINE_INTERLEAVE,
   DEAL_TEASER_CACHE_TTL,
-  DEAL_VIEW_DEDUP_MS,
 } from './deal-limits';
 import { MS_PER_DAY } from '../common/constants';
 import { liveDealWhere } from './deal-rules';
+import { dealAutoHiddenTexts } from './deal-notif-i18n';
 import {
   CLIENT_DEAL_DETAIL_SELECT,
   CLIENT_DEAL_SELECT,
   ClientDealRow,
+  DealViewerState,
+  GUEST_VIEWER,
   Position,
   toClientDealDetail,
   toClientDealSummary,
 } from './deal-mapper';
-import { MOROCCO_CITIES, MOROCCO_CITY_KEYS, nearestCityKey } from './morocco-cities';
+import { MOROCCO_CITIES, MOROCCO_CITY_KEYS, haversineKm, nearestCityKey } from './morocco-cities';
 
 const CATEGORIES = new Set<string>(Object.values(MerchantCategory));
 /** LOCAL deals per "Près de moi" page; the rest of the page is ONLINE deals. */
 const NEARBY_LOCAL_PER_PAGE = DEAL_FEED_PAGE_SIZE - Math.floor(DEAL_FEED_PAGE_SIZE / (DEAL_ONLINE_INTERLEAVE + 1));
 const MAX_OFFSET = DEAL_FEED_MAX_PAGES * DEAL_FEED_PAGE_SIZE;
-const DEDUP_MAX_ENTRIES = 50_000;
-const EVENT_FIELDS: Record<DealEventType, 'linkClickCount' | 'directionsCount' | 'shareCount'> = {
-  LINK_CLICK: 'linkClickCount',
-  DIRECTIONS: 'directionsCount',
-  SHARE: 'shareCount',
+const RECENT_FIRST: Prisma.DealOrderByWithRelationInput[] = [{ startsAt: 'desc' }, { id: 'asc' }];
+const ENDING_FIRST: Prisma.DealOrderByWithRelationInput[] = [{ endsAt: 'asc' }, { id: 'asc' }];
+
+/** Deal counter of each counted event, and the per-day figure it adds to (a share is not an "action"). */
+const COUNTERS: Record<DealEventType | 'VIEW', { column: string; daily: 'views' | 'actions' | null }> = {
+  VIEW: { column: 'view_count', daily: 'views' },
+  LINK_CLICK: { column: 'link_click_count', daily: 'actions' },
+  DIRECTIONS: { column: 'directions_count', daily: 'actions' },
+  CALL: { column: 'call_count', daily: 'actions' },
+  SHARE: { column: 'share_count', daily: null },
 };
 
 interface BadgeRow {
@@ -51,6 +60,13 @@ interface BadgeRow {
   buy_qty: number | null;
   free_qty: number | null;
   deal_count: number;
+}
+
+/** Title and picture of a live deal, for the preview of its shared link. */
+export interface DealSharePreview {
+  title: string;
+  merchant: string;
+  imageUrl: string | null;
 }
 
 export interface MerchantDealBadge {
@@ -92,7 +108,8 @@ export function parseCursor(cursor: string | undefined): [number, number] {
 }
 
 interface FeedContext {
-  clientId: string;
+  /** null for a guest: no blocked merchants, no reported deals to hide. */
+  clientId: string | null;
   now: Date;
   pos: Position | null;
   cityKey: string | null;
@@ -103,17 +120,17 @@ interface FeedContext {
 @Injectable()
 export class DealsClientService {
   private readonly logger = new Logger(DealsClientService.name);
-  /** Per-instance de-duplication of views and clicks (kept out of the shared cache, which is small). */
-  private readonly seen = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    private readonly inbox: MerchantInboxService,
+    @Inject(MAIL_PROVIDER) private readonly mail: IMailProvider,
   ) {}
 
   // ── Feed ────────────────────────────────────────────────────
 
-  async feed(clientId: string, q: DealFeedQueryDto) {
+  async feed(clientId: string | null, q: DealFeedQueryDto) {
     const now = new Date();
     const pos = q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : null;
     const ctx: FeedContext = {
@@ -122,25 +139,37 @@ export class DealsClientService {
       pos,
       cityKey: this.resolveCity(q.cityKey, pos),
       category: q.category && CATEGORIES.has(q.category) ? q.category : null,
-      blocked: await this.blockedIds(clientId),
+      blocked: clientId ? await this.blockedIds(clientId) : [],
     };
     const [localOffset, onlineOffset] = parseCursor(q.cursor);
     if (localOffset + onlineOffset >= MAX_OFFSET) return { items: [], nextCursor: null, cityKey: ctx.cityKey };
 
     const tab = q.tab ?? 'nearby';
-    if (tab === 'nearby') return this.nearbyFeed(ctx, localOffset, onlineOffset);
+    const byDiscount = q.sort === 'discount';
+    if (tab === 'saved' && !clientId) return { items: [], nextCursor: null, cityKey: ctx.cityKey };
+    // The distance order is the plain "Près de moi" list; a search or a sort reads the city instead.
+    if (tab === 'nearby' && !q.q && !byDiscount) return this.nearbyFeed(ctx, localOffset, onlineOffset);
 
     const where: Prisma.DealWhereInput = { ...this.baseWhere(ctx) };
-    let orderBy: Prisma.DealOrderByWithRelationInput[] = [{ startsAt: 'desc' }, { id: 'asc' }];
+    let orderBy = RECENT_FIRST;
     if (tab === 'online') {
       where.scope = 'ONLINE';
+    } else if (tab === 'saved') {
+      // Saved deals are listed wherever they are.
+      where.saves = { some: { clientId: clientId! } };
+      orderBy = ENDING_FIRST;
     } else {
       if (ctx.cityKey) where.OR = [{ scope: 'ONLINE' }, { scope: 'LOCAL', cityKeys: { has: ctx.cityKey } }];
       if (tab === 'ending') {
         where.endsAt = { gt: now, lte: new Date(now.getTime() + DEAL_ENDING_SOON_HOURS * 3_600_000) };
-        orderBy = [{ endsAt: 'asc' }, { id: 'asc' }];
+        orderBy = ENDING_FIRST;
       }
     }
+    if (q.q) {
+      const contains = { contains: q.q, mode: 'insensitive' as const };
+      where.AND = [{ OR: [{ title: contains }, { merchant: { nom: contains } }] }];
+    }
+    if (byDiscount) orderBy = [{ percentOff: { sort: 'desc', nulls: 'last' } }, ...RECENT_FIRST];
     const rows = await this.prisma.deal.findMany({
       where,
       select: CLIENT_DEAL_SELECT,
@@ -177,11 +206,30 @@ export class DealsClientService {
 
     const items = interleave(local, online, DEAL_ONLINE_INTERLEAVE).map((d) => toClientDealSummary(d, ctx.pos));
     const more = hasMoreLocal || hasMoreOnline;
+    const nothingAround = localOffset === 0 && local.length === 0 && ctx.pos && !ctx.category;
     return {
       items,
       nextCursor: more ? `${localOffset + local.length}.${onlineOffset + online.length}` : null,
       cityKey: ctx.cityKey,
+      suggestedCity: nothingAround ? await this.nearestCityWithDeals(ctx.pos!) : null,
     };
+  }
+
+  /** Where to send a client whose surroundings have no in-store deal. */
+  private async nearestCityWithDeals(pos: Position): Promise<{ key: string; dealCount: number } | null> {
+    const counts = await this.cityCounts();
+    let best: { key: string; dealCount: number } | null = null;
+    let bestKm = Infinity;
+    for (const city of MOROCCO_CITIES) {
+      const dealCount = counts[city.key] ?? 0;
+      if (dealCount === 0) continue;
+      const km = haversineKm(pos.lat, pos.lng, city.lat, city.lng);
+      if (km < bestKm) {
+        bestKm = km;
+        best = { key: city.key, dealCount };
+      }
+    }
+    return best;
   }
 
   private async nearbyLocal(ctx: FeedContext, offset: number, take: number): Promise<ClientDealRow[]> {
@@ -227,7 +275,7 @@ export class DealsClientService {
         AND s.latitude BETWEEN ${box.minLat} AND ${box.maxLat}
         AND s.longitude BETWEEN ${box.minLng} AND ${box.maxLng}
         AND (d.all_stores OR EXISTS (SELECT 1 FROM deal_stores ds WHERE ds.deal_id = d.id AND ds.store_id = s.id))
-        AND NOT EXISTS (SELECT 1 FROM deal_reports r WHERE r.deal_id = d.id AND r.client_id = ${ctx.clientId})
+        ${notReportedBy(ctx.clientId)}
         ${category}
         ${blocked}
       GROUP BY d.id
@@ -247,12 +295,14 @@ export class DealsClientService {
    * filters as the feed (blocked merchants, reported deals). A deal counts for
    * its merchant's main and secondary categories.
    */
-  async categoryCounts(clientId: string, q: DealCategoryCountsQueryDto): Promise<{ counts: Record<string, number> }> {
+  async categoryCounts(clientId: string | null, q: DealCategoryCountsQueryDto): Promise<{ counts: Record<string, number> }> {
     const now = new Date();
     const pos = q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : null;
     const cityKey = this.resolveCity(q.cityKey, pos);
-    const blockedIds = await this.blockedIds(clientId);
+    const blockedIds = clientId ? await this.blockedIds(clientId) : [];
     const tab = q.tab ?? 'nearby';
+    // The saved list is short and has no category chips.
+    if (tab === 'saved') return { counts: {} };
 
     const inCity = cityKey
       ? Prisma.sql`(d.scope = 'ONLINE' OR (d.scope = 'LOCAL' AND ${cityKey} = ANY(d.city_keys)))`
@@ -287,7 +337,7 @@ export class DealsClientService {
         AND d.ends_at > ${now}
         AND m.is_active = true
         AND m.deleted_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM deal_reports r WHERE r.deal_id = d.id AND r.client_id = ${clientId})
+        ${notReportedBy(clientId)}
         AND ${area}
         ${ending}
         ${blocked}
@@ -312,7 +362,7 @@ export class DealsClientService {
       },
       ...(ctx.blocked.length > 0 && { merchantId: { notIn: ctx.blocked } }),
       // A deal the client reported disappears from their lists.
-      reports: { none: { clientId: ctx.clientId } },
+      ...(ctx.clientId && { reports: { none: { clientId: ctx.clientId } } }),
     };
   }
 
@@ -328,7 +378,11 @@ export class DealsClientService {
 
   // ── Detail, merchant section ───────────────────────────────
 
-  async detail(clientId: string, id: string, q: DealPositionQueryDto) {
+  /**
+   * clientId null: a guest. `viewerKey` (their hashed IP) then de-duplicates
+   * their views, so a guest re-opening a deal does not inflate its count.
+   */
+  async detail(clientId: string | null, id: string, q: DealPositionQueryDto, viewerKey: string = clientId ?? 'guest') {
     const now = new Date();
     const deal = await this.prisma.deal.findUnique({ where: { id }, select: CLIENT_DEAL_DETAIL_SELECT });
     const hidden =
@@ -340,26 +394,36 @@ export class DealsClientService {
       deal.startsAt > now;
     if (hidden) throw new NotFoundException('Bon plan introuvable');
 
-    const blocked = await this.prisma.clientMerchantBlock.findUnique({
-      where: { clientId_merchantId: { clientId, merchantId: deal.merchantId } },
-      select: { id: true },
-    });
+    const [blocked, viewer] = clientId
+      ? await Promise.all([this.isBlocked(clientId, deal.merchantId), this.viewerState(clientId, id, deal.merchantId)])
+      : [false, GUEST_VIEWER];
     if (blocked) throw new NotFoundException('Bon plan introuvable');
 
     const isOver = deal.status === 'ENDED' || deal.endsAt <= now;
-    if (!isOver && this.firstTime(`v:${id}:${clientId}`, DEAL_VIEW_DEDUP_MS)) {
-      this.increment(id, 'viewCount');
-    }
+    if (!isOver) this.count(id, viewerKey, 'VIEW');
     const pos = q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : null;
-    return toClientDealDetail(deal, isOver, pos);
+    return toClientDealDetail(deal, isOver, viewer, pos);
   }
 
-  async merchantDeals(clientId: string, merchantId: string, q: DealPositionQueryDto) {
-    const blocked = await this.prisma.clientMerchantBlock.findUnique({
+  private async isBlocked(clientId: string, merchantId: string): Promise<boolean> {
+    const block = await this.prisma.clientMerchantBlock.findUnique({
       where: { clientId_merchantId: { clientId, merchantId } },
       select: { id: true },
     });
-    if (blocked) return { items: [] };
+    return !!block;
+  }
+
+  private async viewerState(clientId: string, dealId: string, merchantId: string): Promise<DealViewerState> {
+    const [save, claim, card] = await Promise.all([
+      this.prisma.dealSave.findUnique({ where: { clientId_dealId: { clientId, dealId } }, select: { dealId: true } }),
+      this.prisma.dealClaim.findUnique({ where: { dealId_clientId: { dealId, clientId } }, select: { createdAt: true } }),
+      this.prisma.loyaltyCard.findFirst({ where: { clientId, merchantId, deactivatedAt: null }, select: { id: true } }),
+    ]);
+    return { saved: !!save, claimedAt: claim?.createdAt ?? null, hasCard: !!card };
+  }
+
+  async merchantDeals(clientId: string, merchantId: string, q: DealPositionQueryDto) {
+    if (await this.isBlocked(clientId, merchantId)) return { items: [] };
     const rows = await this.prisma.deal.findMany({
       where: { ...liveDealWhere(), merchantId, reports: { none: { clientId } } },
       select: CLIENT_DEAL_SELECT,
@@ -370,19 +434,62 @@ export class DealsClientService {
     return { items: rows.map((d) => toClientDealSummary(d, pos)) };
   }
 
-  // ── Events, reports ────────────────────────────────────────
+  // ── Events, "J'en profite", saved deals, reports ───────────
 
-  async recordEvent(clientId: string, id: string, type: DealEventType) {
-    if (this.firstTime(`${type}:${id}:${clientId}`, DEAL_EVENT_DEDUP_MS)) {
-      this.increment(id, EVENT_FIELDS[type]);
-    }
+  /** viewerKey: the client id, or the hashed IP of a guest. */
+  async recordEvent(viewerKey: string, id: string, type: DealEventType) {
+    this.count(id, viewerKey, type);
     return { success: true };
+  }
+
+  /**
+   * "J'en profite": the pass the client shows at the till. Idempotent, one per
+   * client and deal; the merchant's counter moves only on the first call.
+   */
+  async claim(clientId: string, id: string) {
+    const deal = await this.findOpen(clientId, id);
+    if (deal.scope !== 'LOCAL') throw new BadRequestException('Ce bon plan s’utilise en ligne');
+    await this.prisma.$executeRaw`
+      WITH claimed AS (
+        INSERT INTO deal_claims (deal_id, client_id) VALUES (${id}, ${clientId})
+        ON CONFLICT DO NOTHING RETURNING deal_id
+      ), bumped AS (
+        UPDATE deals SET claim_count = claim_count + 1 WHERE id IN (SELECT deal_id FROM claimed) RETURNING id
+      )
+      INSERT INTO deal_daily_stats (deal_id, day, claims)
+      SELECT id, ${moroccoYmd()}::date, 1 FROM bumped
+      ON CONFLICT (deal_id, day) DO UPDATE SET claims = deal_daily_stats.claims + 1`;
+    const claim = await this.prisma.dealClaim.findUniqueOrThrow({
+      where: { dealId_clientId: { dealId: id, clientId } },
+      select: { createdAt: true },
+    });
+    return { claimedAt: claim.createdAt.toISOString() };
+  }
+
+  async setSaved(clientId: string, id: string, saved: boolean) {
+    if (saved) {
+      await this.findOpen(clientId, id);
+      await this.prisma.dealSave.createMany({ data: [{ clientId, dealId: id }], skipDuplicates: true });
+    } else {
+      await this.prisma.dealSave.deleteMany({ where: { clientId, dealId: id } });
+    }
+    return { saved };
+  }
+
+  /** A deal the client can act on: live, from a merchant they did not block. */
+  private async findOpen(clientId: string, id: string) {
+    const deal = await this.prisma.deal.findFirst({
+      where: { id, ...liveDealWhere() },
+      select: { id: true, scope: true, merchantId: true },
+    });
+    if (!deal || (await this.isBlocked(clientId, deal.merchantId))) throw new NotFoundException('Bon plan introuvable');
+    return deal;
   }
 
   async report(clientId: string, id: string, dto: ReportDealDto) {
     const deal = await this.prisma.deal.findFirst({
       where: { id, status: { in: ['ACTIVE', 'ENDED'] } },
-      select: { id: true },
+      select: { id: true, title: true, merchantId: true, merchant: { select: { nom: true, language: true } } },
     });
     if (!deal) throw new NotFoundException('Bon plan introuvable');
     try {
@@ -412,12 +519,34 @@ export class DealsClientService {
     });
     if (credibleReports >= DEAL_AUTO_HIDE_REPORTS) {
       // Hidden until an admin reviews it (restore or confirm the removal).
-      await this.prisma.deal.updateMany({
+      const { count } = await this.prisma.deal.updateMany({
         where: { id, status: 'ACTIVE' },
         data: { status: 'REMOVED', endedReason: 'AUTO_REPORTS' },
       });
+      // The status condition makes the announcement happen once.
+      if (count === 1) await this.announceAutoHide(deal, clientId, credibleReports);
     }
     return { success: true, alreadyReported: false };
+  }
+
+  /** The merchant learns why the deal disappeared, and moderation that it waits for a review. */
+  private async announceAutoHide(
+    deal: { id: string; title: string; merchantId: string; merchant: { nom: string; language: string | null } },
+    lastReporterId: string,
+    reports: number,
+  ) {
+    const msg = dealAutoHiddenTexts(deal.merchant.language, deal.title);
+    await this.inbox.record(deal.merchantId, { category: 'ACTIVITY', title: msg.title, body: msg.body, action: 'open_deals' });
+    this.mail
+      .sendContentReport({
+        merchantId: deal.merchantId,
+        merchantName: deal.merchant.nom,
+        reporterId: lastReporterId,
+        reporterEmail: '—',
+        reason: 'Bon plan masqué automatiquement',
+        details: `« ${deal.title} » (${deal.id}) masqué après ${reports} signalements. À vérifier dans Admin > Bons plans > Retirés.`,
+      })
+      .catch((err) => this.logger.warn(`Auto-hide report mail failed for deal ${deal.id}: ${errMsg(err)}`));
   }
 
   // ── Guests and shared counters ─────────────────────────────
@@ -447,6 +576,26 @@ export class DealsClientService {
     const result = { count, cityKey, thumbs };
     await this.cache.set(cacheKey, result, DEAL_TEASER_CACHE_TTL);
     return result;
+  }
+
+  /**
+   * Public (the shared link is opened by chat apps and people without the
+   * app), so live deals are cached. Misses are not: random ids would fill the
+   * shared LRU and evict plan and session entries; a miss is one primary-key read.
+   */
+  async sharePreview(id: string): Promise<DealSharePreview | null> {
+    const cacheKey = `deals:share:${id}`;
+    const cached = await this.cache.get<{ preview: DealSharePreview }>(cacheKey);
+    if (cached) return cached.preview;
+    const deal = await this.prisma.deal.findFirst({
+      where: { id, ...liveDealWhere() },
+      select: { title: true, imageUrl: true, merchant: { select: { nom: true, coverUrl: true } } },
+    });
+    const picture = deal?.imageUrl ?? deal?.merchant.coverUrl ?? null;
+    if (!deal) return null;
+    const preview = { title: deal.title, merchant: deal.merchant.nom, imageUrl: picture?.startsWith('https://') ? picture : null };
+    await this.cache.set(cacheKey, { preview }, DEAL_TEASER_CACHE_TTL);
+    return preview;
   }
 
   async cities(q: DealPositionQueryDto) {
@@ -508,27 +657,38 @@ export class DealsClientService {
 
   // ── Counters ───────────────────────────────────────────────
 
-  private firstTime(key: string, windowMs: number): boolean {
-    const now = Date.now();
-    const until = this.seen.get(key);
-    if (until && until > now) return false;
-    this.seen.delete(key);
-    this.seen.set(key, now + windowMs);
-    if (this.seen.size > DEDUP_MAX_ENTRIES) {
-      // Map keeps insertion order: drop the oldest tenth.
-      let drop = Math.ceil(DEDUP_MAX_ENTRIES / 10);
-      for (const k of this.seen.keys()) {
-        this.seen.delete(k);
-        if (--drop === 0) break;
-      }
-    }
-    return true;
+  /**
+   * Counts a view or a click once per viewer and Morocco day, whatever the
+   * instance: the mark row is the proof, and only its first insert moves the
+   * deal counter and the figure of the day. Fire-and-forget: a counter must
+   * never slow down or fail the request.
+   */
+  private count(id: string, viewerKey: string, kind: DealEventType | 'VIEW') {
+    const { column, daily } = COUNTERS[kind];
+    const day = moroccoYmd();
+    // Identifiers come from COUNTERS only, never from the request.
+    const counter = Prisma.raw(column);
+    const figure = daily ? Prisma.raw(daily) : null;
+    const tail = figure
+      ? Prisma.sql`INSERT INTO deal_daily_stats (deal_id, day, ${figure})
+          SELECT id, ${day}::date, 1 FROM bumped
+          ON CONFLICT (deal_id, day) DO UPDATE SET ${figure} = deal_daily_stats.${figure} + 1`
+      : Prisma.sql`SELECT 1 FROM bumped`;
+    this.prisma.$executeRaw`
+      WITH mark AS (
+        INSERT INTO deal_event_marks (deal_id, viewer_key, kind, day)
+        SELECT d.id, ${viewerKey}, ${kind}, ${day}::date FROM deals d WHERE d.id = ${id} AND d.status = 'ACTIVE'
+        ON CONFLICT DO NOTHING RETURNING deal_id
+      ), bumped AS (
+        UPDATE deals SET ${counter} = ${counter} + 1 WHERE id IN (SELECT deal_id FROM mark) RETURNING id
+      )
+      ${tail}`.catch((err) => this.logger.warn(`Deal counter ${kind} failed for ${id}: ${errMsg(err)}`));
   }
+}
 
-  /** Fire-and-forget: a counter must never slow down or fail the request. */
-  private increment(id: string, field: 'viewCount' | 'linkClickCount' | 'directionsCount' | 'shareCount') {
-    this.prisma.deal
-      .updateMany({ where: { id, status: 'ACTIVE' }, data: { [field]: { increment: 1 } } })
-      .catch((err) => this.logger.warn(`Deal counter ${field} failed for ${id}: ${errMsg(err)}`));
-  }
+/** Hides the deals a client reported; a guest has reported nothing. */
+function notReportedBy(clientId: string | null): Prisma.Sql {
+  return clientId
+    ? Prisma.sql`AND NOT EXISTS (SELECT 1 FROM deal_reports r WHERE r.deal_id = d.id AND r.client_id = ${clientId})`
+    : Prisma.empty;
 }

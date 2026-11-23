@@ -36,7 +36,7 @@ describe('clearLocalSession', () => {
 
     const asyncKeys = (AsyncStorage.removeItem as jest.Mock).mock.calls.map((c) => c[0]);
     expect(asyncKeys).toEqual(expect.arrayContaining([
-      'jitplus-query-cache', 'profile_draft', 'showWelcome', 'guest_mode', '@jitplus_deal_alert_card_dismissed_at',
+      'jitplus-query-cache', 'profile_draft', 'showWelcome', '@jitplus_deal_alert_card_dismissed_at',
     ]));
     const secureKeys = (SecureStore.deleteItemAsync as jest.Mock).mock.calls.map((c) => c[0]);
     expect(secureKeys).toEqual(expect.arrayContaining(['pendingClaimToken', 'qr_permanent_token']));

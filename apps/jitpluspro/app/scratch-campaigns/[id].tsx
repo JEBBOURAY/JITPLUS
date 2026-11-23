@@ -1,17 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  RefreshControl,
-  Modal,
-  Pressable,
-  Linking,
-  TouchableOpacity,
-} from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
+import { View, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl, Linking, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/AppText';
 import * as Clipboard from 'expo-clipboard';
 import { CalendarPlus, Copy, Edit3, MessageCircle, Send, Trash2, Undo2, XCircle } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,19 +33,16 @@ import { useCurrency, useMoney } from '@/hooks/useCurrency';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import {
-  SCRATCH_LIMITS,
-  addDaysYmd,
   formatRewardValue,
   rewardProbabilities,
   type CancelPreview,
-  type ScratchCampaignDto,
   type ScratchClientWithoutApp,
 } from '@jitplus/shared/src/scratch';
 import { Button, CampaignStatusPill, Notice, ScreenHeader, Section } from '@/components/scratch/ScratchUI';
-import { DateField, formatYmd } from '@/components/scratch/DateField';
-import { moroccoToday, moroccoYmdOf } from '@/components/scratch/campaignForm';
-
-const CANCEL_DELAY_S = 3;
+import { Kpi, KpiRow } from '@/components/games/Kpi';
+import { GameDetailMissing, GameScreenLoading, InfoLine, useBackTo } from '@/components/games/GameScreen';
+import { ExtendDatesModal, FinalCancelModal } from '@/components/scratch/ScratchDetailModals';
+import { formatYmd } from '@/components/scratch/DateField';
 
 export default function ScratchCampaignDetail() {
   const shouldWait = useRequireAuth();
@@ -112,12 +99,13 @@ export default function ScratchCampaignDetail() {
   }, [refetchCampaign, refetchStats, refetchCoupons, refetchWithoutApp, sent]);
 
   const fail = useCallback((e: unknown) => Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError'))), [t]);
+  const goBack = useBackTo('/scratch-campaigns');
 
   const handleUnschedule = useCallback(async () => {
     if (!id) return;
     try {
       await unscheduleMutation.mutateAsync(id);
-      Alert.alert(t('scratch.detail.unscheduled'));
+      toast.success(t('scratch.detail.unscheduled'));
     } catch (e) { fail(e); }
   }, [id, unscheduleMutation, t, fail]);
 
@@ -125,7 +113,7 @@ export default function ScratchCampaignDetail() {
     if (!id) return;
     try {
       const copy = await duplicateMutation.mutateAsync(id);
-      Alert.alert(t('scratch.detail.duplicated'));
+      toast.success(t('scratch.detail.duplicated'));
       router.replace({ pathname: '/scratch-campaigns/create', params: { id: copy.id } });
     } catch (e) { fail(e); }
   }, [id, duplicateMutation, router, t, fail]);
@@ -140,12 +128,12 @@ export default function ScratchCampaignDetail() {
         onPress: async () => {
           try {
             await deleteMutation.mutateAsync(id);
-            router.back();
+            goBack();
           } catch (e) { fail(e); }
         },
       },
     ]);
-  }, [id, deleteMutation, router, t, fail]);
+  }, [id, deleteMutation, goBack, t, fail]);
 
   const handleCancel = useCallback(async () => {
     if (!id || loadingPreviewRef.current) return;
@@ -175,7 +163,7 @@ export default function ScratchCampaignDetail() {
     try {
       await cancelMutation.mutateAsync(id);
       setFinalCancelVisible(false);
-      Alert.alert(t('scratch.detail.cancelled'));
+      toast.success(t('scratch.detail.cancelled'));
     } catch (e) {
       setFinalCancelVisible(false);
       fail(e);
@@ -210,23 +198,8 @@ export default function ScratchCampaignDetail() {
 
   if (shouldWait) return null;
 
-  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/scratch-campaigns'));
-
-  if (campaignQuery.isLoading) {
-    return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator color={theme.primary} />
-      </View>
-    );
-  }
-  if (!campaign) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={t('scratch.list.title')} onBack={goBack} />
-        <View style={styles.content}><Notice tone="danger" text={t('scratch.detail.notFound')} /></View>
-      </View>
-    );
-  }
+  if (campaignQuery.isLoading) return <GameScreenLoading />;
+  if (!campaign) return <GameDetailMissing title={t('scratch.list.title')} onBack={goBack} ns="scratch" query={campaignQuery} />;
 
   const status = campaign.status;
   const canEdit = isOwner && isPremium && (status === 'DRAFT' || status === 'SCHEDULED');
@@ -295,11 +268,11 @@ export default function ScratchCampaignDetail() {
                 { label: t('scratch.detail.redeemed'), value: stats.redeemed },
               ]}
             />
-            <View style={[styles.kpiRow, { flexDirection: row }]}>
+            <KpiRow>
               <Kpi label={t('scratch.detail.revenue')} value={money(stats.revenue)} />
               <Kpi label={t('scratch.detail.discountGiven')} value={money(stats.discountGiven)} />
               <Kpi label={t('scratch.detail.bonusStamps')} value={stats.bonusStamps.toLocaleString(intlLocale)} />
-            </View>
+            </KpiRow>
             <InfoLine text={t('scratch.detail.pushDelivered', { count: stats.pushDelivered })} muted />
             {stats.cancelledCoupons > 0 && <InfoLine text={t('scratch.detail.cancelledCoupons', { count: stats.cancelledCoupons })} muted />}
           </Section>
@@ -406,31 +379,11 @@ export default function ScratchCampaignDetail() {
             try {
               await extendMutation.mutateAsync({ id: campaign.id, ...dates });
               setExtendVisible(false);
-              Alert.alert(t('scratch.detail.extended'));
+              toast.success(t('scratch.detail.extended'));
             } catch (e) { fail(e); }
           }}
         />
       )}
-    </View>
-  );
-}
-
-function InfoLine({ text, muted }: { text: string; muted?: boolean }) {
-  const theme = useTheme();
-  const { textAlign } = useDir();
-  return (
-    <Text style={[styles.info, { color: muted ? theme.textMuted : theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
-      {text}
-    </Text>
-  );
-}
-
-function Kpi({ label, value }: { label: string; value: string }) {
-  const theme = useTheme();
-  return (
-    <View style={[styles.kpi, { backgroundColor: theme.bgElevated }]}>
-      <Text style={[styles.kpiValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} maxFontSizeMultiplier={1.2}>{value}</Text>
-      <Text style={[styles.kpiLabel, { color: theme.textMuted }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>{label}</Text>
     </View>
   );
 }
@@ -461,140 +414,12 @@ function Funnel({ steps }: { steps: { label: string; value: number }[] }) {
   );
 }
 
-function FinalCancelModal({ visible, preview, loading, onConfirm, onClose }: {
-  visible: boolean;
-  preview: CancelPreview | null;
-  loading: boolean;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const [remaining, setRemaining] = useState(CANCEL_DELAY_S);
-
-  // Restart the countdown each time the modal opens.
-  const [wasVisible, setWasVisible] = useState(visible);
-  if (visible !== wasVisible) {
-    setWasVisible(visible);
-    if (visible) setRemaining(CANCEL_DELAY_S);
-  }
-
-  useEffect(() => {
-    if (!visible) return;
-    const timer = setInterval(() => setRemaining((s) => (s <= 1 ? 0 : s - 1)), 1000);
-    return () => clearInterval(timer);
-  }, [visible]);
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.modal, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()} accessibilityViewIsModal>
-          <ScrollView contentContainerStyle={styles.modalContent} bounces={false} keyboardShouldPersistTaps="handled">
-          <Text maxFontSizeMultiplier={1.4} style={[styles.modalTitle, { color: theme.danger }]}>{t('scratch.detail.cancelFinalTitle')}</Text>
-          {preview && (
-            <Text maxFontSizeMultiplier={1.4} style={[styles.modalBody, { color: theme.textSecondary }]}>
-              {t('scratch.detail.cancelStep1', { cards: preview.pendingCards, coupons: preview.activeCoupons, redeemed: preview.redeemedCoupons })}
-            </Text>
-          )}
-          <Text maxFontSizeMultiplier={1.4} style={[styles.modalBody, { color: theme.text }]}>{t('scratch.detail.cancelFinalBody')}</Text>
-          <Button
-            variant="danger"
-            label={remaining > 0 ? t('scratch.detail.cancelWait', { seconds: remaining }) : t('scratch.detail.cancelFinal')}
-            disabled={remaining > 0}
-            loading={loading}
-            onPress={onConfirm}
-          />
-          <Button variant="ghost" label={t('common.cancel')} onPress={onClose} />
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-function ExtendDatesModal({ visible, campaign, loading, onClose, onSave }: {
-  visible: boolean;
-  campaign: ScratchCampaignDto;
-  loading: boolean;
-  onClose: () => void;
-  onSave: (dates: { cardExpiresOn?: string; couponExpiresOn?: string }) => void;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const [card, setCard] = useState(campaign.cardExpiresOn);
-  const [coupon, setCoupon] = useState(campaign.couponExpiresOn);
-
-  // Start from the saved dates on each opening (and when they change while open).
-  const syncKey = visible ? `${campaign.cardExpiresOn}|${campaign.couponExpiresOn}` : null;
-  const [syncedKey, setSyncedKey] = useState(syncKey);
-  if (syncKey !== syncedKey) {
-    setSyncedKey(syncKey);
-    if (syncKey) {
-      setCard(campaign.cardExpiresOn);
-      setCoupon(campaign.couponExpiresOn);
-    }
-  }
-
-  const today = moroccoToday();
-  const cardMin = campaign.cardExpiresOn > today ? campaign.cardExpiresOn : today;
-  const sentYmd = campaign.sentAt ? moroccoYmdOf(new Date(campaign.sentAt)) : today;
-  const couponMin = addDaysYmd(card, SCRATCH_LIMITS.MIN_COUPON_AFTER_CARD_DAYS);
-  const changed = card !== campaign.cardExpiresOn || coupon !== campaign.couponExpiresOn;
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.modal, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()} accessibilityViewIsModal>
-          <ScrollView contentContainerStyle={styles.modalContent} bounces={false} keyboardShouldPersistTaps="handled">
-          <Text maxFontSizeMultiplier={1.4} style={[styles.modalTitle, { color: theme.text }]}>{t('scratch.detail.extendTitle')}</Text>
-          <Text maxFontSizeMultiplier={1.4} style={[styles.modalBody, { color: theme.textSecondary }]}>{t('scratch.detail.extendHint')}</Text>
-          <DateField
-            label={t('scratch.wizard.cardDeadline')}
-            value={card}
-            minYmd={cardMin}
-            maxYmd={addDaysYmd(sentYmd, SCRATCH_LIMITS.MAX_CARD_DAYS)}
-            onChange={(v) => {
-              setCard(v);
-              const minCoupon = addDaysYmd(v, SCRATCH_LIMITS.MIN_COUPON_AFTER_CARD_DAYS);
-              if (minCoupon > coupon) setCoupon(minCoupon);
-            }}
-          />
-          <DateField
-            label={t('scratch.wizard.couponDeadline')}
-            value={coupon}
-            minYmd={couponMin > campaign.couponExpiresOn ? couponMin : campaign.couponExpiresOn}
-            maxYmd={addDaysYmd(sentYmd, SCRATCH_LIMITS.MAX_COUPON_DAYS)}
-            onChange={setCoupon}
-          />
-          <Button
-            label={t('scratch.detail.extendSave')}
-            disabled={!changed}
-            loading={loading}
-            onPress={() => onSave({
-              cardExpiresOn: card !== campaign.cardExpiresOn ? card : undefined,
-              couponExpiresOn: coupon !== campaign.couponExpiresOn ? coupon : undefined,
-            })}
-          />
-          <Button variant="ghost" label={t('common.cancel')} onPress={onClose} />
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 14 },
   actions: { gap: 10 },
-  info: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular },
   hint: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
-  kpiRow: { gap: 8 },
-  kpi: { flex: 1, borderRadius: 12, padding: 10, gap: 4 },
-  kpiValue: { fontSize: ms(15), fontFamily: font.semibold },
-  kpiLabel: { fontSize: ms(11), fontFamily: font.regular },
   funnel: { gap: 10 },
   funnelStep: { gap: 4 },
   funnelHeader: { justifyContent: 'space-between' },
@@ -611,10 +436,4 @@ const styles = StyleSheet.create({
   clientName: { fontSize: ms(14), fontFamily: font.medium },
   waBtn: { alignItems: 'center', gap: 6, backgroundColor: '#25D366', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, minHeight: 36 },
   waText: { color: '#FFFFFF', fontSize: ms(13), fontFamily: font.semibold },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', padding: 20 },
-  // Long FR copy at large text sizes: the card scrolls instead of pushing its buttons off-screen.
-  modal: { borderRadius: 24, maxHeight: '85%', overflow: 'hidden' },
-  modalContent: { padding: 20, gap: 12 },
-  modalTitle: { fontSize: ms(17), fontFamily: font.semibold, textAlign: 'center' },
-  modalBody: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular, textAlign: 'center' },
 });

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { Text } from '@/components/AppText';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { Check, Play, type LucideIcon } from 'lucide-react-native';
@@ -16,8 +17,8 @@ import { DemoVideoModal } from '@/components/demo/DemoVideoModal';
 import { ScreenHeader } from '@/components/scratch/ScratchUI';
 import { ProgressBar } from '@/components/ui/SummaryCard';
 import {
-  JitCard, JitClients, JitDeals, JitGames, JitGift, JitHome, JitMessages, JitParcel, JitPersonAdd, JitPoster,
-  JitPremium, JitScan, JitStamp, JitStar, JitStats, JitStore, JitTeam, JitTicket,
+  JitCalendar, JitCard, JitClients, JitDeals, JitGames, JitGift, JitHome, JitMessages, JitParcel, JitPersonAdd, JitPoster,
+  JitScan, JitStamp, JitStar, JitStats, JitStore, JitTeam, JitTicket,
 } from '@/components/icons';
 
 // Same artwork as the "Tutoriels vidéo" card of Accueil.
@@ -40,9 +41,9 @@ const DEMO_ICON: Record<DemoId, LucideIcon> = {
   roue: JitGames,
   gratter: JitTicket,
   qrcolis: JitParcel,
+  agenda: JitCalendar,
   equipe: JitTeam,
   stats: JitStats,
-  forfait: JitPremium,
 };
 
 /** The intro clip opens the page on its own card; the others are grouped by the moment they are useful. */
@@ -52,7 +53,7 @@ const SECTIONS: { key: string; ids: DemoId[] }[] = [
   { key: 'program', ids: ['carte', 'cadeaux', 'boutique', 'affiche'] },
   { key: 'clients', ids: ['clients', 'messages'] },
   { key: 'boost', ids: ['bonsplans', 'roue', 'gratter', 'qrcolis'] },
-  { key: 'manage', ids: ['equipe', 'stats', 'forfait'] },
+  { key: 'manage', ids: ['agenda', 'equipe', 'stats'] },
 ];
 const TOTAL = Object.keys(DEMO_ICON).length;
 

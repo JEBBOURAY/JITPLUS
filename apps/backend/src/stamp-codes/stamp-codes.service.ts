@@ -6,13 +6,12 @@ import { MerchantPlanService } from '../merchant/services/merchant-plan.service'
 import { AuditAction, AuditLogService, AuditTargetType } from '../admin/audit-log.service';
 import { computeEarnedStamps } from '../merchant/utils/loyalty.utils';
 import { maskName } from '../common/utils';
+import { moroccoParts, moroccoWallTimeToUtc } from '../common/utils/morocco-time';
 import { withRetry } from '../common/utils/retry-transaction.helper';
 import { DEFAULT_AMOUNT_PER_STAMP, FREE_MAX_STAMP_CODES_PER_MONTH } from '../common/constants';
 import { StampCodeTokenService } from './stamp-code-token.service';
 import { CreateStampCodeBatchDto } from './dto';
 
-/** Morocco time (UTC+1, no DST), as in MerchantDashboardService.getHomeStats. */
-const MOROCCO_OFFSET_MS = 3_600_000;
 
 /** Exported: part of the merchant controller's public return type. */
 export interface StampCodeBatchSummary {
@@ -29,13 +28,10 @@ export interface StampCodeBatchSummary {
 
 /** Start of the current calendar month and of the next one, Morocco time. */
 export function currentMonthWindow(nowMs = Date.now()): { start: Date; end: Date } {
-  const local = new Date(nowMs + MOROCCO_OFFSET_MS);
-  const y = local.getUTCFullYear();
-  const m = local.getUTCMonth();
-  return {
-    start: new Date(Date.UTC(y, m, 1) - MOROCCO_OFFSET_MS),
-    end: new Date(Date.UTC(y, m + 1, 1) - MOROCCO_OFFSET_MS),
-  };
+  // Africa/Casablanca clock, as in MerchantDashboardService.getHomeStats.
+  const { year, month } = moroccoParts(new Date(nowMs));
+  const firstOf = (m: number) => moroccoWallTimeToUtc(new Date(Date.UTC(year, m, 1)).toISOString().slice(0, 10), 0, 0);
+  return { start: firstOf(month - 1), end: firstOf(month) };
 }
 
 /** QR codes a merchant created in the current calendar month (FREE monthly allowance). */

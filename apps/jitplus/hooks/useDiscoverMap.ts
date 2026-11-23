@@ -1,11 +1,13 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Alert, AppState, Keyboard, Linking, Platform } from 'react-native';
+import { Alert, AppState, Keyboard, Platform } from 'react-native';
 import type MapView from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { getDistanceKm } from '@/utils/distance';
+import { promptLocationPermission } from '@/utils/locationPermission';
+import { useCloseOnBack } from '@/hooks/useCloseOnBack';
 import { useMapClustering } from '@/utils/mapClustering';
 import { MAPS_AVAILABLE } from '@/components/SafeMapView';
 import { Merchant } from '@/types';
@@ -13,6 +15,7 @@ import {
   DEBOUNCE_MS, MAP_ANIMATE_DURATION_MS,
   USER_LOCATION_ZOOM_DELTA, USER_CENTER_ZOOM_DELTA,
 } from '@/constants';
+import { normalizeSearch } from '@jitplus/shared';
 import { CATEGORIES } from '@/utils/categories';
 import { pointKey, pointName } from '@/utils/merchantPoint';
 import { DEFAULT_REGION } from '@/components/discover/mapConstants';
@@ -39,14 +42,6 @@ const SEARCH_DROPDOWN_MAX = 6;
 type LatLng = { latitude: number; longitude: number };
 /** The list sheet: the visible area (recomputed as the map moves), or a fixed set of merchants. */
 type ListSheet = { mode: 'area' } | { mode: 'spot' | 'search'; merchants: Merchant[] };
-
-/** Lowercase, accents removed: "Café" and "cafe" match, so do "Pâtisserie" and "patisserie". */
-function normalizeSearch(text: string): string {
-  let out = text;
-  try { out = text.normalize('NFD'); } catch { /* engine without Unicode normalization: match accents as typed */ }
-  return out.replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-}
-
 
 /** Copies sorted nearest first; the distance is computed once per merchant, not per comparison. */
 function sortByDistance(list: Merchant[], origin: LatLng): Merchant[] {
@@ -127,30 +122,9 @@ export function useDiscoverMap(merchants: Merchant[]) {
     await fetchPosition();
   }, [t, fetchPosition]);
 
-  // The OS dialog is only shown after our own explanation: a refusal there can
-  // be permanent, while "Later" on ours keeps the option open.
   const askForLocation = useCallback(async () => {
     try {
-      const perm = await Location.getForegroundPermissionsAsync();
-      if (perm.status === 'granted') { await locateFromUser(); return; }
-      if (!perm.canAskAgain) {
-        Alert.alert(t('discover.locationPromptTitle'), t('discover.locationBlockedBody'), [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('profile.openSettings'), onPress: () => { Linking.openSettings().catch(() => {}); } },
-        ]);
-        return;
-      }
-      Alert.alert(t('discover.locationPromptTitle'), t('discover.locationPromptBody'), [
-        { text: t('notifications.later'), style: 'cancel' },
-        {
-          text: t('discover.locationAllow'),
-          onPress: () => {
-            Location.requestForegroundPermissionsAsync()
-              .then(({ status }) => (status === 'granted' ? locateFromUser() : undefined))
-              .catch(() => {});
-          },
-        },
-      ]);
+      await promptLocationPermission(t, locateFromUser);
     } catch (e) { if (__DEV__) console.log('Could not check location permission:', e); }
   }, [t, locateFromUser]);
 
@@ -373,6 +347,14 @@ export function useDiscoverMap(merchants: Merchant[]) {
   }, [closeSearch]);
 
   const closeList = useCallback(() => setListSheet(null), []);
+
+  // Android Back closes the top-most layer (list sheet, then card, then search)
+  // instead of leaving the tab with it still open.
+  useCloseOnBack(!!listSheet || !!selectedKey || showSearch, () => {
+    if (listSheet) setListSheet(null);
+    else if (selectedKey) setSelectedKey(null);
+    else closeSearch();
+  });
 
   // "See all results": the matches move to the sheet (nearest first), the search closes.
   const openSearchResults = useCallback(() => {

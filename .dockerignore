@@ -11,6 +11,12 @@
 # ── Environment files (secrets must come from Secret Manager) ──
 .env
 .env.*
+# Docker patterns only match at the context root: cover apps/backend/.env too.
+**/.env
+**/.env.*
+
+# Local dev uploads (dev-only static serving; prod uses GCS)
+apps/backend/uploads
 
 # ── Node modules (rebuilt inside Docker) ──
 node_modules

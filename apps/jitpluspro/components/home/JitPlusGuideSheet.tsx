@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, LayoutAnimation } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check, ChevronDown, ChevronRight, ChevronUp, Play } from 'lucide-react-native';
 import { JitLock, JitSettings } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';

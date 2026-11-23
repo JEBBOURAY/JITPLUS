@@ -17,9 +17,9 @@ export type DemoId =
   | 'roue'
   | 'gratter'
   | 'qrcolis'
+  | 'agenda'
   | 'equipe'
-  | 'stats'
-  | 'forfait';
+  | 'stats';
 
 const DEMO_VIDEO_BASE_URL =
   process.env.EXPO_PUBLIC_DEMO_VIDEO_BASE_URL ?? 'https://storage.googleapis.com/jitplus-uploads-prod/demo';

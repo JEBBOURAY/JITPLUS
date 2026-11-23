@@ -1,10 +1,12 @@
 // Calendar picker in plain React Native: avoids a native date-picker module
 // (and a new store build) for the three campaign dates.
 import { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, Pressable, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, Modal, Pressable, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
 import { getIntlLocale } from '@/config/currency';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
@@ -41,7 +43,8 @@ interface DateFieldProps {
 
 export function DateField({ label, value, onChange, minYmd, maxYmd, disabled }: DateFieldProps) {
   const theme = useTheme();
-  const { locale, isRTL } = useLanguage();
+  const { locale } = useLanguage();
+  const { row, textAlign } = useDir();
   const [open, setOpen] = useState(false);
   const formatted = formatYmd(value, locale);
   return (
@@ -54,13 +57,13 @@ export function DateField({ label, value, onChange, minYmd, maxYmd, disabled }: 
         accessibilityLabel={`${label}, ${formatted}`}
         style={[
           styles.field,
-          { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, flexDirection: isRTL ? 'row-reverse' : 'row', opacity: disabled ? 0.55 : 1 },
+          { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, flexDirection: row, opacity: disabled ? 0.55 : 1 },
         ]}
       >
         <Calendar size={18} color={theme.primary} strokeWidth={icon.stroke} />
         <View style={styles.fieldText}>
-          <Text style={[styles.fieldLabel, { color: theme.textMuted, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.3}>{label}</Text>
-          <Text style={[styles.fieldValue, { color: theme.text, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.fieldLabel, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>{label}</Text>
+          <Text style={[styles.fieldValue, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
             {formatted}
           </Text>
         </View>
@@ -93,7 +96,8 @@ interface DatePickerModalProps {
 
 function DatePickerModal({ visible, title, value, minYmd, maxYmd, onSelect, onClose }: DatePickerModalProps) {
   const theme = useTheme();
-  const { t, locale, isRTL } = useLanguage();
+  const { t, locale } = useLanguage();
+  const { isRTL, row } = useDir();
   const initial = useMemo(() => {
     const [y, m] = (value || toYmd(new Date())).split('-').map(Number);
     return { y, m: m - 1 };
@@ -137,7 +141,7 @@ function DatePickerModal({ visible, title, value, minYmd, maxYmd, onSelect, onCl
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('common.close')}>
         <Pressable style={[styles.sheet, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()} accessibilityViewIsModal>
           <Text style={[styles.title, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{title}</Text>
-          <View style={[styles.monthRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={[styles.monthRow, { flexDirection: row }]}>
             <TouchableOpacity onPress={() => shift(-1)} disabled={!canPrev} style={[styles.navBtn, { opacity: canPrev ? 1 : 0.3 }]} accessibilityRole="button" accessibilityLabel={t('scratch.wizard.prevMonth')}>
               <PrevIcon size={20} color={theme.text} strokeWidth={icon.stroke} />
             </TouchableOpacity>
@@ -146,7 +150,7 @@ function DatePickerModal({ visible, title, value, minYmd, maxYmd, onSelect, onCl
               <NextIcon size={20} color={theme.text} strokeWidth={icon.stroke} />
             </TouchableOpacity>
           </View>
-          <View style={[styles.grid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={[styles.grid, { flexDirection: row }]}>
             {[1, 2, 3, 4, 5, 6, 7].map((d) => (
               <Text key={`h${d}`} style={[styles.weekday, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.1}>
                 {t(`scratch.weekdayShort.${d}`).slice(0, 3)}

@@ -1,5 +1,10 @@
-import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsUUID, Min, Max, ValidateIf } from 'class-validator';
-import { MAX_STAMP_VALIDITY_DAYS, MIN_STAMP_VALIDITY_DAYS, SUPPORTED_CURRENCIES } from '../../common/constants';
+import { IsBoolean, IsDateString, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsUUID, Min, Max, ValidateIf } from 'class-validator';
+import {
+  MAX_STAMP_VALIDITY_DAYS,
+  MIN_STAMP_VALIDITY_DAYS,
+  SUPPORTED_CURRENCIES,
+  WELCOME_BONUS_MAX_STAMPS,
+} from '../../common/constants';
 
 export class PreviewAccumulationLimitDto {
   @IsInt()
@@ -45,6 +50,25 @@ export class UpdateLoyaltySettingsDto {
   @Max(MAX_STAMP_VALIDITY_DAYS, { message: `La durée de validité ne peut pas dépasser ${MAX_STAMP_VALIDITY_DAYS} jours` })
   @IsOptional()
   stampValidityDays?: number | null;
+
+  @IsBoolean()
+  @IsOptional()
+  welcomeBonusEnabled?: boolean;
+
+  @IsInt({ message: 'Le nombre de tampons offerts doit être un entier' })
+  @Min(1, { message: 'Le nombre de tampons offerts doit être ≥ 1' })
+  @Max(WELCOME_BONUS_MAX_STAMPS, { message: `Le nombre de tampons offerts ne peut pas dépasser ${WELCOME_BONUS_MAX_STAMPS}` })
+  @IsOptional()
+  welcomeBonusStamps?: number;
+
+  @IsEnum(['CARD_OR_SCAN', 'FIRST_SCAN'])
+  @IsOptional()
+  welcomeBonusTrigger?: 'CARD_OR_SCAN' | 'FIRST_SCAN';
+
+  @ValidateIf((o) => o.welcomeBonusEndsAt !== null)
+  @IsDateString({}, { message: 'Date de fin invalide' })
+  @IsOptional()
+  welcomeBonusEndsAt?: string | null;
 
   @IsBoolean()
   @IsOptional()

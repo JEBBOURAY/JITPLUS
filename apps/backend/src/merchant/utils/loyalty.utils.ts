@@ -18,6 +18,20 @@ export function computeRewardThreshold(
  */
 export function computeEarnedStamps(amount: number, amountPerStamp: number): number {
   if (!(amount > 0) || !(amountPerStamp > 0)) return 0;
+  // In cents: both values have at most 2 decimals, and a float division
+  // undercounts (3.3 / 1.1 = 2.999…, which gave 2 stamps instead of 3).
+  const rateCents = Math.round(amountPerStamp * 100);
+  if (rateCents <= 0) return 0;
+  return Math.min(Math.floor(Math.round(amount * 100) / rateCents), MAX_STAMPS_PER_TX);
+}
+
+/**
+ * Count computed by Pro builds up to 1.7.5 (float division). Still accepted
+ * for a sent count, so a purchase like 3.30 at 1.10 per stamp does not fail
+ * on an old app. Remove once those builds are forced to update.
+ */
+export function computeEarnedStampsLegacy(amount: number, amountPerStamp: number): number {
+  if (!(amount > 0) || !(amountPerStamp > 0)) return 0;
   return Math.min(Math.floor(amount / amountPerStamp), MAX_STAMPS_PER_TX);
 }
 

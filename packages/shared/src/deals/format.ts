@@ -1,3 +1,4 @@
+import { DEAL_LIMITS } from './constants';
 import type { DealOffer } from './types';
 
 export type DealBadge =
@@ -24,11 +25,17 @@ export function dealBadge(offer: DealOffer): DealBadge {
   }
 }
 
-/** Rounded discount of a price drop, null when it is not a real discount. */
+/** Rounded discount of a price drop, null when it is below the minimum the backend accepts. */
 export function computePercentOff(original?: number | null, price?: number | null): number | null {
-  if (original == null || price == null || !(original > 0) || price < 0 || price >= original) return null;
+  if (original == null || price == null || !(original > 0) || !(price > 0) || price >= original) return null;
   const pct = Math.round((1 - price / original) * 100);
-  return pct >= 1 ? Math.min(pct, 99) : null;
+  return pct >= DEAL_LIMITS.MIN_PERCENT ? Math.min(pct, DEAL_LIMITS.MAX_PERCENT) : null;
+}
+
+/** Price after a percentage discount, in cents precision (same rounding as the backend). */
+export function discountedPrice(original?: number | null, percentOff?: number | null): number | null {
+  if (original == null || percentOff == null || !(original > 0)) return null;
+  return Math.round(original * (100 - percentOff)) / 100;
 }
 
 export interface DealTimeLeft {

@@ -1,5 +1,6 @@
 import { Stack, useRouter } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { ActionButton } from '@/components/ui/ActionButton';

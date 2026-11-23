@@ -2,11 +2,14 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
 import { RefreshCw, Ticket } from 'lucide-react-native';
+import { pluralKey } from '@jitplus/shared';
 import { palette } from '@/contexts/ThemeContext';
 import { hp, ms, wp, fontSize as FS, radius } from '@/utils/responsive';
 
 import type { AppFonts } from '@/utils/fonts';
 import { GameStateCard } from '../GameStage';
+import GamePill from '../GamePill';
+import { GAME_ON_GOLD } from '../gameTokens';
 
 interface Props {
   isLoading: boolean;
@@ -62,12 +65,12 @@ export default React.memo(function WheelStatus({
         {spinning ? (
           <Text style={[styles.spinningText, { fontFamily: fonts.semibold }]}>{t('luckyWheel.spinning')}</Text>
         ) : (
-          <View style={styles.spinsPill}>
-            <Ticket size={ms(14)} color={palette.goldLight} strokeWidth={2} />
-            <Text style={[styles.spinsText, { fontFamily: fonts.semibold }]}>
-              {spinsLeft === 1 ? t('luckyWheel.spinsLeftOne') : t('luckyWheel.spinsLeftOther', { count: spinsLeft })}
-            </Text>
-          </View>
+          <GamePill
+            Icon={Ticket}
+            size="md"
+            label={t(pluralKey('luckyWheel.spinsLeft', spinsLeft), { count: spinsLeft })}
+            fontFamily={fonts.semibold}
+          />
         )}
       </View>
       <TouchableOpacity
@@ -81,7 +84,7 @@ export default React.memo(function WheelStatus({
       >
         <View style={[styles.spinBtn, { backgroundColor: palette.goldLight }]}>
           {spinning ? (
-            <ActivityIndicator color="#3B1D06" />
+            <ActivityIndicator color={GAME_ON_GOLD} />
           ) : (
             <Text style={[styles.spinBtnText, { fontFamily: fonts.bold }]}>{t('luckyWheel.spinCta')}</Text>
           )}
@@ -94,18 +97,6 @@ export default React.memo(function WheelStatus({
 const styles = StyleSheet.create({
   ctaBlock: { alignSelf: 'stretch', alignItems: 'center', paddingHorizontal: wp(24) },
   spinsRow: { height: ms(32), alignItems: 'center', justifyContent: 'center', marginBottom: hp(10) },
-  spinsPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: ms(6),
-    paddingHorizontal: ms(12),
-    paddingVertical: ms(6),
-    borderRadius: 999,
-    backgroundColor: 'rgba(251,191,36,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.3)',
-  },
-  spinsText: { color: palette.goldLight, fontSize: FS.sm },
   spinningText: { color: palette.goldLight, fontSize: FS.md },
   spinBtnWrap: {
     alignSelf: 'stretch',
@@ -114,7 +105,7 @@ const styles = StyleSheet.create({
   },
   spinBtnDisabled: { opacity: 0.55 },
   spinBtn: { height: ms(56), alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg },
-  spinBtnText: { color: '#3B1D06', fontSize: FS.lg, letterSpacing: 0.2 },
+  spinBtnText: { color: GAME_ON_GOLD, fontSize: FS.lg, letterSpacing: 0.2 },
 
   stateCard: { marginHorizontal: wp(24) },
 });

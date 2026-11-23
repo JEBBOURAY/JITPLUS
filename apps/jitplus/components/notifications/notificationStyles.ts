@@ -7,14 +7,7 @@ const CARD_GAP = hp(10);
 export const notificationStyles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header (sticky, mirrors the home screen header)
-  header: {
-    paddingHorizontal: wp(20), paddingBottom: hp(12),
-    borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 10,
-  },
-  headerShadow: {
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
-  },
+  // Header row (inside ScreenHeader)
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: wp(8), minHeight: ms(46) },
   titleBlock: { flex: 1 },
   title: { fontSize: fontSize['3xl'], letterSpacing: -0.6 },
@@ -103,19 +96,8 @@ export const notificationStyles = StyleSheet.create({
     borderRadius: radius.xl, borderWidth: 1, marginBottom: CARD_GAP,
   },
 
-  // Empty / error
+  // Error
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: wp(24), paddingVertical: hp(40) },
-  emptyIcon: {
-    width: ms(84), height: ms(84), borderRadius: ms(28),
-    alignItems: 'center', justifyContent: 'center', marginBottom: hp(18),
-  },
-  emptyTitle: { fontSize: fontSize.lg, textAlign: 'center', letterSpacing: -0.2 },
-  emptyHint: { fontSize: fontSize.sm, textAlign: 'center', lineHeight: ms(20), marginTop: hp(6), maxWidth: wp(290) },
-  emptyBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(8),
-    height: ms(46), borderRadius: radius.lg, paddingHorizontal: wp(20), marginTop: hp(22),
-  },
-  emptyBtnText: { fontSize: fontSize.sm },
 
   // Footer
   footerLoader: { paddingVertical: hp(16), alignItems: 'center' },

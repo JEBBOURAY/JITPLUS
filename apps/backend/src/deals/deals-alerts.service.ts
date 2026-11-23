@@ -14,9 +14,11 @@ import {
   DEAL_DIGEST_BATCH,
   DEAL_DIGEST_MAX_DEALS,
   DEAL_ONLINE_ALERTS_PER_WEEK,
+  DEAL_SAVED_REMINDER_HOURS,
 } from './deal-limits';
 import { liveDealWhere } from './deal-rules';
 import { MOROCCO_CITY_KEYS } from './morocco-cities';
+import { dealCardholderTexts, dealSavedReminderTexts } from './deal-notif-i18n';
 import {
   dealsForClient,
   digestGroupKey,
@@ -24,6 +26,7 @@ import {
   groupByCity,
   pickFeaturedOnline,
   type DigestDeal,
+  type DigestMessage,
 } from './deal-digest';
 import type { DealAlertsDto } from './dto';
 import { MS_PER_DAY } from '../common/constants';
@@ -39,11 +42,37 @@ interface Recipient {
   id: string;
   token: string;
   lang: string;
+}
+
+/** Recipients of each distinct message, keyed by what makes the message unique. */
+type Outbox = Map<string, { msg: DigestMessage; members: Recipient[] }>;
+
+function addToOutbox(outbox: Outbox, key: string, message: () => DigestMessage, member: Recipient) {
+  const entry = outbox.get(key);
+  if (entry) entry.members.push(member);
+  else outbox.set(key, { msg: message(), members: [member] });
+}
+
+interface DigestRecipient extends Recipient {
   deals: DigestDeal[];
 }
 
 /** One in-app entry per distinct message, shared by its recipients across batches. */
 type DigestNotifications = Map<string, string>;
+
+/** A new or soon-ended deal announced on its own: the push opens it. */
+interface AnnouncedDeal {
+  id: string;
+  title: string;
+  merchantId: string;
+  merchant: { nom: string };
+}
+
+const ANNOUNCED_SELECT = { id: true, title: true, merchantId: true, merchant: { select: { nom: true } } } as const;
+
+const openDeal = (dealId: string) => ({ event: 'deals_digest', action: 'open_deal', dealId });
+/** Tracker of "this cardholder was told about this deal". */
+const cardDealCampaign = (dealId: string) => `deal_card_${dealId}`;
 
 const PREFS_SELECT = {
   dealAlertsEnabled: true,
@@ -55,9 +84,11 @@ const PREFS_SELECT = {
 const pushable = { deletedAt: null, notifPush: true, pushToken: { not: null } } as const;
 
 /**
- * Deal alerts: client preferences and the daily digest (one push a day at most).
- * Clients are claimed through CampaignSentTracker rows inserted with
- * ON CONFLICT DO NOTHING, so concurrent instances never push the same client twice.
+ * Deal alerts: client preferences, the daily push (the deals of the merchants
+ * whose card the client holds, else the digest of their city: one a day at
+ * most) and the reminder of saved deals. Clients are claimed through
+ * CampaignSentTracker rows inserted with ON CONFLICT DO NOTHING, so concurrent
+ * instances never push the same client twice.
  */
 @Injectable()
 export class DealsAlertsService {
@@ -101,7 +132,7 @@ export class DealsAlertsService {
     return toPreferences(updated);
   }
 
-  // ── Daily digest ───────────────────────────────────────────
+  // ── Daily push ─────────────────────────────────────────────
 
   @Cron('0 12 * * 0-4,6', { name: 'deals-digest', timeZone: MOROCCO_TZ })
   async dailyDigest() {
@@ -116,14 +147,197 @@ export class DealsAlertsService {
     await this.safeRun();
   }
 
+  /** Cardholders first: they take the client's daily push, the city digest then skips them. */
   private async safeRun() {
     try {
+      const cardholders = await this.notifyCardholders();
       const { city, online } = await this.runDigest();
-      if (city + online > 0) this.logger.log(`[deals:digest] ${city} city push(es), ${online} online push(es)`);
+      if (cardholders + city + online > 0) {
+        this.logger.log(`[deals:digest] ${cardholders} cardholder push(es), ${city} city push(es), ${online} online push(es)`);
+      }
     } catch (err) {
       this.logger.error(`[deals:digest] failed: ${errMsg(err)}`);
     }
   }
+
+  @Cron('0 18 * * *', { name: 'deals-saved-reminder', timeZone: MOROCCO_TZ })
+  async savedReminder() {
+    if (!(await cronAllowedOnce(this.logger, 'DealsAlerts.savedReminder'))) return;
+    try {
+      const sent = await this.remindSaved();
+      if (sent > 0) this.logger.log(`[deals:saved] ${sent} reminder(s)`);
+    } catch (err) {
+      this.logger.error(`[deals:saved] failed: ${errMsg(err)}`);
+    }
+  }
+
+  // ── Cardholders ────────────────────────────────────────────
+
+  /**
+   * New deals of a merchant go to the clients holding its loyalty card,
+   * wherever they live and whatever their city alerts: one push per merchant.
+   */
+  async notifyCardholders(now: Date = new Date()): Promise<number> {
+    const deals: AnnouncedDeal[] = await this.prisma.deal.findMany({
+      where: {
+        ...liveDealWhere(now),
+        cardAlertSentAt: null,
+        reportCount: 0,
+        startsAt: { lte: now, gte: new Date(now.getTime() - DEAL_ALERT_FRESH_DAYS * MS_PER_DAY) },
+      },
+      select: ANNOUNCED_SELECT,
+      orderBy: { startsAt: 'desc' },
+      take: DEAL_DIGEST_MAX_DEALS,
+    });
+    if (deals.length === 0) return 0;
+
+    const byMerchant = new Map<string, AnnouncedDeal[]>();
+    for (const d of deals) byMerchant.set(d.merchantId, [...(byMerchant.get(d.merchantId) ?? []), d]);
+    const daily = `deals_digest_${dayTag(now)}`;
+    const notifications: DigestNotifications = new Map();
+    let sent = 0;
+    const done: string[] = [];
+    for (const merchantDeals of byMerchant.values()) {
+      const result = await this.sendCardholders(merchantDeals, daily, notifications);
+      sent += result.sent;
+      // A cardholder whose daily push went to another merchant hears about
+      // these deals on a later run (while they are fresh), so keep them open.
+      if (!result.deferred) done.push(...merchantDeals.map((d) => d.id));
+    }
+
+    if (done.length > 0) {
+      await this.prisma.deal.updateMany({
+        where: { id: { in: done }, cardAlertSentAt: null },
+        data: { cardAlertSentAt: now },
+      });
+    }
+    return sent;
+  }
+
+  /**
+   * `deals`: the new deals of one merchant, most recent first. Each cardholder
+   * is told once per deal (`deal_card_<id>` trackers), so deals kept open for
+   * a client who missed them are not pushed again to those already told.
+   */
+  private async sendCardholders(
+    deals: AnnouncedDeal[],
+    daily: string,
+    notifications: DigestNotifications,
+  ): Promise<{ sent: number; deferred: boolean }> {
+    const { merchantId } = deals[0];
+    const dealKeys = deals.map((d) => cardDealCampaign(d.id));
+    let sent = 0;
+    let deferred = false;
+    let cursor: string | undefined;
+    for (;;) {
+      const cards = await this.prisma.loyaltyCard.findMany({
+        where: {
+          merchantId,
+          deactivatedAt: null,
+          // A card typed by the merchant is not a consent to hear from them.
+          consentPending: false,
+          client: { ...pushable, merchantBlocks: { none: { merchantId } } },
+        },
+        select: { clientId: true, client: { select: { pushToken: true, language: true } } },
+        orderBy: { clientId: 'asc' },
+        take: DEAL_DIGEST_BATCH,
+        ...(cursor ? { cursor: { clientId_merchantId: { clientId: cursor, merchantId } }, skip: 1 } : {}),
+      });
+      if (cards.length === 0) break;
+      cursor = cards[cards.length - 1].clientId;
+
+      const reachable = cards.filter((c) => c.client.pushToken);
+      const told = reachable.length === 0 ? [] : await this.prisma.campaignSentTracker.findMany({
+        where: { clientId: { in: reachable.map((c) => c.clientId) }, campaignId: { in: dealKeys }, channel: 'PUSH' },
+        select: { clientId: true, campaignId: true },
+      });
+      const toldPairs = new Set(told.map((t) => `${t.clientId}|${t.campaignId}`));
+      const pending = new Map<string, AnnouncedDeal[]>();
+      for (const c of reachable) {
+        const mine = deals.filter((d) => !toldPairs.has(`${c.clientId}|${cardDealCampaign(d.id)}`));
+        if (mine.length > 0) pending.set(c.clientId, mine);
+      }
+
+      const claimed = await this.claim([...pending.keys()], daily);
+      if (claimed.size < pending.size) deferred = true;
+      const outbox: Outbox = new Map();
+      const toldNow: { clientId: string; campaignId: string; channel: string }[] = [];
+      for (const c of reachable) {
+        const mine = pending.get(c.clientId);
+        if (!mine || !claimed.has(c.clientId)) continue;
+        const [top] = mine;
+        const lang = c.client.language;
+        addToOutbox(
+          outbox,
+          `${lang}|card|${top.id}|${mine.length}`,
+          () => ({ ...dealCardholderTexts(lang, top.merchant.nom, top.title, mine.length), data: openDeal(top.id) }),
+          { id: c.clientId, token: c.client.pushToken!, lang },
+        );
+        for (const d of mine) toldNow.push({ clientId: c.clientId, campaignId: cardDealCampaign(d.id), channel: 'PUSH' });
+      }
+      // Recorded before the push, like the daily claim: at most once.
+      if (toldNow.length > 0) await this.prisma.campaignSentTracker.createMany({ data: toldNow, skipDuplicates: true });
+      sent += await this.send(outbox, notifications);
+      if (cards.length < DEAL_DIGEST_BATCH) break;
+    }
+    return { sent, deferred };
+  }
+
+  // ── Saved deals ────────────────────────────────────────────
+
+  /** One push per saved deal, the day before it ends. */
+  async remindSaved(now: Date = new Date()): Promise<number> {
+    const deals: AnnouncedDeal[] = await this.prisma.deal.findMany({
+      where: {
+        ...liveDealWhere(now),
+        endsAt: { gt: now, lte: new Date(now.getTime() + DEAL_SAVED_REMINDER_HOURS * 3_600_000) },
+        saves: { some: { remindedAt: null } },
+      },
+      select: ANNOUNCED_SELECT,
+      take: DEAL_DIGEST_MAX_DEALS,
+    });
+    const notifications: DigestNotifications = new Map();
+    let sent = 0;
+    for (const deal of deals) {
+      for (;;) {
+        // No cursor: each batch is marked as reminded, so the next read starts after it.
+        const saves = await this.prisma.dealSave.findMany({
+          where: {
+            dealId: deal.id,
+            remindedAt: null,
+            client: { ...pushable, merchantBlocks: { none: { merchantId: deal.merchantId } } },
+          },
+          select: { clientId: true, client: { select: { pushToken: true, language: true } } },
+          orderBy: { clientId: 'asc' },
+          take: DEAL_DIGEST_BATCH,
+        });
+        if (saves.length === 0) break;
+        const clientIds = saves.map((s) => s.clientId);
+        // The rows this run marked are the ones it owns.
+        const marked = await this.prisma.$queryRaw<{ client_id: string }[]>`
+          UPDATE deal_saves SET reminded_at = ${now}
+          WHERE deal_id = ${deal.id} AND client_id = ANY(${clientIds}::text[]) AND reminded_at IS NULL
+          RETURNING client_id`;
+        const mine = new Set(marked.map((m) => m.client_id));
+        const outbox: Outbox = new Map();
+        for (const s of saves) {
+          if (!s.client.pushToken || !mine.has(s.clientId)) continue;
+          const lang = s.client.language;
+          addToOutbox(
+            outbox,
+            `${lang}|saved|${deal.id}`,
+            () => ({ ...dealSavedReminderTexts(lang, deal.merchant.nom, deal.title), data: openDeal(deal.id) }),
+            { id: s.clientId, token: s.client.pushToken, lang },
+          );
+        }
+        sent += await this.send(outbox, notifications);
+        if (saves.length < DEAL_DIGEST_BATCH) break;
+      }
+    }
+    return sent;
+  }
+
+  // ── City digest ────────────────────────────────────────────
 
   async runDigest(now: Date = new Date()): Promise<{ city: number; online: number }> {
     const day = dayTag(now);
@@ -145,7 +359,7 @@ export class DealsAlertsService {
         cityKeys: true,
         percentOff: true,
         startsAt: true,
-        merchant: { select: { nom: true, categorie: true } },
+        merchant: { select: { nom: true, categorie: true, secondaryCategories: true } },
       },
       orderBy: { startsAt: 'desc' },
       take: DEAL_DIGEST_MAX_DEALS,
@@ -156,7 +370,7 @@ export class DealsAlertsService {
       id: r.id,
       merchantId: r.merchantId,
       merchantName: r.merchant.nom,
-      category: r.merchant.categorie,
+      categories: [r.merchant.categorie, ...r.merchant.secondaryCategories],
       scope: r.scope,
       title: r.title,
       cityKeys: r.cityKeys,
@@ -232,7 +446,7 @@ export class DealsAlertsService {
       if (clients.length === 0) break;
       cursor = clients[clients.length - 1].id;
 
-      const recipients: Recipient[] = [];
+      const recipients: DigestRecipient[] = [];
       for (const c of clients) {
         if (!c.pushToken) continue;
         const blocked = new Set(c.merchantBlocks.map((b) => b.merchantId));
@@ -303,18 +517,20 @@ export class DealsAlertsService {
     return new Set(rows.map((r) => r.client_id));
   }
 
-  private async deliver(recipients: Recipient[], cityKey: string | null, notifications: DigestNotifications): Promise<number> {
-    const groups = new Map<string, Recipient[]>();
+  private deliver(recipients: DigestRecipient[], cityKey: string | null, notifications: DigestNotifications): Promise<number> {
+    const outbox: Outbox = new Map();
     for (const r of recipients) {
-      const key = digestGroupKey(r.lang, r.deals, cityKey);
-      const members = groups.get(key);
-      if (members) members.push(r);
-      else groups.set(key, [r]);
+      addToOutbox(outbox, digestGroupKey(r.lang, r.deals, cityKey), () => digestMessage(r.lang, r.deals, cityKey), r);
     }
+    return this.send(outbox, notifications);
+  }
 
+  /** Stores the in-app entry of each message, pushes it, and returns how many clients it went to. */
+  private async send(outbox: Outbox, notifications: DigestNotifications): Promise<number> {
     const staleTokens: string[] = [];
-    for (const [key, members] of groups) {
-      const msg = digestMessage(members[0].lang, members[0].deals, cityKey);
+    let recipients = 0;
+    for (const [key, { msg, members }] of outbox) {
+      recipients += members.length;
       let notificationId = notifications.get(key);
       if (!notificationId) {
         const created = await this.prisma.notification.create({
@@ -352,7 +568,7 @@ export class DealsAlertsService {
     if (staleTokens.length > 0) {
       await this.prisma.client.updateMany({ where: { pushToken: { in: staleTokens } }, data: { pushToken: null } });
     }
-    return recipients.length;
+    return recipients;
   }
 }
 

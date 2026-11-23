@@ -72,6 +72,19 @@ describe('redirectSystemPath', () => {
     expect(redirectSystemPath({ path: `jitplus://merchant/${UUID}`, initial: true })).toBe(`/merchant/${UUID}`);
     expect(redirectSystemPath({ path: '/discover', initial: false })).toBe('/discover');
   });
+
+  it('never lets an outside link auto-join a merchant', () => {
+    // Variants SHARE_LINK_RE does not match reach expo-router as-is.
+    for (const url of [
+      `jitplus:///merchant/${UUID}?join=1`,
+      `jitplus:/merchant/${UUID}?join=1`,
+      `exp+jitplus://merchant/${UUID}?join=1`,
+    ]) {
+      expect(redirectSystemPath({ path: url, initial: true })).not.toMatch(/join/i);
+    }
+    expect(redirectSystemPath({ path: `/merchant/${UUID}?a=1&JOIN=1&b=2#x`, initial: false })).toBe(`/merchant/${UUID}?a=1&b=2#x`);
+    expect(redirectSystemPath({ path: '/discover?tab=1', initial: false })).toBe('/discover?tab=1');
+  });
 });
 
 describe('parcel QR code links', () => {

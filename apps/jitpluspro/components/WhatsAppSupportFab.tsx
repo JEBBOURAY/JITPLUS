@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
-import { TouchableOpacity, StyleSheet, Linking, Alert } from 'react-native';
+import { toast } from '@/components/ui/Toast';
+import { TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import WhatsAppLogo from '@/components/WhatsAppLogo';
 
@@ -17,7 +18,7 @@ export default function WhatsAppSupportFab() {
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert(t('common.error'), t('common.genericError'));
+      toast.error(t('common.genericError'));
     }
   }, [t]);
 

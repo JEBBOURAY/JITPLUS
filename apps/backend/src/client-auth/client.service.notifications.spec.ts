@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Prisma } from '@prisma/client';
 import { ClientService } from './client.service';
+import { ClientClosureService } from './client-closure.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CLIENT_REPOSITORY,
   LOYALTY_CARD_REPOSITORY,
@@ -53,6 +55,8 @@ describe('ClientService — notification feed', () => {
         { provide: MailService, useValue: {} },
         { provide: ClientClaimService, useValue: {} },
         { provide: DealsClientService, useValue: {} },
+        { provide: NotificationsService, useValue: { sendToClient: jest.fn() } },
+        { provide: ClientClosureService, useValue: { close: jest.fn() } },
         { provide: MerchantPlanService, useValue: { resolveEffectivePlan: jest.fn().mockResolvedValue({ plan: 'PREMIUM' }), assertCanAddClient: jest.fn() } },
       ],
     }).compile();

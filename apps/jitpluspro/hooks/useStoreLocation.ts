@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Keyboard } from 'react-native';
+import { Alert, Keyboard, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { reverseGeocodeAsync } from '@/utils/geocodeCache';
@@ -88,13 +88,19 @@ export function useStoreLocation() {
     const current = await Location.getForegroundPermissionsAsync();
     if (current.status === 'granted') return true;
     if (!current.canAskAgain) {
-      Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'));
+      Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('notifSettings.openSettingsAction'), onPress: () => { Linking.openSettings().catch(() => {}); } },
+      ]);
       return false;
     }
     if (!(await confirmDisclosure())) return false;
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'));
+      Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('notifSettings.openSettingsAction'), onPress: () => { Linking.openSettings().catch(() => {}); } },
+      ]);
       return false;
     }
     return true;

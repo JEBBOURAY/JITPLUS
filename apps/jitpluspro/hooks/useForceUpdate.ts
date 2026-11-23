@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import axios from 'axios';
 import { getServerBaseUrl } from '@/services/api';
+import { PRO_IOS_URL } from '@/constants/app';
 
 /**
  * Parse a semver string into [major, minor, patch] integers.
@@ -39,17 +40,11 @@ interface ForceUpdateState {
 }
 
 const ANDROID_PACKAGE = 'com.jitplus.pro';
-const IOS_APP_ID = process.env.EXPO_PUBLIC_IOS_APP_ID ?? ''; // Set in .env
-
 function getStoreUrl(): string {
   if (Platform.OS === 'android') {
     return `market://details?id=${ANDROID_PACKAGE}`;
   }
-  // iOS — use App Store link with ID if available, else App Store search (never Play Store on iOS)
-  if (IOS_APP_ID) {
-    return `https://apps.apple.com/app/id${IOS_APP_ID}`;
-  }
-  return `https://apps.apple.com/search?term=jitplus+pro`;
+  return PRO_IOS_URL;
 }
 
 const RECHECK_INTERVAL_MS = 30 * 60 * 1000;

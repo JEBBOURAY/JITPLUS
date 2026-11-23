@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Info } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
@@ -12,6 +12,21 @@ interface Props {
   merchantName: string;
   fonts: AppFonts;
   t: (key: string, options?: Record<string, unknown>) => string;
+}
+
+type Translate = Props['t'];
+
+/** Game rules of the scratch cards (under a card and at the bottom of the hub). */
+export function ScratchRules({ fonts, t, style }: { fonts: AppFonts; t: Translate; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[styles.legal, style]}>
+      <View style={styles.legalHeader}>
+        <Info size={ms(14)} color="rgba(255,255,255,0.6)" strokeWidth={2} />
+        <Text style={[styles.legalTitle, { fontFamily: fonts.semibold }]}>{t('scratch.rules.title')}</Text>
+      </View>
+      <Text style={[styles.legalText, { fontFamily: fonts.regular }]}>{t('scratch.rules.body')}</Text>
+    </View>
+  );
 }
 
 /** Merchant message (if any) and the game rules shown under the card. */
@@ -27,13 +42,7 @@ export default React.memo(function ScratchCardInfo({ message, merchantName, font
         </View>
       )}
 
-      <View style={styles.legal}>
-        <View style={styles.legalHeader}>
-          <Info size={ms(14)} color="rgba(255,255,255,0.6)" strokeWidth={2} />
-          <Text style={[styles.legalTitle, { fontFamily: fonts.semibold }]}>{t('scratch.rules.title')}</Text>
-        </View>
-        <Text style={[styles.legalText, { fontFamily: fonts.regular }]}>{t('scratch.rules.body')}</Text>
-      </View>
+      <ScratchRules fonts={fonts} t={t} />
     </>
   );
 });

@@ -10,11 +10,11 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
+import { MERCHANT_ICON_MAP } from '@jitplus/shared/src/merchantIcons';
 import { Store } from 'lucide-react-native';
 import { CATEGORIES } from '@/utils/categories';
 import { formatDistance } from '@/utils/distance';
-import { wp, hp, ms } from '@/utils/responsive';
+import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import type { Merchant } from '@/types';
 
 export const HERO_HEIGHT = hp(170);
@@ -87,22 +87,25 @@ function MerchantHero({ merchant, scrollY, openStatus, distanceKm }: Props) {
       </View>
 
       <View style={styles.identity}>
-        <View style={[styles.logoFrame, { backgroundColor: theme.bg }]}>
-          {merchant.logoUrl && !logoError ? (
-            <Image
-              source={resolveImageUrl(merchant.logoUrl)}
-              style={styles.logo}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              recyclingKey={merchant.logoUrl}
-              onError={() => setLogoError(true)}
-              accessibilityLabel={merchant.nomBoutique}
-            />
-          ) : (
-            <View style={[styles.logo, styles.logoFallback, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-              <ThemeIcon size={ms(36)} color={theme.textSecondary} strokeWidth={1.75} />
-            </View>
-          )}
+        {/* The logo overlaps the cover; membership is shown on the bottom bar. */}
+        <View style={styles.identityTop}>
+          <View style={[styles.logoFrame, { backgroundColor: theme.bg }]}>
+            {merchant.logoUrl && !logoError ? (
+              <Image
+                source={resolveImageUrl(merchant.logoUrl)}
+                style={styles.logo}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={merchant.logoUrl}
+                onError={() => setLogoError(true)}
+                accessibilityLabel={merchant.nomBoutique}
+              />
+            ) : (
+              <View style={[styles.logo, styles.logoFallback, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                <ThemeIcon size={ms(36)} color={theme.textSecondary} strokeWidth={1.75} />
+              </View>
+            )}
+          </View>
         </View>
 
         <Text style={[styles.name, { color: theme.text, fontFamily: fonts.bold }]} numberOfLines={2} accessibilityRole="header">
@@ -120,7 +123,7 @@ function MerchantHero({ merchant, scrollY, openStatus, distanceKm }: Props) {
         )}
         {/* Last, right above the directions/call buttons it goes with. */}
         {(openStatus || !!facts) && (
-          <Text style={[styles.line, { color: theme.textMuted, fontFamily: fonts.regular }]} numberOfLines={2}>
+          <Text style={[styles.facts, { color: theme.textMuted, fontFamily: fonts.regular }]} numberOfLines={2}>
             {openStatus && (
               <Text style={{ color: openStatus.isOpen ? theme.success : theme.danger, fontFamily: fonts.semibold }}>
                 {describeOpenStatus(openStatus, t, 'merchant')}
@@ -140,18 +143,24 @@ const styles = StyleSheet.create({
   topScrim: { position: 'absolute', top: 0, left: 0, right: 0, height: hp(100) },
 
   identity: { paddingHorizontal: wp(16) },
-  logoFrame: {
-    alignSelf: 'flex-start',
+  identityTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: wp(12),
     marginTop: -LOGO_SIZE / 2,
-    padding: LOGO_BORDER,
-    borderRadius: ms(18) + LOGO_BORDER,
   },
-  logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: ms(18) },
+  logoFrame: {
+    padding: LOGO_BORDER,
+    borderRadius: radius.lg + LOGO_BORDER,
+  },
+  logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: radius.lg },
   logoFallback: { alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
 
-  name: { fontSize: ms(22), lineHeight: ms(28), letterSpacing: -0.4, marginTop: hp(10) },
-  line: { fontSize: ms(14), lineHeight: ms(20), marginTop: hp(3) },
-  tagline: { fontSize: ms(14), lineHeight: ms(20), marginTop: hp(6) },
+  name: { fontSize: fontSize['2xl'], lineHeight: ms(30), letterSpacing: -0.4, marginTop: hp(12) },
+  line: { fontSize: fontSize.md, lineHeight: ms(22), marginTop: hp(2) },
+  tagline: { fontSize: fontSize.md, lineHeight: ms(22), marginTop: hp(8) },
+  facts: { fontSize: fontSize.md, lineHeight: ms(22), marginTop: hp(8) },
 });
 
 export default memo(MerchantHero);

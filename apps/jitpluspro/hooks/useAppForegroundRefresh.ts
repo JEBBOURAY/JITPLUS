@@ -6,9 +6,10 @@
  * (10–15 queries firing in parallel on every resume), which used to block
  * the JS thread for several seconds.
  *
- * This hook narrows the post-resume refetch to the two query keys whose
+ * This hook narrows the post-resume refetch to the query keys whose
  * staleness matters most for the merchant UX: the unread admin-notification
- * badge and the transactions list.
+ * badge, the transactions list, and the booking requests badge + agenda
+ * (a socket event may have been missed while in background).
  */
 import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
@@ -55,6 +56,10 @@ export function useAppForegroundRefresh() {
               await Promise.all([
                 queryClient.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount }),
                 queryClient.invalidateQueries({ queryKey: queryKeys.transactions }),
+                // Socket events missed in the background leave today's totals wrong.
+                queryClient.invalidateQueries({ queryKey: queryKeys.homeStats }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.bookingPending }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.bookingAgendaRoot }),
               ]);
               const dt = Date.now() - t0;
               logPerf('App', `foreground:done ${dt}ms`);

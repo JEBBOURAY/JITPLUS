@@ -1,5 +1,5 @@
 import {
-  View, TouchableOpacity, Modal, Pressable, ActivityIndicator,
+  View, TouchableOpacity, Modal, Pressable, ActivityIndicator, KeyboardAvoidingView, Keyboard, Platform,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { ShieldCheck } from 'lucide-react-native';
@@ -32,7 +32,14 @@ export default function OtpVerificationModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose} accessibilityLabel={t('common.close')}>
+      {/* The number-pad has no dismiss key and covered Cancel / Confirm on iOS:
+          lift the card above it, and a tap outside first hides the keyboard. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Pressable
+        style={styles.modalOverlay}
+        onPress={() => { if (Keyboard.isVisible()) Keyboard.dismiss(); else onClose(); }}
+        accessibilityLabel={t('common.close')}
+      >
         <Pressable style={[styles.otpModalCard, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()} accessibilityRole="summary" accessibilityViewIsModal={true} accessibilityLabel={t('profile.otpVerifyTitle')}>
           <View style={[styles.modalIconCircle, { backgroundColor: `${palette.violet}15` }]}>
             <ShieldCheck size={ms(22)} color={palette.violet} strokeWidth={1.8} />
@@ -53,6 +60,8 @@ export default function OtpVerificationModal({
             placeholder={t('profile.otpVerifyPlaceholder')}
             placeholderTextColor={theme.textMuted}
             keyboardType="number-pad"
+            textContentType="oneTimeCode"
+            autoComplete="one-time-code"
             maxLength={6}
             autoFocus
             textAlign="center"
@@ -104,6 +113,7 @@ export default function OtpVerificationModal({
           </View>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

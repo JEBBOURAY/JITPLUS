@@ -11,7 +11,7 @@ export const DEAL_LIMITS = {
   MAX_CREATED_PER_DAY: 3,
   MAX_DURATION_DAYS: 30,
   MAX_SCHEDULE_DAYS: 30,
-  MIN_PERCENT: 1,
+  MIN_PERCENT: 5,
   MAX_PERCENT: 99,
   MAX_QTY: 20,
   MAX_PRICE: 1_000_000,
@@ -39,9 +39,12 @@ export const DEAL_ONLINE_INTERLEAVE = 8;
 export const DEAL_NEARBY_RADIUS_KM = 50;
 /** Deeper pages are refused: offset pagination gets slow and nobody scrolls that far */
 export const DEAL_FEED_MAX_PAGES = 25;
-/** A client's view / click is counted once per window */
-export const DEAL_VIEW_DEDUP_MS = 12 * 3_600_000;
-export const DEAL_EVENT_DEDUP_MS = 3_600_000;
+/** A viewer's view / click counts once per Morocco day; the marks that prove it are kept this long */
+export const DEAL_EVENT_MARK_RETENTION_DAYS = 2;
+/** Days of per-day figures returned with a merchant's deal */
+export const DEAL_DAILY_STATS_DAYS = 30;
+/** A saved deal ending within this many hours gets its reminder push */
+export const DEAL_SAVED_REMINDER_HOURS = 30;
 /** Popular = top share of the live deals of a city, with at least this many views */
 export const DEAL_POPULAR_TOP_SHARE = 0.1;
 export const DEAL_POPULAR_MIN_VIEWS = 10;

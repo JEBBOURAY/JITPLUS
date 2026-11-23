@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Alert,
   Modal,
   Pressable,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { ChevronRight, Camera, X, Plus } from 'lucide-react-native';
@@ -28,6 +26,7 @@ import { ms } from '@/utils/responsive';
 import { useDir } from '@/hooks/useDir';
 import { font, icon } from '@/constants/design';
 import { resolveImageUrl } from '@/utils/imageUrl';
+import { pickSquareImage } from '@/utils/pickSquareImage';
 import { useRewards, useUploadRewardImage, queryKeys } from '@/hooks/useQueryHooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { fieldFill } from '@/components/settings/surface';
@@ -79,25 +78,9 @@ function RewardManagerBase({
 
   const handlePickRewardImage = async () => {
     try {
-      const ImagePicker = await import('expo-image-picker');
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert(t('common.error'), t('upload.permissionDenied'));
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-      });
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const data = await uploadRewardImage.mutateAsync({
-        uri: asset.uri,
-        mimeType: asset.mimeType,
-      });
+      const image = await pickSquareImage();
+      if (!image) return;
+      const data = await uploadRewardImage.mutateAsync(image);
       setRewardImageUrl(data.url);
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('upload.uploadFailed')));
@@ -148,10 +131,12 @@ function RewardManagerBase({
 
   /** Creates or updates the reward in the form (PUT sends imageUrl: null to remove the image). */
   const saveReward = async () => {
+    const description = rewardDescription.trim();
     const body = {
       titre: rewardTitle.trim(),
       cout: parseInt(rewardCost, 10),
-      description: rewardDescription.trim() || undefined,
+      // An edit sends "" so a cleared description is removed (undefined left it unchanged).
+      description: editingRewardId ? description : description || undefined,
     };
     // Busy from the first tap: the cost check below is asynchronous.
     setSavingReward(true);
@@ -339,7 +324,8 @@ function RewardManagerBase({
       )}
 
       <Modal visible={showForm} transparent animationType="slide" statusBarTranslucent onRequestClose={closeForm}>
-        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* Padding on Android too: the translucent Modal window is not resized by the keyboard. */}
+        <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
           <Pressable style={StyleSheet.absoluteFill} onPress={closeForm} accessibilityRole="button" accessibilityLabel={t('common.close')} />
           <View
             style={[styles.sheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + 16, 28) }]}

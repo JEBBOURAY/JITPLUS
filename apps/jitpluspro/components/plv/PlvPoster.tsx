@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, type TextProps } from 'react-native';
+import { View, StyleSheet, Image, type TextProps } from 'react-native';
+import { Text } from '@/components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import { Clock } from 'lucide-react-native';
@@ -11,6 +12,7 @@ import type { PlvProgram } from '@/components/plv/usePlvProgram';
 import { CLIENT_APP_ANDROID_URL, CLIENT_APP_IOS_URL } from '@/constants/app';
 import { font } from '@/constants/design';
 import { HEX_RE } from '@/components/stores/brand';
+import { luminance, shade } from '@/components/plv/color';
 import type { LucideIcon } from '@/components/home/PromoSheet';
 
 export type PlvTemplateId = 'classic' | 'window' | 'reward' | 'counter';
@@ -45,24 +47,6 @@ interface PlvPosterProps {
   brandColor?: string | null;
   program: PlvProgram;
   t: ReturnType<typeof useLanguage>['t'];
-}
-
-function shade(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const mix = (c: number) => Math.round(amount < 0 ? c * (1 + amount) : c + (255 - c) * amount);
-  const r = mix((n >> 16) & 255);
-  const g = mix((n >> 8) & 255);
-  const b = mix(n & 255);
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
-}
-
-function luminance(hex: string): number {
-  const n = parseInt(hex.slice(1), 16);
-  const lin = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
 }
 
 /**

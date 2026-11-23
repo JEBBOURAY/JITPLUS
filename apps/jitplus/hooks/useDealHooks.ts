@@ -6,18 +6,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData,
+  keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import {
   buildDealAlertUpdate, roundCoord, type DealAlertUpdate, type DealArea, type DealFeedQuery,
 } from '@/services/api/deals';
 import { isEntityId } from '@/utils/ids';
+import { useAuthStore } from '@/stores/authStore';
 import type { Coords } from '@/hooks/useKnownLocation';
 import {
   findMoroccoCity, type ClientDealDetail, type ClientDealSummary, type DealAlertPreferences, type DealCategoryCountsResponse,
   type DealCitiesResponse,
-  type DealEventType, type DealFeedResponse, type DealFeedTab, type DealReportReason, type DealTeaserResponse,
+  type DealEventType, type DealFeedResponse, type DealFeedSort, type DealFeedTab, type DealReportReason,
 } from '@jitplus/shared/src/deals';
 
 export { dealArea, type DealAlertUpdate, type DealArea } from '@/services/api/deals';
@@ -25,22 +26,40 @@ export { dealArea, type DealAlertUpdate, type DealArea } from '@/services/api/de
 const FEED_STALE_MS = 2 * 60 * 1000;
 const LIST_GC_MS = 5 * 60 * 1000;
 
+/**
+ * Signed out (a deal opened from a shared link) = public routes. The cache key
+ * carries it: a visitor's copy (no blocked merchants or reports) never serves a member.
+ */
+const useIsGuestViewer = () => useAuthStore((s) => !s.client);
+
 const dealKeys = {
   feeds: ['deals', 'feed'] as const,
   feed: (q: Omit<DealFeedQuery, 'cursor'>) =>
-    ['deals', 'feed', q.tab, q.cityKey ?? null, q.category ?? null, q.lat ?? null, q.lng ?? null] as const,
-  categoryCounts: (q: Omit<DealFeedQuery, 'category' | 'cursor'>) =>
+    ['deals', 'feed', q.tab, q.cityKey ?? null, q.category ?? null, q.lat ?? null, q.lng ?? null, q.q ?? null, q.sort ?? null] as const,
+  categoryCounts: (q: Pick<DealFeedQuery, 'tab' | 'cityKey' | 'lat' | 'lng'>) =>
     ['deals', 'feed', 'categories', q.tab, q.cityKey ?? null, q.lat ?? null, q.lng ?? null] as const,
-  detail: (id: string) => ['deals', 'detail', id] as const,
+  detail: (id: string, guest = false) => ['deals', 'detail', id, guest] as const,
   merchantLists: ['deals', 'merchant'] as const,
   merchant: (merchantId: string) => ['deals', 'merchant', merchantId] as const,
   cities: (lat: number | null, lng: number | null) => ['deals', 'cities', lat, lng] as const,
-  teaser: (cityKey: string | null, lat: number | null, lng: number | null) => ['deals', 'teaser', cityKey, lat, lng] as const,
   alerts: ['deals', 'alerts'] as const,
 } as const;
 
-export function useDealsFeed(tab: DealFeedTab, area: DealArea, category: string | null, enabled = true) {
-  const query: Omit<DealFeedQuery, 'cursor'> = { tab, category, ...area };
+/** Feeds and merchant deal lists, e.g. after blocking a merchant the server now leaves out. */
+export function invalidateDealLists(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: dealKeys.feeds });
+  qc.invalidateQueries({ queryKey: dealKeys.merchantLists });
+}
+
+/** What narrows or orders a feed on top of its tab and area. */
+interface DealFeedFilters {
+  category: string | null;
+  q: string | null;
+  sort: DealFeedSort;
+}
+
+export function useDealsFeed(tab: DealFeedTab, area: DealArea, filters: DealFeedFilters, enabled = true) {
+  const query: Omit<DealFeedQuery, 'cursor'> = { tab, ...filters, ...area };
   return useInfiniteQuery<DealFeedResponse, Error, InfiniteData<DealFeedResponse>, ReturnType<typeof dealKeys.feed>, string | undefined>({
     queryKey: dealKeys.feed(query),
     queryFn: ({ pageParam }) => api.getDealFeed({ ...query, cursor: pageParam }),
@@ -73,9 +92,10 @@ export function useDealCategoryCounts(tab: DealFeedTab, area: DealArea, enabled 
  * on mount/focus keep re-opening the same deal from inflating it.
  */
 export function useDeal(id: string | undefined, enabled = true) {
+  const guest = useIsGuestViewer();
   return useQuery<ClientDealDetail>({
-    queryKey: dealKeys.detail(id ?? ''),
-    queryFn: () => api.getDeal(id!),
+    queryKey: dealKeys.detail(id ?? '', guest),
+    queryFn: () => api.getDeal(id!, {}, guest),
     enabled: enabled && isEntityId(id),
     staleTime: 10 * 60 * 1000,
     gcTime: LIST_GC_MS,
@@ -105,19 +125,44 @@ export function useDealCities(coords: Coords | null, enabled = true) {
   });
 }
 
-export function useDealTeaser(area: DealArea, enabled = true) {
-  return useQuery<DealTeaserResponse>({
-    queryKey: dealKeys.teaser(area.cityKey, area.lat, area.lng),
-    queryFn: () => api.getDealTeaser(area),
-    enabled,
-    staleTime: 10 * 60 * 1000,
-    gcTime: LIST_GC_MS,
-  });
-}
 
 /** Stats only: a lost event must never bother the user. */
 export function recordDealEvent(id: string, type: DealEventType): void {
-  api.recordDealEvent(id, type).catch((e) => { if (__DEV__) console.warn('Deal event failed', e); });
+  api.recordDealEvent(id, type, !useAuthStore.getState().client).catch((e) => { if (__DEV__) console.warn('Deal event failed', e); });
+}
+
+/** The pass is kept in the deal's cache, so reopening the screen shows "Montrer en caisse". */
+export function useClaimDeal(dealId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.claimDeal(dealId),
+    onSuccess: ({ claimedAt }) => {
+      qc.setQueryData<ClientDealDetail>(dealKeys.detail(dealId), (deal) => deal && { ...deal, claimedAt });
+    },
+  });
+}
+
+/** Optimistic bookmark; the "Enregistrés" lists are refetched once the server agrees. */
+export function useSaveDeal(dealId: string) {
+  const qc = useQueryClient();
+  const key = dealKeys.detail(dealId);
+  const setSaved = (saved: boolean) => qc.setQueryData<ClientDealDetail>(key, (deal) => deal && { ...deal, saved });
+  return useMutation({
+    mutationFn: (saved: boolean) => api.setDealSaved(dealId, saved),
+    // Snapshot, not `!saved`: with two quick taps the second rollback would flip the wrong way.
+    onMutate: async (saved) => {
+      await qc.cancelQueries({ queryKey: key });
+      const previous = qc.getQueryData<ClientDealDetail>(key)?.saved;
+      setSaved(saved);
+      return { previous };
+    },
+    onError: (_error, _saved, context) => {
+      if (context?.previous !== undefined) setSaved(context.previous);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: dealKeys.feeds, predicate: (q) => q.queryKey[2] === 'saved' });
+    },
+  });
 }
 
 export function useReportDeal(dealId: string) {

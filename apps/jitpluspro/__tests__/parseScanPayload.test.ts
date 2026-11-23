@@ -4,12 +4,12 @@ const UUID = '3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e';
 
 describe('parseScanPayload', () => {
   describe('coupon', () => {
-    it('recognises the coupon deep link and keeps the raw data as token', () => {
-      expect(parseScanPayload('jitplus://coupon/abc')).toEqual({ kind: 'coupon', token: 'jitplus://coupon/abc' });
+    it('recognises the coupon deep link of older client apps', () => {
+      expect(parseScanPayload('jitplus://coupon/abc')).toEqual({ kind: 'coupon' });
     });
 
     it('recognises a bare c1. token', () => {
-      expect(parseScanPayload('c1.payload.sig')).toEqual({ kind: 'coupon', token: 'c1.payload.sig' });
+      expect(parseScanPayload('c1.payload.sig')).toEqual({ kind: 'coupon' });
     });
   });
 

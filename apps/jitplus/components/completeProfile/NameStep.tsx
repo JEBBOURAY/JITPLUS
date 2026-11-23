@@ -64,6 +64,8 @@ export const NameStep = memo(function NameStep({
             onChangeText={onPrenomChange}
             autoFocus
             autoCapitalize="words"
+            autoComplete="given-name"
+            textContentType="givenName"
             maxLength={50}
             returnKeyType="next"
             onSubmitEditing={() => nomRef.current?.focus()}
@@ -87,6 +89,8 @@ export const NameStep = memo(function NameStep({
             value={nom}
             onChangeText={onNomChange}
             autoCapitalize="words"
+            autoComplete="family-name"
+            textContentType="familyName"
             maxLength={50}
             returnKeyType="done"
             onSubmitEditing={canNext ? onNext : undefined}

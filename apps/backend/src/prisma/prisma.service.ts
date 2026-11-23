@@ -7,6 +7,8 @@ import { PrismaClient } from '@prisma/client';
 // while staying well under Cloud SQL's max_connections (usually 100-400).
 const CONNECTION_LIMIT = parseInt(process.env.DATABASE_POOL_SIZE || '10', 10);
 const POOL_TIMEOUT_SECS = 5; // fail-fast: avoid queueing on 512Mi Cloud Run
+const CONNECT_ATTEMPTS = 4; // boot only
+const CONNECT_RETRY_DELAY_MS = 2000;
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -45,10 +47,28 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       }
     });
 
+    // Production subscribes to warn/error as events (above): without listeners
+    // Prisma drops them, so pool timeouts and engine warnings never reached the logs.
+    (this as any).$on('warn', (e: { message: string }) => this.logger.warn(`Prisma: ${e.message}`));
+    (this as any).$on('error', (e: { message: string }) => this.logger.error(`Prisma: ${e.message}`));
   }
 
   async onModuleInit() {
-    await this.$connect();
+    // The first connection can exceed the 5s pool timeout (cold Cloud SQL, WSL
+    // port relay, busy machine right after a build). Retry instead of killing
+    // the boot on a single slow attempt.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.$connect();
+        break;
+      } catch (err) {
+        if (attempt >= CONNECT_ATTEMPTS) throw err;
+        this.logger.warn(
+          `Database connection attempt ${attempt}/${CONNECT_ATTEMPTS} failed (${(err as Error).message.split('\n').pop()}), retrying in ${CONNECT_RETRY_DELAY_MS}ms`
+        );
+        await new Promise((resolve) => setTimeout(resolve, CONNECT_RETRY_DELAY_MS));
+      }
+    }
     this.logger.log(`Prisma connected (pool: ${CONNECTION_LIMIT} connections, timeout: ${POOL_TIMEOUT_SECS}s)`);
   }
 

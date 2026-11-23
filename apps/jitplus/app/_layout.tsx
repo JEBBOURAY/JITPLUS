@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Platform, View } from 'react-native';
-import { Stack, useNavigationContainerRef, useRouter } from 'expo-router';
+import { View } from 'react-native';
+import { Stack, useNavigationContainerRef, useRouter, useSegments } from 'expo-router';
+import { resetTo } from '@/utils/navReset';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
 import { useFonts } from 'expo-font';
@@ -18,20 +19,22 @@ import { Cairo_700Bold } from '@expo-google-fonts/cairo/700Bold';
 import * as SplashScreen from 'expo-splash-screen';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { asyncStoragePersister, shouldPersistQuery } from '@/utils/queryPersister';
-import * as SecureStore from 'expo-secure-store';
 import * as Sentry from '@sentry/react-native';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { useLaunchStore } from '@/stores/launchStore';
+import { isProfileComplete } from '@/stores/authStore';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
 import { useRealtimeEvents, useAppForegroundRefresh } from '@/hooks/useRealtimeEvents';
 import { useNotificationListeners } from '@/hooks/useNotificationListeners';
-import { api, getServerBaseUrl } from '@/services/api';
+import { getServerBaseUrl } from '@/services/api';
+import { getToken } from '@/services/api/storage';
 import { initSentry, navigationIntegration } from '@/services/sentry';
 import { queryClient, CACHE_MAX_AGE } from '@/services/queryClient';
 import { setupAndroidChannel } from '@/utils/notifications';
@@ -39,6 +42,7 @@ import { useForceUpdate } from '@/hooks/useForceUpdate';
 import ForceUpdateModal from '@/components/ForceUpdateModal';
 import LaunchSplash from '@/components/launch/LaunchSplash';
 import { takePendingClaim, takePendingStampCode } from '@/services/pendingClaim';
+import { saveClientLanguage } from '@/services/clientLanguage';
 
 initSentry();
 SplashScreen.preventAutoHideAsync();
@@ -46,7 +50,7 @@ SplashScreen.preventAutoHideAsync();
 function RootLayoutNav() {
   const theme = useTheme();
   const router = useRouter();
-  const { client, isGuest } = useAuth();
+  const { client } = useAuth();
   const { status: forceUpdateStatus, storeUrl: forceUpdateStoreUrl, recheck: recheckForceUpdate } = useForceUpdate();
   const { locale } = useLanguage();
 
@@ -56,44 +60,52 @@ function RootLayoutNav() {
     if (navigationRef) navigationIntegration.registerNavigationContainer(navigationRef);
   }, [navigationRef]);
 
-  // Redirect to welcome screen whenever the user logs out (client becomes null).
-  // Guests keep browsing: they reach auth-only screens through GuestGuard.
+  // Redirect to the login screen whenever the user logs out (client becomes null).
+  // - The whole history is replaced: signed-in screens must not come back with
+  //   Back / swipe. This is the only logout redirect (screens no longer race it).
+  // - Shared links stay open for people without an account: the deal / merchant
+  //   screens have a guest view, claim and stamp-code keep the token for later.
+  const segments = useSegments();
+  const firstSegment = segments[0] ?? '';
+  const onPublicLink = PUBLIC_LINK_SEGMENTS.has(firstSegment);
   useEffect(() => {
-    if (!client && !isGuest) {
-      router.replace('/welcome');
+    if (!client && !onPublicLink) {
+      resetTo('/login');
     }
-  }, [client, isGuest, router]);
+  }, [client, onPublicLink]);
 
   // After authentication, if a Quick-Add claim token or a parcel QR code was
   // stashed (because the user opened it while logged-out), route back to its
-  // screen to confirm it.
+  // screen to confirm it. Only once sign-in is over: taken earlier, the token was
+  // lost when complete-profile or goHomeAfterLogin replaced the screen it opened.
+  // Pushed, not replaced: the deal / merchant page goHomeAfterLogin restored
+  // (and its pending auto-join) stays underneath.
+  const signInDone = isProfileComplete(client) && !SIGN_IN_SEGMENTS.has(firstSegment);
   useEffect(() => {
-    if (!client) return;
+    if (!signInDone) return;
     takePendingClaim().then(async (pending) => {
       if (pending) {
-        router.replace({ pathname: '/claim', params: { token: pending } });
+        router.push({ pathname: '/claim', params: { token: pending } });
         return;
       }
       // Same for a parcel QR code scanned while logged out.
       const stampCode = await takePendingStampCode();
-      if (stampCode) router.replace({ pathname: '/stamp-code', params: { token: stampCode } });
+      if (stampCode) router.push({ pathname: '/stamp-code', params: { token: stampCode } });
     }).catch(() => {});
-  }, [client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [client?.id, signInDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync local language preference to backend once when client is authenticated
   useEffect(() => {
     if (client && locale && client.language !== locale) {
-      api.updateProfile({ language: locale }).catch((e) => { if (__DEV__) console.warn('Failed to sync language', e); });
+      saveClientLanguage(locale).catch((e) => { if (__DEV__) console.warn('Failed to sync language', e); });
     }
   }, [client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Real-time WebSocket connection ────────────────────────
   const socket = useRealtimeSocket({
     serverUrl: getServerBaseUrl(),
-    getToken: async () => {
-      if (Platform.OS === 'web') return null;
-      try { return await SecureStore.getItemAsync('auth_token'); } catch { return null; }
-    },
+    // Memory-first (no keychain read on every reconnect attempt), web-safe.
+    getToken: () => getToken().catch(() => null),
     enabled: !!client,
   });
 
@@ -124,12 +136,13 @@ function RootLayoutNav() {
             gestureEnabled: true,
           }}
         >
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
+          {/* No swipe-back from the tabs: they are the root of the signed-in app (login and
+              goHomeAfterLogin dismiss the sign-in screens), a swipe must never pop them. */}
+          <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
           <Stack.Screen name="login" options={{ animation: 'fade' }} />
           <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="verify-otp" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="complete-profile" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="complete-profile" options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
           <Stack.Screen name="set-password" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="change-password" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="edit-profile" options={{ animation: 'slide_from_right' }} />
@@ -137,10 +150,15 @@ function RootLayoutNav() {
           <Stack.Screen name="legal" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="scratch/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="scratch/[id]" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="collections/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="coupons/index" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="coupons/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="deal/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="deal-alerts" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="book/[merchantId]" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="bookings/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="bookings/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="notifications" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </ErrorBoundary>
       </View>
@@ -156,7 +174,8 @@ function RootLayoutNav() {
 function SplashGate({ children }: { children: React.ReactNode }) {
   const { isLoading: authLoading } = useAuth();
   const [launchDone, setLaunchDone] = useState(false);
-  const finishLaunch = useCallback(() => setLaunchDone(true), []);
+  const markLaunchDone = useLaunchStore((s) => s.setDone);
+  const finishLaunch = useCallback(() => { setLaunchDone(true); markLaunchDone(); }, [markLaunchDone]);
 
   return (
     <>
@@ -165,6 +184,12 @@ function SplashGate({ children }: { children: React.ReactNode }) {
     </>
   );
 }
+
+/** Screens of the sign-in / sign-up journey, all left through goHomeAfterLogin. */
+const SIGN_IN_SEGMENTS = new Set(['login', 'register', 'verify-otp', 'set-password', 'complete-profile']);
+
+/** Screens opened by shared links that a visitor without an account may see. */
+const PUBLIC_LINK_SEGMENTS = new Set(['login', 'register', 'verify-otp', 'set-password', 'legal', 'merchant', 'deal', 'claim', 'stamp-code', '+not-found']);
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({

@@ -14,6 +14,10 @@ export interface JwtPayload {
   clientSessionId?: string;
   teamMemberId?: string;
   teamMemberName?: string;
+  /** Token `iat` (seconds). Admin tokens are checked against Admin.tokensValidAfter. */
+  issuedAt?: number;
+  /** Issue time in ms (admin tokens since 2026-11-23), compared exactly with tokensValidAfter. */
+  issuedAtMs?: number;
 }
 
 /**
@@ -34,4 +38,6 @@ export interface JwtTokenPayload {
   /** Standard JWT fields */
   iat?: number;
   exp?: number;
+  /** Issue time in ms (admin tokens) */
+  iatMs?: number;
 }

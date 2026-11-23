@@ -7,6 +7,7 @@ import {
 import { MS_PER_DAY } from '../common/constants';
 import { maskEmail } from '../common/utils/pii-mask';
 import { AdminDetailsService } from './admin-details.service';
+import { ClientClosureService } from '../client-auth/client-closure.service';
 
 /**
  * Admin client management: listing, detail and account moderation
@@ -20,6 +21,7 @@ export class AdminClientService {
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
     @Inject(CLIENT_SESSION_REPOSITORY) private readonly clientSessionRepo: IClientSessionRepository,
     private readonly details: AdminDetailsService,
+    private readonly closure: ClientClosureService,
   ) {}
 
   /**
@@ -241,10 +243,10 @@ export class AdminClientService {
     const client = await this.findIncludingDeleted(clientId, { nom: true, email: true });
     if (!client) throw new NotFoundException('Client non trouvé');
 
-    await this.clientRepo.update({
+    await this.closure.close(clientId, (tx, now) => tx.client.update({
       where: { id: clientId },
       data: {
-        deletedAt: new Date(),
+        deletedAt: now,
         email: `deleted_${clientId}`,
         telephone: null,
         password: null,
@@ -254,9 +256,7 @@ export class AdminClientService {
         nom: null,
         prenom: null,
       },
-    });
-
-    await this.clientSessionRepo.deleteMany({ where: { clientId } });
+    }));
 
     this.logger.warn(`Client ${clientId} (${maskEmail(client.email)}) soft-deleted`);
     return { nom: client.nom, email: client.email };

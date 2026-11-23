@@ -1,5 +1,6 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Text } from '@/components/AppText';
 import { NavigationContext } from 'expo-router/react-navigation';
 import { Play } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -51,11 +52,16 @@ export function DemoVideoButton({ id, variant = 'pill', size = 'md', style, colo
   }, [id, onOpenChange]);
 
   const ref = useRef<View>(null);
-  const scale = useRef(new Animated.Value(1)).current;
+  const [scale] = useState(() => new Animated.Value(1));
+  // Latest press handler and hint copy for the delayed coach mark, synced after each commit.
   const onPressRef = useRef(onPress);
-  onPressRef.current = onPress;
-  const hintRef = useRef({ text: t('demo.hint'), color: backgroundColor ?? theme.primary, isRTL: dir.isRTL });
-  hintRef.current = { text: t('demo.hint'), color: backgroundColor ?? theme.primary, isRTL: dir.isRTL };
+  const hintText = t('demo.hint');
+  const hintColor = backgroundColor ?? theme.primary;
+  const hintRef = useRef({ text: hintText, color: hintColor, isRTL: dir.isRTL });
+  useEffect(() => {
+    onPressRef.current = onPress;
+    hintRef.current = { text: hintText, color: hintColor, isRTL: dir.isRTL };
+  });
 
   // Coach mark: each time the page gains focus (or on mount outside a navigator).
   const navigation = useContext(NavigationContext);

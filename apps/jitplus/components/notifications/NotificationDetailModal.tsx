@@ -59,7 +59,7 @@ export default React.memo(function NotificationDetailModal({
   if (!shown) return null;
 
   const isDark = theme.mode === 'dark';
-  const accent = isDark ? palette.violetLight : palette.violet;
+  const accent = theme.primary;
   const kind = notificationKind(shown);
   const isOfficial = kind !== 'merchant';
   const sender = kind === 'deals' ? t('deals.notification.sender') : shown.merchantName || 'JitPlus';

@@ -21,7 +21,8 @@ export type MerchantInboxCategory =
   | 'SETUP'
   | 'OFFER'
   | 'NEWS'
-  | 'REMINDER';
+  | 'REMINDER'
+  | 'BOOKING';
 
 export interface MerchantInboxEntry {
   category: MerchantInboxCategory;

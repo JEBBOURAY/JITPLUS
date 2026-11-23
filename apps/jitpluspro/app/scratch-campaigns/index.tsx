@@ -11,9 +11,8 @@ import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useAuthStore } from '@/stores/authStore';
 import { useScratchCampaigns } from '@/hooks/useScratchHooks';
 import { ms } from '@/utils/responsive';
-import PremiumLockCard from '@/components/PremiumLockCard';
 import { Button, CampaignStatusPill, Notice, ScreenHeader } from '@/components/scratch/ScratchUI';
-import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
+import { CampaignRow, DiscoverPremiumButton, GameEmptyState, GamePremiumLock, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
 import { ScratchTile } from '@/components/scratch/ScratchPreview';
 import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { formatYmd } from '@/components/scratch/DateField';
@@ -82,14 +81,14 @@ export default function ScratchCampaignsScreen() {
 
   const header = (
     <View style={styles.headerContent}>
-      {!isPremium && campaigns.length === 0 && (
-        <PremiumLockCard titleKey="scratch.list.premiumTitle" descriptionKey="scratch.list.premiumDesc" />
-      )}
-      {!isPremium && campaigns.length > 0 && <Notice tone="warning" text={t('scratch.list.readOnly')} />}
+      {/* Without the plan, past campaigns stay readable. */}
+      {!isPremium && (campaigns.length === 0 ? <GamePremiumLock ns="scratch" /> : (
+        <>
+          <Notice tone="warning" text={t('scratch.list.readOnly')} />
+          <DiscoverPremiumButton />
+        </>
+      ))}
       {isPremium && isTeamMember && <Notice text={t('scratch.list.ownerOnly')} />}
-      {!isPremium && (
-        <Button label={t('messages.discoverPremium')} onPress={() => router.push('/plan')} />
-      )}
 
       {campaigns.length === 0 && isPremium && !isLoading && (
         <GameEmptyState

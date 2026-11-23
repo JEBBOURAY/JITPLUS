@@ -5,8 +5,12 @@
 // ── Timing ──
 /** Default debounce delay for search inputs (ms) */
 export const DEBOUNCE_MS = 300;
-/** Delay before focusing a search TextInput after toggling (ms) */
-export const FOCUS_DELAY_MS = 100;
+/** AsyncStorage: the home birthday card was dismissed (per account: wiped on logout). */
+export const BIRTHDAY_PROMPT_DISMISSED_KEY = 'birthday_prompt_dismissed';
+/** AsyncStorage: when the notifications push banner was snoozed (per account: wiped on logout). */
+export const PUSH_BANNER_DISMISSED_KEY = 'push_banner_dismissed_at';
+/** AsyncStorage: '1' shows the client-ID badge on the QR tab once (set after sign-up, wiped on logout). */
+export const SHOW_GUID_BADGE_KEY = 'showGuidBadge';
 /** Duration for banner fade-in / fade-out animations (ms) */
 export const BANNER_ANIM_DURATION_MS = 400;
 /** How long the welcome banner stays visible (ms) */

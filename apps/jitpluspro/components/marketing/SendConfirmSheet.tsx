@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Info, Check, Send, History } from 'lucide-react-native';
 import { JitBell, JitClients } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';

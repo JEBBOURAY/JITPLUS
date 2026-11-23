@@ -11,17 +11,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useShallow } from 'zustand/react/shallow';
 import api, { onUnauthorized, resetApiTokenCache } from '@/services/api';
 import { sendMerchantPushToken, resetMerchantPushTokenCache } from '@/services/merchantPushToken';
+import { isNetworkError } from '@jitplus/shared';
 import { getErrorMessage } from '@/utils/error';
+import { QUERY_CACHE_KEY } from '@/utils/queryPersister';
 import { logInfo, logWarn, logError } from '@/utils/devLogger';
 import { captureException } from '@/utils/sentry';
 import i18n from '@/i18n';
 import { Merchant, LoginCredentials, AuthResponse, TeamMember } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
-
-const isNetworkFailure = (e: unknown): boolean => {
-  const err = e as { isAxiosError?: boolean; response?: unknown } | null;
-  return !!err?.isAxiosError && !err.response;
-};
 
 // At boot the backend can be briefly unreachable (dev server restarting, radio
 // waking up); retry network failures instead of dropping the user to login.
@@ -31,7 +28,7 @@ const loadProfileWithRetry = async (load: () => Promise<Merchant | null>): Promi
     try {
       return await load();
     } catch (e) {
-      if (!isNetworkFailure(e) || attempt >= PROFILE_BOOT_ATTEMPTS) throw e;
+      if (!isNetworkError(e) || attempt >= PROFILE_BOOT_ATTEMPTS) throw e;
       await new Promise((r) => setTimeout(r, attempt * 1500));
     }
   }
@@ -55,6 +52,27 @@ const SESSION_KEYS = ['accessToken', 'refreshToken', 'sessionId', 'rememberMe', 
 
 const clearStoredSession = (extraKeys: string[] = []) =>
   Promise.allSettled([...SESSION_KEYS, ...extraKeys].map((key) => SecureStore.deleteItemAsync(key)));
+
+// The iOS keychain survives an uninstall while AsyncStorage does not, so a
+// reinstalled app silently reopened the previous merchant account.
+const INSTALL_MARKER_KEY = 'install_marker_v1';
+
+/**
+ * On the first launch of an install, drops the session left in the keychain by
+ * a previous one. An update from a build without the marker is told apart by
+ * AsyncStorage already holding data: that session is kept. Never throws.
+ */
+async function purgeSessionAfterReinstall(): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  try {
+    if (await AsyncStorage.getItem(INSTALL_MARKER_KEY)) return;
+    const existing = await AsyncStorage.getAllKeys();
+    if (existing.length === 0) await clearStoredSession(['onboardingCompleted']);
+    await AsyncStorage.setItem(INSTALL_MARKER_KEY, '1');
+  } catch {
+    // AsyncStorage unreadable: keep the session rather than log out by mistake.
+  }
+}
 
 const getOrCreateDeviceId = async (): Promise<string> => {
   let deviceId = await SecureStore.getItemAsync('deviceId');
@@ -102,7 +120,8 @@ export const registerPushToken = async (promptIfNeeded = false, languageOverride
           allowAlert: true,
           allowBadge: true,
           allowSound: true,
-          allowProvisional: true, // Permission provisoire sur iOS
+          // No allowProvisional: iOS then grants quietly without any prompt and
+          // expo-notifications reports "undetermined", so no token was ever saved.
         },
       });
       finalStatus = status;
@@ -163,6 +182,8 @@ interface SignOutOptions {
   sessionRevoked?: boolean;
 }
 
+type SocialAuthResult = { success: boolean; error?: string; rawError?: unknown };
+
 interface AuthContextData {
   merchant: Merchant | null;
   loading: boolean;
@@ -171,10 +192,10 @@ interface AuthContextData {
   signIn: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<void>;
   /** Creates the account; the server opens the session in the same call. */
   register: (data: RegisterData) => Promise<void>;
-  googleLogin: (idToken: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
-  appleLogin: (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
-  googleRegister: (idToken: string, businessData: GoogleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
-  appleRegister: (identityToken: string, givenName: string | undefined, familyName: string | undefined, businessData: AppleRegisterData, rawNonce?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
+  googleLogin: (idToken: string) => Promise<SocialAuthResult>;
+  appleLogin: (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) => Promise<SocialAuthResult>;
+  googleRegister: (idToken: string, businessData: GoogleRegisterData) => Promise<SocialAuthResult>;
+  appleRegister: (identityToken: string, givenName: string | undefined, familyName: string | undefined, businessData: AppleRegisterData, rawNonce?: string) => Promise<SocialAuthResult>;
   signOut: (options?: SignOutOptions) => Promise<void>;
   loadProfile: () => Promise<Merchant | null>;
   updateMerchant: (data: Partial<Merchant>) => void;
@@ -264,7 +285,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       resetApiTokenCache();
       await clearStoredSession(['onboardingCompleted']);
       queryClient.clear();
-      await AsyncStorage.removeItem('jitpluspro-query-cache').catch(() => {});
+      await AsyncStorage.removeItem(QUERY_CACHE_KEY).catch(() => {});
       useAuthStore.getState().reset();
       useAuthStore.getState().setLoading(false);
     } catch (error) {
@@ -292,6 +313,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const s = useAuthStore.getState();
       try {
         logInfo('Auth', 'Chargement de l\'authentification...');
+        // Before any keychain read: a reinstall must not reopen the old account.
+        await purgeSessionAfterReinstall();
         // Parallelize SecureStore reads to reduce boot time (~400ms → ~100ms)
         const results = await Promise.allSettled([
           SecureStore.getItemAsync('accessToken'),
@@ -324,11 +347,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
           try {
             await loadProfileWithRetry(loadProfile);
-            registerPushTokenInBackground();
+            // Push registration: the root navigator's effect runs it once the merchant is set.
           } catch (e) {
             logWarn(
               'Auth',
-              isNetworkFailure(e)
+              isNetworkError(e)
                 ? 'Serveur injoignable, profil non chargé'
                 : 'Session expirée, retour à l\'écran de connexion',
             );
@@ -353,9 +376,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const unsubscribe = onUnauthorized(() => {
       logInfo('Auth', '401 détecté, déconnexion automatique');
       resetMerchantPushTokenCache();
+      // api.ts only drops the tokens; also drop userType / teamMember (name + email).
+      clearStoredSession().catch(() => {});
       const s = useAuthStore.getState();
       s.setMerchant(null);
       s.setTeamMember(false, null);
+      // Like signOut: the next account must not see this one's cached data.
+      queryClient.clear();
+      AsyncStorage.removeItem(QUERY_CACHE_KEY).catch(() => {});
     });
 
     return unsubscribe;
@@ -449,113 +477,62 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [handleAuthSuccess]);
 
-  const googleLogin = useCallback(async (idToken: string): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
+  /** Google / Apple sign-in or sign-up: one backend call, then the same session setup. */
+  const socialAuth = useCallback(async (
+    path: string,
+    body: Record<string, unknown>,
+    label: string,
+    errorKey: string,
+  ): Promise<SocialAuthResult> => {
     try {
-      logInfo('Auth', 'Google login...');
+      logInfo('Auth', `${label}...`);
       const { deviceName, deviceOS } = getDeviceInfo();
       const deviceId = await getOrCreateDeviceId();
-      const response = await api.post<AuthResponse>('/auth/google-login', {
-        idToken,
-        deviceName,
-        deviceOS,
-        deviceId,
-      });
+      const response = await api.post<AuthResponse>(path, { ...body, deviceName, deviceOS, deviceId });
 
-      logInfo('Auth', 'Google login réussi:', response.data.merchant.nom);
+      logInfo('Auth', `${label} réussi:`, response.data.merchant.nom);
 
       await handleAuthSuccess(response.data);
       return { success: true };
     } catch (error: unknown) {
-      logError('Auth', 'Erreur Google login:', error);
-      return { success: false, error: getErrorMessage(error, i18n.t('auth.googleLoginError')), rawError: error };
+      logError('Auth', `Erreur ${label}:`, error);
+      return { success: false, error: getErrorMessage(error, i18n.t(errorKey)), rawError: error };
     }
   }, [handleAuthSuccess]);
 
-  const appleLogin = useCallback(async (
-    identityToken: string,
-    givenName?: string,
-    familyName?: string,
-    rawNonce?: string,
-  ): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
-    try {
-      logInfo('Auth', 'Apple login...');
-      const { deviceName, deviceOS } = getDeviceInfo();
-      const deviceId = await getOrCreateDeviceId();
-      const response = await api.post<AuthResponse>('/auth/apple-login', {
-        identityToken,
-        givenName,
-        familyName,
-        rawNonce,
-        deviceName,
-        deviceOS,
-        deviceId,
-      });
+  const googleLogin = useCallback(
+    (idToken: string) => socialAuth('/auth/google-login', { idToken }, 'Google login', 'auth.googleLoginError'),
+    [socialAuth],
+  );
 
-      logInfo('Auth', 'Apple login réussi:', response.data.merchant.nom);
+  const appleLogin = useCallback(
+    (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) =>
+      socialAuth('/auth/apple-login', { identityToken, givenName, familyName, rawNonce }, 'Apple login', 'auth.appleLoginError'),
+    [socialAuth],
+  );
 
-      await handleAuthSuccess(response.data);
-      return { success: true };
-    } catch (error: unknown) {
-      logError('Auth', 'Erreur Apple login:', error);
-      return { success: false, error: getErrorMessage(error, i18n.t('auth.appleLoginError')), rawError: error };
-    }
-  }, [handleAuthSuccess]);
+  const googleRegister = useCallback(
+    (idToken: string, businessData: GoogleRegisterData) =>
+      socialAuth('/auth/google-register', { idToken, ...businessData }, 'Google register', 'auth.googleRegisterError'),
+    [socialAuth],
+  );
 
-  const googleRegister = useCallback(async (idToken: string, businessData: GoogleRegisterData): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
-    try {
-      logInfo('Auth', 'Google register...');
-      const { deviceName, deviceOS } = getDeviceInfo();
-      const deviceId = await getOrCreateDeviceId();
-      const response = await api.post<AuthResponse>('/auth/google-register', {
-        idToken,
-        ...businessData,
-        deviceName,
-        deviceOS,
-        deviceId,
-      });
-
-      logInfo('Auth', 'Google register réussi:', response.data.merchant.nom);
-
-      await handleAuthSuccess(response.data);
-      return { success: true };
-    } catch (error: unknown) {
-      logError('Auth', 'Erreur Google register:', error);
-      return { success: false, error: getErrorMessage(error, i18n.t('auth.googleRegisterError')), rawError: error };
-    }
-  }, [handleAuthSuccess]);
-
-  const appleRegister = useCallback(async (
-    identityToken: string,
-    givenName: string | undefined,
-    familyName: string | undefined,
-    businessData: AppleRegisterData,
-    rawNonce?: string,
-  ): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
-    try {
-      logInfo('Auth', 'Apple register...');
-      const { deviceName, deviceOS } = getDeviceInfo();
-      const deviceId = await getOrCreateDeviceId();
-      const response = await api.post<AuthResponse>('/auth/apple-register', {
-        identityToken,
-        givenName,
-        familyName,
-        ...(rawNonce ? { rawNonce } : {}),
-        ...businessData,
-        deviceName,
-        deviceOS,
-        deviceId,
-      });
-
-      logInfo('Auth', 'Apple register réussi:', response.data.merchant.nom);
-
-      await handleAuthSuccess(response.data);
-      return { success: true };
-    } catch (error: unknown) {
-      logError('Auth', 'Erreur Apple register:', error);
-      return { success: false, error: getErrorMessage(error, i18n.t('auth.appleRegisterError')), rawError: error };
-    }
-  }, [handleAuthSuccess]);
-
+  const appleRegister = useCallback(
+    (
+      identityToken: string,
+      givenName: string | undefined,
+      familyName: string | undefined,
+      businessData: AppleRegisterData,
+      rawNonce?: string,
+    ) =>
+      socialAuth(
+        '/auth/apple-register',
+        { identityToken, givenName, familyName, ...(rawNonce ? { rawNonce } : {}), ...businessData },
+        'Apple register',
+        'auth.appleRegisterError',
+      ),
+    [socialAuth],
+  );
 
   const updateMerchant = useCallback((data: Partial<Merchant>) => {
     useAuthStore.getState().updateMerchant(data);

@@ -23,6 +23,7 @@ const member = (id: string, over: Record<string, unknown> = {}) => ({
   pushToken: null as string | null,
   notifPush: true,
   email: null as string | null,
+  emailVerified: true,
   notifEmail: true,
   prenom: 'P',
   language: 'fr',
@@ -51,7 +52,7 @@ describe('NotificationsService', () => {
   const blast = { sendBlast: jest.fn() };
   const sms = { sendWhatsAppMessage: jest.fn() };
   const emitter = { emit: jest.fn() };
-  const gateway = { emitNotificationNew: jest.fn(), server: { to: jest.fn(() => emitter) } };
+  const gateway = { emitNotificationNew: jest.fn(), emitNotificationNewToClients: jest.fn(), server: { to: jest.fn(() => emitter) } };
   const quota = { checkAndIncrementQuota: jest.fn() };
   const cache = { get: jest.fn(), set: jest.fn() };
 
@@ -165,10 +166,11 @@ describe('NotificationsService', () => {
       expect(() => service.assertBroadcastContentAllowed({ title: 'Promo', body: 'Hello' })).not.toThrow();
     });
 
-    it('sendEmailToAll keeps only members with an email who did not opt out', async () => {
+    it('sendEmailToAll keeps only members with a verified email who did not opt out', async () => {
       loyaltyCardRepo.findMany.mockResolvedValueOnce([
         card(member('a', { email: 'a@x.ma' })),
         card(member('b', { email: 'b@x.ma', notifEmail: false })),
+        card(member('e', { email: 'e@x.ma', emailVerified: false })),
         card(member('c', { email: null })),
         card(member('d', { email: '' })),
       ]);
@@ -223,7 +225,10 @@ describe('NotificationsService', () => {
       expect(clientRepo.updateMany.mock.calls[0][0].where.pushToken.in).toHaveLength(500);
       expect(clientRepo.updateMany.mock.calls[1][0].where.pushToken.in).toHaveLength(100);
       expect(statusRepo.createMany).toHaveBeenCalledTimes(3);
-      expect(gateway.emitNotificationNew).toHaveBeenCalledTimes(1002);
+      // One batched emit call per page (rooms grouped by 250 inside the gateway).
+      expect(gateway.emitNotificationNewToClients).toHaveBeenCalledTimes(2);
+      const emitted = gateway.emitNotificationNewToClients.mock.calls.flatMap((c) => c[0]);
+      expect(emitted).toHaveLength(1002);
     });
 
     it('creates nothing when no client is reachable', async () => {

@@ -1,7 +1,17 @@
 import { IsString, IsNotEmpty, IsNumber, Min, Length, Matches, MaxLength, IsOptional, IsBoolean, IsEmail, IsDateString, ValidateIf, IsIn } from 'class-validator';
+import { APP_SIGNUP_METHODS, APP_SIGNUP_STEPS } from './signup-funnel.service';
+
+/** Sign-up step only the app can see (screen opened, code resent, name typed). */
+export class SignupEventDto {
+  @IsIn(APP_SIGNUP_STEPS as unknown as string[])
+  step: (typeof APP_SIGNUP_STEPS)[number];
+
+  @IsIn(APP_SIGNUP_METHODS as unknown as string[])
+  method: (typeof APP_SIGNUP_METHODS)[number];
+}
 
 export class SendOtpEmailDto {
-  @IsEmail({}, { message: 'Adresse email invalide' })
+  @IsEmail({}, { message: 'error.auth.emailInvalid' })
   @IsNotEmpty()
   email: string;
 
@@ -11,13 +21,13 @@ export class SendOtpEmailDto {
 }
 
 export class VerifyOtpEmailDto {
-  @IsEmail({}, { message: 'Adresse email invalide' })
+  @IsEmail({}, { message: 'error.auth.emailInvalid' })
   @IsNotEmpty()
   email: string;
 
   @IsString()
   @IsNotEmpty()
-  @Length(6, 6, { message: 'Le code doit contenir 6 chiffres' })
+  @Length(6, 6, { message: 'error.auth.otpFormat' })
   code: string;
 
   @IsOptional()
@@ -59,22 +69,22 @@ export class AppleLoginDto {
 
 export class CompleteProfileDto {
   @IsString()
-  @IsNotEmpty({ message: 'Le prénom est requis' })
-  @MaxLength(50, { message: 'Le prénom est trop long' })
+  @IsNotEmpty({ message: 'error.auth.firstNameRequired' })
+  @MaxLength(50, { message: 'error.auth.firstNameTooLong' })
   prenom: string;
-
-  @IsString()
-  @IsNotEmpty({ message: 'Le nom est requis' })
-  @MaxLength(50, { message: 'Le nom est trop long' })
-  nom: string;
 
   @IsOptional()
   @IsString()
-  @Matches(/^[0-9+\s\-()]{10,15}$/, { message: 'Numéro de téléphone invalide' })
+  @MaxLength(50, { message: 'error.auth.lastNameTooLong' })
+  nom?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[0-9+\s\-()]{10,15}$/, { message: 'error.auth.phoneInvalid' })
   telephone?: string;
 
   @IsBoolean()
-  @IsNotEmpty({ message: 'Vous devez accepter les mentions légales' })
+  @IsNotEmpty({ message: 'error.auth.termsRequired' })
   termsAccepted: boolean;
 
   @IsOptional()
@@ -83,9 +93,9 @@ export class CompleteProfileDto {
 
   @IsOptional()
   @IsString()
-  @Length(8, 128, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @Length(8, 128, { message: 'error.auth.passwordTooShort' })
   @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
-    message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
+    message: 'error.auth.passwordRules',
   })
   password?: string;
 }
@@ -93,23 +103,23 @@ export class CompleteProfileDto {
 export class ClientUpdateProfileDto {
   @IsOptional()
   @IsString()
-  @MaxLength(50, { message: 'Le prénom est trop long' })
+  @MaxLength(50, { message: 'error.auth.firstNameTooLong' })
   prenom?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(50, { message: 'Le nom est trop long' })
+  @MaxLength(50, { message: 'error.auth.lastNameTooLong' })
   nom?: string;
 
   @IsOptional()
-  @IsEmail({}, { message: 'Adresse email invalide' })
+  @IsEmail({}, { message: 'error.auth.emailInvalid' })
   email?: string;
 
   @IsOptional()
   @IsString()
   // Aligned with QuickAddTransactionDto so formats valid on signup are also
   // valid on profile edit. Lookahead requires at least 6 actual digits.
-  @Matches(/^(?=(?:[^\d]*\d){6,})[+\d\s().-]{6,25}$/, { message: 'Numéro de téléphone invalide' })
+  @Matches(/^(?=(?:[^\d]*\d){6,})[+\d\s().-]{6,25}$/, { message: 'error.auth.phoneInvalid' })
   telephone?: string;
 
   @IsOptional()
@@ -146,21 +156,22 @@ export class ClientUpdateProfileDto {
 }
 
 export class LoginEmailDto {
-  @IsEmail({}, { message: 'Adresse email invalide' })
+  @IsEmail({}, { message: 'error.auth.emailInvalid' })
   @IsNotEmpty()
   email: string;
 
   @IsString()
-  @IsNotEmpty({ message: 'Le mot de passe est requis' })
+  @IsNotEmpty({ message: 'error.auth.passwordRequired' })
+  @MaxLength(128)
   password: string;
 }
 
 export class SetPasswordDto {
   @IsString()
-  @IsNotEmpty({ message: 'Le mot de passe est requis' })
-  @Length(8, 128, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @IsNotEmpty({ message: 'error.auth.passwordRequired' })
+  @Length(8, 128, { message: 'error.auth.passwordTooShort' })
   @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
-    message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
+    message: 'error.auth.passwordRules',
   })
   password: string;
 }
@@ -172,10 +183,10 @@ export class ClientChangePasswordDto {
   currentPassword?: string;
 
   @IsString()
-  @IsNotEmpty({ message: 'Le nouveau mot de passe est requis' })
-  @Length(8, 128, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @IsNotEmpty({ message: 'error.auth.passwordRequired' })
+  @Length(8, 128, { message: 'error.auth.passwordTooShort' })
   @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
-    message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
+    message: 'error.auth.passwordRules',
   })
   newPassword: string;
 }
@@ -189,6 +200,7 @@ export class RefreshTokenDto {
 export class ClientDeleteAccountDto {
   @IsOptional()
   @IsString()
+  @MaxLength(128)
   password?: string;
 
   @IsString()
@@ -220,7 +232,7 @@ export class VerifyChangeContactOtpDto {
 
   @IsString()
   @IsNotEmpty()
-  @Length(6, 6, { message: 'Le code doit contenir 6 chiffres' })
+  @Length(6, 6, { message: 'error.auth.otpFormat' })
   code: string;
 }
 

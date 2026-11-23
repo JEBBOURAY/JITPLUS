@@ -1,7 +1,6 @@
 import { useCallback, useRef, memo } from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -10,6 +9,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { safeSelection } from '@/utils/haptics';
 import { ChevronRight, Image as ImageIcon, type LucideIcon } from 'lucide-react-native';
 import { JitCalendar, JitClients, JitClock, JitDeals, JitLock, JitMegaphone } from '@/components/icons';

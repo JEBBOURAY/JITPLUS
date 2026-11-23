@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
+import { View, StyleSheet, type ViewStyle } from 'react-native';
+import { Text } from '@/components/AppText';
 import type { LucideIcon } from 'lucide-react-native';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 import { font, icon } from '@/constants/design';

@@ -7,6 +7,13 @@ describe('computeStampsForAmount', () => {
     expect(computeStampsForAmount(30, 7.5)).toEqual({ stamps: 4, capped: false });
   });
 
+  it('counts in cents, without float undercount', () => {
+    expect(computeStampsForAmount(3.3, 1.1).stamps).toBe(3);
+    expect(computeStampsForAmount(6.6, 2.2).stamps).toBe(3);
+    expect(computeStampsForAmount(0.7, 0.1).stamps).toBe(7);
+    expect(computeStampsForAmount(3.29, 1.1).stamps).toBe(2);
+  });
+
   it('returns 0 when the amount is below one stamp', () => {
     expect(computeStampsForAmount(9.99, 10)).toEqual({ stamps: 0, capped: false });
   });

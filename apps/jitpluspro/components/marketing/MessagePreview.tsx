@@ -1,7 +1,9 @@
 import { memo } from 'react';
-import { View, Text, StyleSheet, Image as RNImage } from 'react-native';
+import { View, StyleSheet, Image as RNImage } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
 import MerchantLogo from '@/components/MerchantLogo';
 import { font, shadow } from '@/constants/design';
 import { radius } from '@/utils/responsive';
@@ -20,6 +22,7 @@ export const PushPreview = memo(function PushPreview({
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const { row, textAlign } = useDir();
   const shownTitle = title.trim();
   const shownBody = body.trim();
   return (
@@ -29,22 +32,22 @@ export const PushPreview = memo(function PushPreview({
       accessibilityLabel={`${t('messages.previewLabel')}. ${shownTitle} ${shownBody}`}
     >
       <View style={[styles.notifBubble, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }, shadow.sm]}>
-        <View style={styles.notifHeader}>
+        <View style={[styles.notifHeader, { flexDirection: row }]}>
           <RNImage source={JITPLUS_APP_ICON} style={styles.notifAppIcon} resizeMode="contain" />
-          <Text style={[styles.notifAppName, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>JitPlus</Text>
+          <Text style={[styles.notifAppName, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.2}>JitPlus</Text>
           <Text style={[styles.notifTime, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>{t('messages.previewNow')}</Text>
         </View>
-        <View style={styles.notifContent}>
+        <View style={[styles.notifContent, { flexDirection: row }]}>
           <View style={styles.notifTextCol}>
             <Text
-              style={[styles.notifTitle, { color: shownTitle ? theme.text : theme.textMuted }]}
+              style={[styles.notifTitle, { color: shownTitle ? theme.text : theme.textMuted, textAlign }]}
               numberOfLines={1}
               maxFontSizeMultiplier={1.3}
             >
               {shownTitle || t('messages.previewTitlePlaceholder')}
             </Text>
             <Text
-              style={[styles.notifBody, { color: shownBody ? theme.text : theme.textMuted }]}
+              style={[styles.notifBody, { color: shownBody ? theme.text : theme.textMuted, textAlign }]}
               numberOfLines={2}
               maxFontSizeMultiplier={1.3}
             >
@@ -71,7 +74,6 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   notifHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginBottom: 6,
@@ -79,7 +81,7 @@ const styles = StyleSheet.create({
   notifAppIcon: { width: 18, height: 18, borderRadius: 5 },
   notifAppName: { flex: 1, fontSize: 11, fontFamily: font.semibold },
   notifTime: { fontSize: 11, fontFamily: font.regular },
-  notifContent: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  notifContent: { alignItems: 'flex-start', gap: 10 },
   notifTextCol: { flex: 1 },
   notifTitle: { fontSize: 14, fontFamily: font.semibold },
   notifBody: { fontSize: 13, lineHeight: 18, marginTop: 2, fontFamily: font.regular },

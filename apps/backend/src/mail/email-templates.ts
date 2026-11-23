@@ -1,8 +1,8 @@
-import { EMAIL_LOGO_JITPLUS, EMAIL_LOGO_JITPLUS_PRO } from '../common/constants';
+import { EMAIL_LOGO_JITPLUS, EMAIL_LOGO_JITPLUS_PRO, OTP_EXPIRY_MS, CLIENT_OTP_EXPIRY_MS } from '../common/constants';
 import { EmailSource, MerchantBlastInfo } from '../common/interfaces';
 import {
   EmailLang, FOOTER_I18N, OTP_I18N, OtpPurpose,
-  WELCOME_CLIENT_I18N, WELCOME_MERCHANT_I18N, REFERRAL_I18N, ACCOUNT_DELETED_I18N,
+  ACCOUNT_EXISTS_CLIENT_I18N, WELCOME_CLIENT_I18N, WELCOME_MERCHANT_I18N, REFERRAL_I18N, ACCOUNT_DELETED_I18N,
   LOGIN_ALERT_I18N, PLAN_EMAIL_I18N, PAYOUT_I18N, MARKETING_BLAST_I18N,
   PRIVACY_URL_CLIENT, TERMS_URL_CLIENT, PRIVACY_URL_PRO, TERMS_URL_PRO,
   SUPPORT_EMAIL, COMPANY_LEGAL,
@@ -154,7 +154,7 @@ export function buildOtpEmail(
       <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: ${brand.accent};">${escapeHtml(code)}</span>
     </div>
     <p style="color: ${brand.accentMuted}; font-size: 13px; margin-top: 16px;">
-      ${i.expires}<br/>
+      ${i.expires(Math.round((source === 'client' ? CLIENT_OTP_EXPIRY_MS : OTP_EXPIRY_MS) / 60_000))}<br/>
       ${escapeHtml(i.ignore)}
     </p>`;
 
@@ -202,6 +202,26 @@ export function buildWelcomeClientEmail(prenom?: string, lang: EmailLang = 'fr')
     preheader: i.preheader(prenom || ''),
     content,
   });
+}
+
+// ─── Sign-up attempt on an existing client account ───────────────────────────
+
+export function buildAccountExistsClientEmail(lang: EmailLang = 'fr'): string {
+  const brand = BRANDS.client;
+  const i = ACCOUNT_EXISTS_CLIENT_I18N[lang];
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.title)}</h2>
+    <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+      ${escapeHtml(i.body)}
+    </p>
+    <p style="color: #1E1B4B; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+      ${escapeHtml(i.help)}
+    </p>
+    <p style="color: ${brand.accentMuted}; font-size: 13px; margin: 0;">
+      ${escapeHtml(i.ignore)}
+    </p>`;
+
+  return wrapEmail({ brand, lang, preheader: i.body, content });
 }
 
 // ─── Email 3: Welcome Merchant ───────────────────────────────────────────────
@@ -647,4 +667,86 @@ export function buildMarketingBlastEmail(
     content,
     extraFooter,
   });
+}
+
+// ─── Booking confirmed (client) ──────────────────────────────────────────────
+
+const BOOKING_CONFIRMED_I18N: Record<EmailLang, {
+  subject: (merchant: string) => string;
+  heading: string;
+  movedSubject: (merchant: string) => string;
+  movedHeading: string;
+  intro: (merchant: string) => string;
+  labels: { service: string; date: string; time: string; address: string };
+  qr: string;
+  cancel: (hours: number) => string;
+}> = {
+  fr: {
+    subject: (m) => `Rendez-vous confirmé chez ${m}`,
+    heading: 'Votre rendez-vous est confirmé',
+    movedSubject: (m) => `Rendez-vous déplacé chez ${m}`,
+    movedHeading: 'Votre rendez-vous a changé d’horaire',
+    intro: (m) => `${m} vous attend.`,
+    labels: { service: 'Prestation', date: 'Date', time: 'Heure', address: 'Adresse' },
+    qr: 'À votre arrivée, montrez votre QR JitPlus pour recevoir vos tampons.',
+    cancel: (h) => (h > 0 ? `Un empêchement ? Annulez depuis l'app JitPlus jusqu'à ${h} h avant.` : "Un empêchement ? Annulez depuis l'app JitPlus."),
+  },
+  en: {
+    subject: (m) => `Booking confirmed at ${m}`,
+    heading: 'Your booking is confirmed',
+    movedSubject: (m) => `Booking moved at ${m}`,
+    movedHeading: 'Your booking has a new time',
+    intro: (m) => `${m} is expecting you.`,
+    labels: { service: 'Service', date: 'Date', time: 'Time', address: 'Address' },
+    qr: 'On arrival, show your JitPlus QR to get your stamps.',
+    cancel: (h) => (h > 0 ? `Can't make it? Cancel in the JitPlus app up to ${h} h before.` : "Can't make it? Cancel in the JitPlus app."),
+  },
+  ar: {
+    subject: (m) => `تم تأكيد موعدك عند ${m}`,
+    heading: 'تم تأكيد موعدك',
+    movedSubject: (m) => `تم تغيير موعدك عند ${m}`,
+    movedHeading: 'تم تغيير وقت موعدك',
+    intro: (m) => `${m} في انتظارك.`,
+    labels: { service: 'الخدمة', date: 'التاريخ', time: 'الساعة', address: 'العنوان' },
+    qr: 'عند وصولك، أظهر رمز QR الخاص بـ JitPlus لتحصل على طوابعك.',
+    cancel: (h) => (h > 0 ? `لديك مانع؟ ألغِ من تطبيق JitPlus قبل ${h} ساعة على الأقل.` : 'لديك مانع؟ ألغِ من تطبيق JitPlus.'),
+  },
+};
+
+export interface BookingEmailParams {
+  merchant: string;
+  service: string;
+  /** Already formatted in the merchant's zone and the client's language */
+  date: string;
+  time: string;
+  address: string | null;
+  cancelDeadlineHours: number;
+  /** The merchant moved the booking: same e-mail with a "new time" title, so the first one is not relied on */
+  moved?: boolean;
+}
+
+export function getBookingConfirmedSubject(p: Pick<BookingEmailParams, 'merchant' | 'moved'>, lang: EmailLang = 'fr'): string {
+  const i = BOOKING_CONFIRMED_I18N[lang];
+  return (p.moved ? i.movedSubject : i.subject)(p.merchant);
+}
+
+export function buildBookingConfirmedEmail(p: BookingEmailParams, lang: EmailLang = 'fr'): string {
+  const brand = BRANDS.client;
+  const i = BOOKING_CONFIRMED_I18N[lang];
+  const row = (label: string, value: string | null) =>
+    value
+      ? `<tr><td style="color: ${brand.accentMuted}; font-size: 13px; padding: 4px 12px 4px 0;">${escapeHtml(label)}</td><td style="color: #1E1B4B; font-size: 14px; font-weight: 600; padding: 4px 0;">${escapeHtml(value)}</td></tr>`
+      : '';
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(p.moved ? i.movedHeading : i.heading)}</h2>
+    <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">${escapeHtml(i.intro(p.merchant))}</p>
+    <table role="presentation" style="border-collapse: collapse; margin: 0 0 16px;">
+      ${row(i.labels.service, p.service)}
+      ${row(i.labels.date, p.date)}
+      ${row(i.labels.time, p.time)}
+      ${row(i.labels.address, p.address)}
+    </table>
+    <p style="color: #1E1B4B; font-size: 14px; line-height: 1.6; margin: 0 0 8px;">${escapeHtml(i.qr)}</p>
+    <p style="color: ${brand.accentMuted}; font-size: 13px; margin: 0;">${escapeHtml(i.cancel(p.cancelDeadlineHours))}</p>`;
+  return wrapEmail({ brand, lang, preheader: getBookingConfirmedSubject(p, lang), content });
 }

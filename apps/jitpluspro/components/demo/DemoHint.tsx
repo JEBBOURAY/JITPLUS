@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Text } from '@/components/AppText';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Play } from 'lucide-react-native';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
@@ -15,9 +16,9 @@ import type { DemoId } from '@/constants/demoVideos';
  */
 
 /** Times a page's hint may appear before it stops for good. */
-export const DEMO_HINT_MAX_SHOWS = 2;
+const DEMO_HINT_MAX_SHOWS = 2;
 /** How long the bubble stays before fading out. */
-export const DEMO_HINT_DURATION_MS = 4000;
+const DEMO_HINT_DURATION_MS = 4000;
 
 export interface DemoHintRequest {
   id: DemoId;
@@ -99,8 +100,8 @@ function DemoHintBubble({ req }: { req: DemoHintRequest }) {
   // coordinate space (on Android the window offset can differ from the screen's by the status bar).
   const rootRef = useRef<View>(null);
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
-  const shift = useRef(new Animated.Value(6)).current;
+  const [opacity] = useState(() => new Animated.Value(0));
+  const [shift] = useState(() => new Animated.Value(6));
 
   const { rect } = req;
   const ox = origin?.x ?? 0;

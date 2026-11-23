@@ -53,6 +53,9 @@ export interface ClientAuthSubject {
 /** How long after an email OTP login the session may reset the password. */
 export const OTP_PASSWORD_RESET_WINDOW_MS = 15 * 60_000;
 
+/** A refresh answer lost on a bad network can be replayed for this long. */
+export const REFRESH_REUSE_GRACE_MS = 30_000;
+
 /**
  * Client multi-device sessions: one ClientSession (hashed refresh token) per
  * device, access tokens bound to it (`sid`), rotation on refresh, logout.
@@ -160,7 +163,7 @@ export class ClientSessionService {
         telephone: client.telephone ?? null,
         telephoneVerified: client.telephoneVerified ?? false,
         termsAccepted: client.termsAccepted ?? false,
-        shareInfoMerchants: client.shareInfoMerchants ?? false,
+        shareInfoMerchants: client.shareInfoMerchants ?? true,
         notifPush: client.notifPush ?? true,
         notifWhatsapp: client.notifWhatsapp ?? true,
         dateNaissance: client.dateNaissance ?? null,
@@ -217,10 +220,27 @@ export class ClientSessionService {
   async refreshAccessToken(refreshToken: string): Promise<Omit<ClientAuthResponse, 'isNewUser'> & { client: ClientAuthResponse['client'] }> {
     const hash = this.hashRefreshToken(refreshToken);
 
-    const session = await this.clientSessionRepo.findUnique({
-      where: { refreshTokenHash: hash },
-      select: { id: true, expiresAt: true, client: { select: { ...CLIENT_AUTH_SELECT, deletedAt: true } } },
-    });
+    const select = {
+      id: true, expiresAt: true, refreshTokenHash: true, rotatedAt: true,
+      client: { select: { ...CLIENT_AUTH_SELECT, deletedAt: true } },
+    } as const;
+    let session = await this.clientSessionRepo.findUnique({ where: { refreshTokenHash: hash }, select });
+
+    // The token just replaced: the app never received the answer to its refresh
+    // and would otherwise be logged out.
+    let replay = false;
+    if (!session) {
+      const previous = await this.clientSessionRepo.findUnique({ where: { previousRefreshTokenHash: hash }, select });
+      if (previous?.rotatedAt && Date.now() - previous.rotatedAt.getTime() <= REFRESH_REUSE_GRACE_MS) {
+        session = previous;
+        replay = true;
+      } else if (previous) {
+        // An already-rotated token came back after the grace window: two parties
+        // hold this session (stolen refresh token). Revoke it so whoever rotated
+        // last does not keep a silent 365-day session; the owner signs in again.
+        await this.clientSessionRepo.deleteMany({ where: { id: previous.id } });
+      }
+    }
 
     if (!session) {
       throw new UnauthorizedException('error.auth.refreshInvalid');
@@ -239,14 +259,19 @@ export class ClientSessionService {
     const client = session.client;
     const new_refresh_token = this.generateRefreshToken();
 
-    // Conditional on the old hash: if two refreshes race with the same token,
-    // only the first one rotates it.
+    // Conditional on the current hash: if two refreshes race with the same token,
+    // only the first one rotates it. A replay does not restart the grace period.
+    // A replay keeps the token it replaces usable as the previous one: two racing
+    // refreshes hand out two tokens, and the app may keep either answer.
     const { count } = await this.clientSessionRepo.updateMany({
-      where: { id: session.id, refreshTokenHash: hash },
+      where: { id: session.id, refreshTokenHash: replay ? session.refreshTokenHash : hash },
       data: {
         refreshTokenHash: this.hashRefreshToken(new_refresh_token),
         expiresAt: this.refreshTokenExpiry(),
         lastUsedAt: new Date(),
+        ...(replay
+          ? { previousRefreshTokenHash: session.refreshTokenHash }
+          : { previousRefreshTokenHash: hash, rotatedAt: new Date() }),
       },
     });
     if (count === 0) {

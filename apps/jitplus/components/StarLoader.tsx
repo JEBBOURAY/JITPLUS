@@ -15,8 +15,10 @@ import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { easeOutBack, khatamPath } from '@/utils/khatam';
 
-const LOGO = require('@/assets/images/jitpluslogo.png');
-const LOGO_RATIO = 808 / 1024;
+// The 512 px logo: drawn at most ~50 dp wide here, the 1024 px one (340 KB) only
+// cost decoding. The launch splash keeps the big one, matched to the native splash.
+const LOGO = require('@/assets/images/jitpluslogo-app.png');
+const LOGO_RATIO = 404 / 512;
 
 // Proportions of the 104 px reference drawing; everything scales with `size`.
 const REF = 104;

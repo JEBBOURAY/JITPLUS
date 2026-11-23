@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { clearAuth, getStoredToken, persistSession, persistTokens, setRememberMe } from '@/services/api/storage';
+import { clearAuth, getToken, persistSession, persistTokens, setRememberMe } from '@/services/api/storage';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
@@ -24,7 +24,7 @@ describe('forgot-password session storage', () => {
     await setRememberMe(false);
     await persistTokens({ access_token: 'access', refresh_token: 'refresh' });
 
-    expect(await getStoredToken()).toBe('access');
+    expect(await getToken()).toBe('access');
     expect(setItem).not.toHaveBeenCalled();
   });
 
@@ -43,7 +43,7 @@ describe('forgot-password session storage', () => {
     await persistTokens({ access_token: 'access', refresh_token: 'refresh' });
     await clearAuth();
 
-    expect(await getStoredToken()).toBeNull();
+    expect(await getToken()).toBeNull();
     expect(setItem).not.toHaveBeenCalled();
   });
 });

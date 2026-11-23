@@ -56,10 +56,6 @@ export const scratchFr = {
     eid: 'Aïd',
     charcoal: 'Charbon',
   },
-  coupon: {
-    code: 'Code',
-    showAtCheckout: 'Présentez ce QR code ou ce code en caisse',
-  },
   rules: {
     title: 'Règlement',
     body: 'La carte à gratter est offerte gratuitement par le commerçant, sans obligation d\'achat. Chaque carte fait gagner un coupon, à utiliser une seule fois chez ce commerçant, selon les conditions indiquées. Le commerçant peut mettre fin à la campagne à tout moment : les cartes et les coupons non utilisés sont alors annulés. Apple Inc. et Google LLC ne sont ni organisateurs ni sponsors de cette promotion.',

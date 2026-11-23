@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { ArrowRight, ChevronDown, Search, X } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';

@@ -20,6 +20,7 @@ function setup(admin: Record<string, unknown> | null) {
   const adminRepo = {
     findUnique: jest.fn().mockResolvedValue(admin),
     update: jest.fn().mockResolvedValue({}),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
   };
   const cache = { set: jest.fn(), del: jest.fn() };
   const jwtService = { sign: jest.fn().mockReturnValue('admin-token') };
@@ -64,12 +65,30 @@ describe('AdminAuthService.login', () => {
 
   it('locks the account on the last allowed failure', async () => {
     const { service, adminRepo } = setup({ ...baseAdmin(), failedLoginAttempts: MAX_LOGIN_ATTEMPTS - 1 });
+    adminRepo.update.mockResolvedValueOnce({ failedLoginAttempts: MAX_LOGIN_ATTEMPTS });
 
     await expect(service.login('admin@x.com', 'wrong')).rejects.toThrow(GENERIC);
+    // Atomic SQL increment (no read-modify-write), then the lock.
     expect(adminRepo.update).toHaveBeenCalledWith({
       where: { id: 'a1' },
-      data: { failedLoginAttempts: MAX_LOGIN_ATTEMPTS, lockedUntil: expect.any(Date) },
+      data: { failedLoginAttempts: { increment: 1 } },
+      select: { failedLoginAttempts: true },
     });
+    expect(adminRepo.update).toHaveBeenCalledWith({
+      where: { id: 'a1' },
+      data: { lockedUntil: expect.any(Date) },
+    });
+  });
+
+  it('does not lock below the limit even if the in-memory count is stale', async () => {
+    const { service, adminRepo } = setup({ ...baseAdmin(), failedLoginAttempts: MAX_LOGIN_ATTEMPTS - 1 });
+    // A parallel request already reset/changed the row: the DB value wins.
+    adminRepo.update.mockResolvedValueOnce({ failedLoginAttempts: 1 });
+
+    await expect(service.login('admin@x.com', 'wrong')).rejects.toThrow(GENERIC);
+    expect(adminRepo.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { lockedUntil: expect.any(Date) } }),
+    );
   });
 
   it('an expired lock no longer blocks the right password', async () => {

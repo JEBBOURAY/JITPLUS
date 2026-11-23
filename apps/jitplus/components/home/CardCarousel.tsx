@@ -1,14 +1,16 @@
 import React, { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, StyleSheet, Animated, FlatList, AccessibilityInfo, Easing,
+  View, StyleSheet, Animated, FlatList, Easing,
   useWindowDimensions, type NativeSyntheticEvent, type NativeScrollEvent, type AccessibilityActionEvent,
   type GestureResponderEvent, type LayoutChangeEvent, type StyleProp, type ViewStyle,
 } from 'react-native';
 import { Text } from '@/components/AppText';
 import { ChevronsLeftRight } from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useReducedMotion } from 'react-native-reanimated';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import WalletCard from '@/components/home/WalletCard';
+import CardQuickActions, { CARD_ACTIONS_HEIGHT } from '@/components/home/CardQuickActions';
 import type { LoyaltyCard } from '@/types';
 import { useAppFonts } from '@/utils/fonts';
 import { hapticSelection } from '@/utils/haptics';
@@ -106,8 +108,6 @@ const CarouselCard = memo(function CarouselCard({
           height={itemH}
           t={t}
           locale={locale}
-          isActive={isCenter}
-          reduceMotion={reduceMotion}
         />
         {!reduceMotion && (
           <Animated.View pointerEvents="none" style={[styles.dim, { opacity: anim.dim }]} />
@@ -119,9 +119,11 @@ const CarouselCard = memo(function CarouselCard({
 interface Props {
   cards: LoyaltyCard[];
   onCardPress: (merchantId: string) => void;
+  onBook: (merchantId: string) => void;
+  onContact: (card: LoyaltyCard) => void;
 }
 
-export default memo(function CardCarousel({ cards, onCardPress }: Props) {
+export default memo(function CardCarousel({ cards, onCardPress, onBook, onContact }: Props) {
   const theme = useTheme();
   const fonts = useAppFonts();
   const { t, locale } = useLanguage();
@@ -135,16 +137,10 @@ export default memo(function CardCarousel({ cards, onCardPress }: Props) {
   const activeRef = useRef(0);
   const [active, setActive] = useState(0);
   const [hasSwiped, setHasSwiped] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReducedMotion();
   const pressAnim = useRef(new Animated.Value(1)).current;
   const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
   const lastScrollAt = useRef(0);
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => sub.remove();
-  }, []);
 
   // New filter / sort / search result → start again from the first card.
   const cardsKey = useMemo(() => cards.map((c) => c.id).join('|'), [cards]);
@@ -181,7 +177,7 @@ export default memo(function CardCarousel({ cards, onCardPress }: Props) {
 
   const openActive = useCallback(() => {
     const card = cards[activeRef.current];
-    if (card?.merchant?.id && card.merchant.nomBoutique) onCardPress(card.merchantId);
+    if (card?.merchant?.id && card.merchant.nomBoutique) onCardPress(card.merchant.id);
   }, [cards, onCardPress]);
 
   const animatePress = useCallback((toValue: number) => {
@@ -277,12 +273,14 @@ export default memo(function CardCarousel({ cards, onCardPress }: Props) {
           onScroll={onScroll}
           scrollEventThrottle={16}
           style={styles.ltr}
-          contentContainerStyle={[styles.ltr, { paddingHorizontal: sidePad, paddingTop: hp(14), paddingBottom: hp(30) }]}
+          contentContainerStyle={[styles.ltr, { paddingHorizontal: sidePad, paddingTop: hp(8), paddingBottom: hp(30) }]}
           CellRendererComponent={CarouselCell}
           removeClippedSubviews={false}
           initialNumToRender={4}
-          maxToRenderPerBatch={4}
-          windowSize={7}
+          maxToRenderPerBatch={2}
+          // One viewport each side (about 2 cards) covers every visible card:
+          // cards 2+ steps away are at opacity 0 and the swipe moves one card at a time.
+          windowSize={3}
         />
         </ActiveIndexContext.Provider>
       </View>
@@ -320,6 +318,11 @@ export default memo(function CardCarousel({ cards, onCardPress }: Props) {
           )}
         </View>
       )}
+
+      {/* ── Shortcuts of the focused card ── */}
+      <View style={styles.actions}>
+        <CardQuickActions card={activeCard} onBook={onBook} onOpen={onCardPress} onContact={onContact} />
+      </View>
     </View>
   );
 });
@@ -328,8 +331,11 @@ const styles = StyleSheet.create({
   // Horizontal paging maths assume a left-to-right track, whatever the app language.
   ltr: { direction: 'ltr' },
   carouselBleed: { marginHorizontal: -wp(16) },
-  dim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0F172A', borderRadius: radius['2xl'] },
+  dim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: palette.gray900, borderRadius: radius['2xl'] },
 
+  // The height is kept while swiping past a card whose merchant is gone.
+  // 24 under the shortcuts: the gap between two groups of the page (8 inside a group).
+  actions: { minHeight: CARD_ACTIONS_HEIGHT, marginBottom: hp(24) },
   pagination: { alignItems: 'center', gap: hp(8), marginTop: -hp(10), marginBottom: hp(14) },
   dots: { flexDirection: 'row', alignItems: 'center', gap: wp(12), height: ms(8) },
   dot: { width: ms(6), height: ms(6), borderRadius: ms(3) },

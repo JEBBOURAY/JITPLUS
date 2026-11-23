@@ -134,10 +134,12 @@ describe('loyalty and badges', () => {
 
 describe('page tabs', () => {
   it('only lists tabs with something to show', () => {
-    expect(getFicheTabs({ hasDeals: false, photoCount: 0 })).toEqual(['overview', 'loyalty', 'info']);
-    expect(getFicheTabs({ hasDeals: true, photoCount: 3 })).toEqual(['overview', 'loyalty', 'deals', 'info', 'photos']);
+    expect(getFicheTabs({ hasDeals: false, photoCount: 0 })).toEqual(['shop', 'loyalty']);
+    expect(getFicheTabs({ hasDeals: true, photoCount: 3 })).toEqual(['shop', 'loyalty', 'deals', 'photos']);
   });
+});
 
+describe('lucky wheel', () => {
   it('describes when the lucky wheel ends', () => {
     const t = (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${opts.days}` : key);
     const now = new Date(2024, 0, 1, 12, 0).getTime();

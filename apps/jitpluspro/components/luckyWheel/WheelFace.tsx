@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import Svg, { Circle, Defs, G, Line, Path, RadialGradient, Stop } from 'react-native-svg';
 import type { WheelSegment } from '@jitplus/shared/src/luckyWheel';
 import { font } from '@/constants/design';

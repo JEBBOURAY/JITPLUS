@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { checkOtpCode, hashOtp, OtpDbOps, OtpRecord } from './otp.helper';
-import { MAX_OTP_ATTEMPTS } from '../constants';
+import { checkOtpCode, hashOtp, OtpDbOps, OtpRecord, otpSentRecently } from './otp.helper';
+import { CLIENT_OTP_EXPIRY_MS, MAX_OTP_ATTEMPTS, OTP_COOLDOWN_MS, OTP_EXPIRY_MS } from '../constants';
 
 function record(overrides: Partial<OtpRecord> = {}): OtpRecord {
   return {
@@ -74,5 +74,42 @@ describe('checkOtpCode', () => {
     );
     const outcomes = await Promise.all(guesses);
     expect(outcomes.filter((o) => o === 'compared')).toHaveLength(MAX_OTP_ATTEMPTS);
+  });
+});
+
+/**
+ * Code review 2026-11-21: the `otps` row is shared by email between JitPlus
+ * (10 min codes) and Pro (5 min codes). The send time used to be derived from
+ * `expiresAt - <own expiry>`, so a row written by the other app blocked Pro for
+ * about 6 minutes, or skipped the client cooldown. It now comes from createdAt.
+ */
+describe('otpSentRecently — resend cooldown shared by both apps', () => {
+  const now = Date.UTC(2026, 10, 21, 12, 0, 0);
+  // A row as each app writes it, `ago` ms before now.
+  const clientRow = (ago: number) => ({ createdAt: new Date(now - ago), expiresAt: new Date(now - ago + CLIENT_OTP_EXPIRY_MS) });
+  const merchantRow = (ago: number) => ({ createdAt: new Date(now - ago), expiresAt: new Date(now - ago + OTP_EXPIRY_MS) });
+
+  it('blocks a resend during the cooldown, whichever app wrote the row', () => {
+    expect(otpSentRecently(clientRow(10_000), now)).toBe(true);
+    expect(otpSentRecently(merchantRow(10_000), now)).toBe(true);
+  });
+
+  it('lets Pro send 2 minutes after a JitPlus code (was blocked about 6 more minutes)', () => {
+    const row = clientRow(2 * 60_000);
+    // Old Pro rule, kept here to show the bug it fixes:
+    expect(row.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > now).toBe(true);
+    expect(otpSentRecently(row, now)).toBe(false);
+  });
+
+  it('keeps the JitPlus cooldown 10 s after a Pro code (was skipped)', () => {
+    const row = merchantRow(10_000);
+    // Old client rule, kept here to show the bug it fixes:
+    expect(row.expiresAt.getTime() - CLIENT_OTP_EXPIRY_MS + OTP_COOLDOWN_MS > now).toBe(false);
+    expect(otpSentRecently(row, now)).toBe(true);
+  });
+
+  it('frees the cooldown exactly after OTP_COOLDOWN_MS', () => {
+    expect(otpSentRecently(clientRow(OTP_COOLDOWN_MS), now)).toBe(false);
+    expect(otpSentRecently(clientRow(OTP_COOLDOWN_MS - 1), now)).toBe(true);
   });
 });

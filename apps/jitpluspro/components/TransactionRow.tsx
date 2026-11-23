@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import type { LucideIcon } from 'lucide-react-native';
 import {
   JitCard,
@@ -105,6 +106,7 @@ const ACTIVITY_ICONS: Record<TransactionType, LucideIcon> = {
   LUCKY_WHEEL_WIN: JitGames,
   COUPON_REDEEM: JitTicket,
   PURCHASE: JitStore,
+  WELCOME_BONUS: JitGift,
 };
 
 const TYPE_LABEL_KEYS: Record<TransactionType, string> = {
@@ -115,6 +117,7 @@ const TYPE_LABEL_KEYS: Record<TransactionType, string> = {
   LUCKY_WHEEL_WIN: 'common.luckyWheelWin',
   COUPON_REDEEM: 'clientDetail.txCoupon',
   PURCHASE: 'clientDetail.txPurchase',
+  WELCOME_BONUS: 'clientDetail.txWelcomeBonus',
 };
 
 function formatTime(date: Date): string {

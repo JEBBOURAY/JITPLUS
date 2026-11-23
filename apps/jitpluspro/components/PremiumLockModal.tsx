@@ -1,10 +1,11 @@
 import {
-  Text,
   TouchableOpacity,
   StyleSheet,
   Modal,
   Pressable,
+  Platform,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { palette } from '@/contexts/ThemeContext';
@@ -58,8 +59,9 @@ export default function PremiumLockModal({ visible, onClose, titleKey, descKey }
           <PremiumLockContent
             title={t(titleKey)}
             description={t(descKey)}
-            ctaLabel={t('messages.discoverPremium')}
-            onPress={handleUpgrade}
+            // No call to action for the plan on iOS (App Store 3.1.1 / 3.1.3).
+            ctaLabel={Platform.OS === 'ios' ? undefined : t('messages.discoverPremium')}
+            onPress={Platform.OS === 'ios' ? undefined : handleUpgrade}
             ctaSize="lg"
             tone="sheet"
           />

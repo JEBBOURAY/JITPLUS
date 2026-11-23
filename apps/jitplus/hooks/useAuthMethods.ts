@@ -4,23 +4,32 @@ import { isAxiosError } from 'axios';
 import { api } from '@/services/api';
 import { clearLocalSession as clearLocalSessionData } from '@/services/localSession';
 import { notifyServerLogout } from '@/services/serverLogout';
-import { extractErrorMessage, isNetworkError as checkNetworkError } from '@/utils/errorMessage';
+import { extractErrorCode, extractErrorMessage, isNetworkError as checkNetworkError } from '@/utils/errorMessage';
+import { loadProfile } from '@/services/profileLoad';
 import { logInfo, logError } from '@/utils/devLogger';
 import type { AuthState } from '@/stores/authStore';
 
+/** The auth store actions the methods need (stable references). */
+export type AuthActions = Pick<AuthState, 'setClient' | 'setNeedsPasswordSetup' | 'setSignupTermsAccepted' | 'reset'>;
+
 export function useAuthMethods(
-  store: AuthState,
+  actions: AuthActions,
   sessionVersionRef: MutableRefObject<number>,
 ) {
   const queryClient = useQueryClient();
-  const { setClient, setNeedsPasswordSetup, setGuest, reset } = store;
+  const { setClient, setNeedsPasswordSetup, setSignupTermsAccepted, reset } = actions;
 
   const sendOtpEmail = useCallback(async (email: string, isRegister = false) => {
     try {
       await api.sendOtpEmail(email, isRegister);
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
+      return {
+        success: false,
+        error: extractErrorMessage(error),
+        isNetworkError: checkNetworkError(error),
+        code: extractErrorCode(error),
+      };
     }
   }, []);
 
@@ -31,15 +40,19 @@ export function useAuthMethods(
       const response = await api.verifyOtpEmail(email, code, isRegister);
       setClient(response.client);
       logInfo('Auth', 'OTP email vérifié:', response.client?.prenom, '| nouveau:', response.isNewUser);
-      if (response.isNewUser && isRegister) {
+      // The sign-up screen cannot send a code before its terms box is ticked.
+      if (response.isNewUser && isRegister) setSignupTermsAccepted(true);
+      // A resumed sign-up may already have a password (set through "forgot password").
+      const needsPassword = response.isNewUser && isRegister && !response.client?.hasPassword;
+      if (needsPassword) {
         await api.setEmailOtpNewUser();
         setNeedsPasswordSetup(true);
       }
-      return { success: true, isNewUser: response.isNewUser };
+      return { success: true, isNewUser: response.isNewUser, needsPassword };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error), code: extractErrorCode(error) };
     }
-  }, [setClient, setNeedsPasswordSetup, sessionVersionRef]);
+  }, [setClient, setNeedsPasswordSetup, setSignupTermsAccepted, sessionVersionRef]);
 
   const googleLogin = useCallback(async (idToken: string) => {
     sessionVersionRef.current++;
@@ -93,7 +106,7 @@ export function useAuthMethods(
       await api.verifyOtpEmail(email, code);
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error), code: extractErrorCode(error) };
     }
   }, [sessionVersionRef]);
 
@@ -121,20 +134,21 @@ export function useAuthMethods(
     try {
       const response = await api.completeProfile(prenom, nom, termsAccepted, telephone, dateNaissance, password);
       setClient(response.client);
-      if (password) {
-        await api.clearEmailOtpNewUser();
-        setNeedsPasswordSetup(false);
-      }
+      // The password step is over, whether a password was chosen or skipped.
+      await api.clearEmailOtpNewUser();
+      setNeedsPasswordSetup(false);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, [setClient, setNeedsPasswordSetup]);
 
-  const clearLocalSession = useCallback(
-    () => clearLocalSessionData(queryClient, reset),
-    [queryClient, reset],
-  );
+  // A new session version voids every profile load still in flight (refresh,
+  // offline retry): resolving after the wipe, it would bring the old client back.
+  const clearLocalSession = useCallback(() => {
+    sessionVersionRef.current++;
+    return clearLocalSessionData(queryClient, reset);
+  }, [queryClient, reset, sessionVersionRef]);
 
   const logout = useCallback(async () => {
     await notifyServerLogout();
@@ -144,32 +158,29 @@ export function useAuthMethods(
 
   const refreshProfile = useCallback(async () => {
     try {
-      const token = await api.getStoredToken();
+      const version = sessionVersionRef.current;
+      const token = await api.getToken();
       if (!token) return;
-      const profile = await api.getProfile();
-      setClient(profile);
-    } catch (error: unknown) {
-      if (error instanceof Error && 'response' in error) {
-        const axiosErr = error as import('axios').AxiosError;
-        if (axiosErr.response?.status === 401) {
-          await clearLocalSession();
-        }
+      const result = await loadProfile();
+      if (sessionVersionRef.current !== version) return;
+      if (result.status === 'ok') {
+        setClient(result.profile);
+      } else if (result.status !== 'empty') {
+        if (result.status === 'unauthorized') await clearLocalSession();
+        logError('Auth', 'Erreur rafraîchissement profil:', result.error);
       }
+    } catch (error: unknown) {
       logError('Auth', 'Erreur rafraîchissement profil:', error);
     }
-  }, [clearLocalSession, setClient]);
-
-  const enterGuestMode = useCallback(() => {
-    setGuest(true);
-  }, [setGuest]);
+  }, [clearLocalSession, setClient, sessionVersionRef]);
 
   return useMemo(() => ({
     sendOtpEmail, verifyOtpEmail, verifyOtpForReset, googleLogin, appleLogin,
     loginWithEmail, resetPasswordOtp, cancelPasswordReset, completeProfile,
-    logout, refreshProfile, enterGuestMode, clearLocalSession,
+    logout, refreshProfile, clearLocalSession,
   }), [
     sendOtpEmail, verifyOtpEmail, verifyOtpForReset, googleLogin, appleLogin,
     loginWithEmail, resetPasswordOtp, cancelPasswordReset, completeProfile,
-    logout, refreshProfile, enterGuestMode, clearLocalSession,
+    logout, refreshProfile, clearLocalSession,
   ]);
 }

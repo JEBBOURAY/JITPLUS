@@ -30,19 +30,24 @@ export default React.memo(function WheelStage({
   const bulbSize = ms(7);
   const [blink] = useState(() => new Animated.Value(0));
 
+  // Bulbs chase only while the wheel turns: a calm wheel at rest, a lively one when it plays.
   useEffect(() => {
+    if (!spinning) {
+      blink.setValue(0);
+      return undefined;
+    }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(blink, { toValue: 1, duration: spinning ? 140 : 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(blink, { toValue: 0, duration: spinning ? 140 : 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(blink, { toValue: 1, duration: 140, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(blink, { toValue: 0, duration: 140, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       ]),
     );
     loop.start();
     return () => loop.stop();
   }, [blink, spinning]);
 
-  const evenOpacity = blink.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] });
-  const oddOpacity = blink.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
+  const evenOpacity = blink.interpolate({ inputRange: [0, 1], outputRange: [0.9, 0.3] });
+  const oddOpacity = blink.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
   const pointerRotate = pointerKick.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-22deg'] });
   const scale = entrance.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
 
@@ -51,8 +56,6 @@ export default React.memo(function WheelStage({
 
   return (
     <Animated.View style={[styles.root, { width: frame, height: frame + ms(10), opacity: entrance, transform: [{ scale }] }]}>
-      <View style={[styles.glow, { width: size * 0.92, height: size * 0.92, borderRadius: size }]} />
-
       <View style={[styles.frame, { width: frame, height: frame, borderRadius: frame / 2, top: ms(10) }]}>
         {Array.from({ length: BULBS }, (_, i) => {
           const a = (i / BULBS) * Math.PI * 2;
@@ -82,7 +85,7 @@ export default React.memo(function WheelStage({
           accessibilityState={{ disabled: !onPress, busy: spinning }}
           style={{ width: size, height: size, borderRadius: size / 2 }}
         >
-          <Animated.View style={{ width: size, height: size, opacity: dimmed ? 0.45 : 1, transform: [{ rotate: rotation }] }}>
+          <Animated.View style={{ width: size, height: size, opacity: dimmed ? 0.6 : 1, transform: [{ rotate: rotation }] }}>
             <LuckyWheelIcon size={size} segments={segments} showPointer={false} />
           </Animated.View>
           {/* Static gloss: stays put while the wheel turns underneath. */}
@@ -118,38 +121,20 @@ export default React.memo(function WheelStage({
 
 const styles = StyleSheet.create({
   root: { alignItems: 'center' },
-  glow: {
-    position: 'absolute',
-    top: '18%',
-    backgroundColor: palette.violet,
-    opacity: 0.35,
-    shadowColor: palette.violetVivid,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 60,
-    elevation: 0,
-  },
   frame: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2A1356',
-    borderWidth: 2,
-    borderColor: 'rgba(251,191,36,0.55)',
+    backgroundColor: '#1E1038',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.45)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.45,
     shadowRadius: 24,
     elevation: 18,
   },
-  bulb: {
-    position: 'absolute',
-    backgroundColor: '#FDE68A',
-    shadowColor: '#FBBF24',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
-  },
+  bulb: { position: 'absolute', backgroundColor: '#FDE68A' },
   gloss: { position: 'absolute', top: 0, left: 0 },
   pointer: {
     position: 'absolute',

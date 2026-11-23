@@ -8,7 +8,6 @@ import {
 } from '@/utils/qrScan';
 
 interface Options {
-  enabled: boolean;
   onScan: (event: StampsEvent, card: LoyaltyCard | undefined) => void;
 }
 
@@ -19,7 +18,7 @@ interface Options {
  * by another Cloud Run instance than the one holding this socket), so polling
  * stays on as a fallback, backing off the longer the QR stays on screen.
  */
-export function useScanDetection({ enabled, onScan }: Options) {
+export function useScanDetection({ onScan }: Options) {
   const [isFocused, setIsFocused] = useState(false);
   const isFocusedRef = useRef(false);
   const focusedAtRef = useRef(0);
@@ -32,14 +31,12 @@ export function useScanDetection({ enabled, onScan }: Options) {
     () => getScanPollInterval(Date.now() - activeSinceRef.current, useWsStore.getState().connected),
     [],
   );
-  const { data: stampsOverview, refetch } = useStampsOverview(enabled, isFocused && enabled ? pollInterval : false);
+  const { data: stampsOverview, refetch } = useStampsOverview(true, isFocused ? pollInterval : false);
 
   const cardsRef = useRef(stampsOverview?.cards);
   useEffect(() => { cardsRef.current = stampsOverview?.cards; }, [stampsOverview]);
   const refetchRef = useRef(refetch);
   useEffect(() => { refetchRef.current = refetch; }, [refetch]);
-  const enabledRef = useRef(enabled);
-  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
   // Last known balance per merchant, compared against each poll to detect a scan.
   const balancesRef = useRef<Map<string, number> | null>(null);
   const balancesReadyRef = useRef(false);
@@ -62,12 +59,10 @@ export function useScanDetection({ enabled, onScan }: Options) {
     // The cached balances may predate this visit: baseline on a fresh fetch
     // so changes made while away aren't replayed as a live scan.
     balancesReadyRef.current = false;
-    if (enabledRef.current) {
-      refetchRef.current()
-        .then((res) => { if (res.data) balancesRef.current = toBalanceMap(res.data.cards); })
-        .catch(() => {})
-        .finally(() => { balancesReadyRef.current = true; });
-    }
+    refetchRef.current()
+      .then((res) => { if (res.data) balancesRef.current = toBalanceMap(res.data.cards); })
+      .catch(() => {})
+      .finally(() => { balancesReadyRef.current = true; });
     return () => {
       isFocusedRef.current = false;
       setIsFocused(false);

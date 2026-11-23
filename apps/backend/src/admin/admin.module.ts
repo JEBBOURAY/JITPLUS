@@ -19,8 +19,10 @@ import { AdminInsightsService } from './admin-insights.service';
 import { AdminDetailsService } from './admin-details.service';
 import { MerchantPlanModule } from '../merchant/merchant-plan.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ClientClosureModule } from '../client-auth/client-closure.module';
 import { jwtModuleFactory } from '../common/jwt/jwt-module.factory';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { SignupFunnelModule } from '../client-auth/signup-funnel.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { AdminGuard } from '../auth/guards/admin.guard';
     JwtModule.registerAsync(jwtModuleFactory('jitplus-admin')),
     MerchantPlanModule,
     NotificationsModule,
+    ClientClosureModule,
+    SignupFunnelModule,
   ],
   // All share the 'admin' prefix. Order kept from the former single controller;
   // no route of one controller shadows a route of another.

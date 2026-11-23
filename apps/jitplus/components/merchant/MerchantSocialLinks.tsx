@@ -34,11 +34,11 @@ function MerchantSocialLinks({ profiles }: { profiles: ReturnType<typeof getSoci
           <Pressable
             key={network}
             onPress={() => { haptic(); void openFirst(urls); }}
-            style={({ pressed }) => [styles.button, { borderColor: theme.border, backgroundColor: pressed ? theme.bgInput : theme.bg }]}
+            style={({ pressed }) => [styles.button, { borderColor: theme.border, backgroundColor: pressed ? theme.bgInput : theme.bgCard }]}
             accessibilityRole="link"
             accessibilityLabel={`${t(labelKey)} @${handle}`}
           >
-            <Icon size={ms(20)} color={theme.text} strokeWidth={1.8} />
+            <Icon size={ms(20)} color={theme.text} strokeWidth={1.75} />
           </Pressable>
         );
       })}
@@ -48,7 +48,7 @@ function MerchantSocialLinks({ profiles }: { profiles: ReturnType<typeof getSoci
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(10) },
-  button: { width: ms(44), height: ms(44), borderRadius: ms(22), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  button: { width: ms(44), height: ms(44), borderRadius: ms(22), borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
 });
 
 export default memo(MerchantSocialLinks);

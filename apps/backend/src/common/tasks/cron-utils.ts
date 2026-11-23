@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import type { ICampaignSentTrackerRepository } from '../repositories';
 import { MS_PER_DAY } from '../constants';
@@ -42,17 +43,13 @@ export function isCronEnabled(logger: Logger, name: string): boolean {
     if (isProd && !_warnedProdDisabled) {
       _warnedProdDisabled = true;
       logger.error(`Crons are DISABLED in production (ENABLE_CRONS=${raw}). Automated notifications will NOT be sent.`);
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const Sentry = require('@sentry/node');
-        Sentry.captureMessage?.('Crons disabled in production', {
-          level: 'warning',
-          tags: { source: 'cron-utils', env: 'production' },
-          extra: { ENABLE_CRONS: raw },
-        });
-      } catch {
-        // Sentry not installed — already logged.
-      }
+      // @sentry/node is not a direct dependency: requiring it threw under pnpm
+      // and the catch swallowed it, so this warning never reached Sentry.
+      Sentry.captureMessage('Crons disabled in production', {
+        level: 'warning',
+        tags: { source: 'cron-utils', env: 'production' },
+        extra: { ENABLE_CRONS: raw },
+      });
     }
   }
   return enabled;

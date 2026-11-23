@@ -28,6 +28,8 @@ const ACTION_ROUTES: Record<string, Href> = {
   open_quick_add: '/quick-add',
   open_games: '/games',
   open_notification_settings: '/notification-settings',
+  // Booking pushes also carry `bookingId`: app/_layout.tsx opens that booking directly.
+  open_agenda: '/agenda',
 };
 
 /**

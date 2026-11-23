@@ -228,10 +228,19 @@ export class LuckyWheelService {
                 description: p.description ?? null,
                 weight: p.weight,
                 totalStock: p.totalStock,
-                remaining: Math.max(0, existing.remaining + stockDiff),
+                // Relative, not absolute: `existing` was read outside this
+                // transaction, and draws running meanwhile decrement remaining.
+                // Writing existing.remaining + diff would hand those prizes out again.
+                remaining: { increment: stockDiff },
                 ...(p.claimWindowHours !== undefined && { claimWindowHours: p.claimWindowHours ?? null }),
               },
             });
+            if (stockDiff < 0) {
+              await tx.luckyWheelPrize.updateMany({
+                where: { id: p.id, remaining: { lt: 0 } },
+                data: { remaining: 0 },
+              });
+            }
           } else {
             // Create new prize
             await tx.luckyWheelPrize.create({
@@ -608,13 +617,21 @@ export class LuckyWheelService {
       throw new BadRequestException('Le délai de réclamation est expiré');
     }
 
-    return this.drawRepo.update({
-      where: { id: drawId },
-      data: {
-        fulfilment: 'CLAIMED',
-        fulfilledAt: new Date(),
-        fulfilledBy,
+    // Conditional claim: two concurrent validations (owner + team member, double
+    // tap) or a racing auto-expire must not both succeed.
+    const now = new Date();
+    const claimed = await this.drawRepo.updateMany({
+      where: {
+        id: drawId,
+        fulfilment: 'PENDING',
+        OR: [{ claimBefore: null }, { claimBefore: { gt: now } }],
       },
+      data: { fulfilment: 'CLAIMED', fulfilledAt: now, fulfilledBy },
+    });
+    if (claimed.count !== 1) throw new BadRequestException('Ce lot a déjà été remis');
+
+    return this.drawRepo.findUniqueOrThrow({
+      where: { id: drawId },
       include: {
         prize: { select: { label: true } },
         ticket: { select: { clientId: true } },

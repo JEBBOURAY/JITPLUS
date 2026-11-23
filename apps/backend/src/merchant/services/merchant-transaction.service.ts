@@ -7,6 +7,7 @@ import {
   GoneException,
   Logger,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
@@ -21,16 +22,28 @@ import {
 import { NotificationsService } from '../../notifications/notifications.service';
 import { EventsGateway } from '../../events';
 import { MerchantPlanService } from './merchant-plan.service';
+import { BookingMerchantService } from '../../booking/booking-merchant.service';
+import { creditBookingVisitInTx, type BookingVisitRef, type VisitBooking } from '../../booking/booking-visit';
 import type { MerchantPlan } from '@prisma/client';
 import { DEFAULT_AMOUNT_PER_STAMP } from '../../common/constants';
-import { errMsg, maskName } from '../../common/utils';
+import { errMsg, maskName, buildClientSearchFilter } from '../../common/utils';
 import { MERCHANT_LOYALTY_SELECT } from '../../common/prisma-selects';
 import { buildPagination } from '../../common/utils';
 import { withRetry } from '../../common/utils/retry-transaction.helper';
-import { computeEarnedStamps, computeRewardThreshold } from '../utils/loyalty.utils';
+import { computeEarnedStamps, computeEarnedStampsLegacy, computeRewardThreshold } from '../utils/loyalty.utils';
 import { awardLuckyWheelTicketsInTx } from '../utils/lucky-wheel-tickets';
+import { buildTransactionWhere, summarizeByType } from '../utils/transaction-filters';
+import type { MerchantTransactionsQueryDto } from '../dto/transactions-query.dto';
+import {
+  WELCOME_BONUS_CARD_SELECT,
+  consumeWelcomeBonusInTx,
+  reserveWelcomeBonusInTx,
+  resolveWelcomeOffer,
+  type WelcomeBonusMerchantRules,
+} from '../utils/welcome-bonus';
 import type { MerchantTransactionType } from '../dto/create-transaction.dto';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
+import { assertClean } from '../../common/utils/content-moderation';
 
 export interface CreateTransactionOptions {
   /**
@@ -47,7 +60,31 @@ export interface CreateTransactionOptions {
    * Defaults to `allowEnroll`; a phone-number scan ticket sets it to false.
    */
   allowReactivate?: boolean;
+  /**
+   * The client was proven present (signed QR scan): a reserved welcome gift can
+   * become stamps. A typed phone number or a Quick-Add only reserves it.
+   */
+  welcomeProof?: boolean;
+  /**
+   * A card created by this call has no proof of the client's consent (typed
+   * phone number): it is marked consentPending, so the client's details stay
+   * masked for the merchant until the client confirms.
+   */
+  consentPending?: boolean;
+  /**
+   * The till was opened from this booking: an EARN_STAMPS or PURCHASE is tied
+   * to it in the same database transaction, and refused if it cannot be.
+   */
+  booking?: BookingVisitRef;
 }
+
+/** Filters of the merchant history (see MerchantTransactionsQueryDto). */
+export type TransactionHistoryQuery = Pick<MerchantTransactionsQueryDto, 'kind' | 'search' | 'from' | 'staff'>;
+
+/** A name search wider than this many clients is too vague to be useful: the first ones are enough. */
+const MAX_HISTORY_SEARCH_CLIENTS = 200;
+
+const LOYALTY_CARD_TX_SELECT = { id: true, stamps: true, deactivatedAt: true, consentPending: true, ...WELCOME_BONUS_CARD_SELECT } as const;
 
 /** Shown as "performed by" on transactions credited from an e-commerce QR code. */
 export const STAMP_CODE_PERFORMER = 'E-commerce';
@@ -59,6 +96,8 @@ export interface StampCodeRedeemResult {
   stamps: number;
   newBalance: number;
   merchant: { id: string; nom: string };
+  /** Welcome gift credited by this scan, on top of `stamps` */
+  welcomeBonus?: number;
 }
 
 interface ApplyTransactionParams {
@@ -77,6 +116,12 @@ interface ApplyTransactionParams {
   stampCodeId?: string;
   /** Resolved before the transaction when enrolment is possible (see assertCanAddClient). */
   plan?: MerchantPlan;
+  welcomeRules: WelcomeBonusMerchantRules;
+  welcomeProof: boolean;
+  /** See CreateTransactionOptions.consentPending. */
+  consentPending?: boolean;
+  /** See CreateTransactionOptions.booking. */
+  booking?: BookingVisitRef;
 }
 
 interface AppliedTransaction {
@@ -84,6 +129,9 @@ interface AppliedTransaction {
   newStamps: number;
   actualStampsAdded: number;
   luckyWheelTicketsAwarded: number;
+  welcomeBonus: number;
+  /** The booking this transaction was tied to (CreateTransactionOptions.booking) */
+  linkedBooking?: VisitBooking;
   _replayed?: boolean;
 }
 
@@ -102,6 +150,7 @@ export class MerchantTransactionService {
     private eventsGateway: EventsGateway,
     private planService: MerchantPlanService,
     @Inject(STAMP_CODE_REPOSITORY) private stampCodeRepo: IStampCodeRepository,
+    @Optional() private booking?: BookingMerchantService,
   ) {}
 
   async createTransaction(
@@ -161,7 +210,7 @@ export class MerchantTransactionService {
             `Montant insuffisant pour gagner un tampon (minimum ${amountPerStamp})`,
           );
         }
-        if (stamps !== expectedStamps) {
+        if (stamps !== expectedStamps && stamps !== computeEarnedStampsLegacy(amount, amountPerStamp)) {
           throw new BadRequestException(
             `Nombre de tampons invalide. Attendu: ${expectedStamps}, reçu: ${stamps}`,
           );
@@ -227,6 +276,10 @@ export class MerchantTransactionService {
             allowReactivate: !!(options.allowReactivate ?? options.allowEnroll),
             accumulationLimit: merchant.accumulationLimit,
             plan,
+            welcomeRules: merchant,
+            welcomeProof: !!options.welcomeProof,
+            consentPending: !!options.consentPending,
+            booking: type === 'REDEEM_REWARD' ? undefined : options.booking,
           }),
           // RepeatableRead prevents lost-update race conditions on the loyalty card balance
           // while being significantly less contended than Serializable.
@@ -253,6 +306,7 @@ export class MerchantTransactionService {
             newStamps: currentCard?.stamps ?? 0,
             actualStampsAdded: existing.stamps,
             luckyWheelTicketsAwarded: 0,
+            welcomeBonus: 0,
             _replayed: true,
           };
         } else {
@@ -279,7 +333,9 @@ export class MerchantTransactionService {
       result,
     });
 
-    return result.transaction;
+    return result.welcomeBonus > 0
+      ? { ...result.transaction, welcomeBonus: result.welcomeBonus }
+      : result.transaction;
   }
 
   // ─── E-commerce QR code (scanned by the client from a parcel) ────────────
@@ -346,6 +402,8 @@ export class MerchantTransactionService {
           accumulationLimit: merchant.accumulationLimit,
           stampCodeId: code.id,
           plan,
+          welcomeRules: merchant,
+          welcomeProof: true,
         });
       }, { isolationLevel: 'RepeatableRead' }),
     );
@@ -395,6 +453,7 @@ export class MerchantTransactionService {
       stamps: result.actualStampsAdded,
       newBalance: result.newStamps,
       merchant: merchantInfo,
+      ...(result.welcomeBonus > 0 ? { welcomeBonus: result.welcomeBonus } : {}),
     };
   }
 
@@ -454,7 +513,7 @@ export class MerchantTransactionService {
     // race conditions where two concurrent requests read the same balance.
     let loyaltyCard = await prisma.loyaltyCard.findUnique({
       where: { clientId_merchantId: { clientId, merchantId } },
-      select: { id: true, stamps: true, deactivatedAt: true },
+      select: LOYALTY_CARD_TX_SELECT,
     });
 
     // Apple 1.2: a client who blocked this merchant can never be (re)enrolled
@@ -483,7 +542,7 @@ export class MerchantTransactionService {
       loyaltyCard = await prisma.loyaltyCard.update({
         where: { id: loyaltyCard.id },
         data: { deactivatedAt: null },
-        select: { id: true, stamps: true, deactivatedAt: true },
+        select: LOYALTY_CARD_TX_SELECT,
       });
     }
 
@@ -492,8 +551,18 @@ export class MerchantTransactionService {
       // Enforce client limit for FREE plan before creating loyalty card
       await this.planService.assertCanAddClient(merchantId, { tx: prisma, plan: p.plan });
       loyaltyCard = await prisma.loyaltyCard.create({
-        data: { clientId, merchantId, stamps: 0 },
-        select: { id: true, stamps: true, deactivatedAt: true },
+        data: { clientId, merchantId, stamps: 0, consentPending: !!p.consentPending && !p.welcomeProof },
+        select: LOYALTY_CARD_TX_SELECT,
+      });
+    }
+
+    // The client proved presence (own QR / e-commerce code): a card the
+    // merchant opened from a typed phone number is now confirmed.
+    if (p.welcomeProof && loyaltyCard.consentPending) {
+      loyaltyCard = await prisma.loyaltyCard.update({
+        where: { id: loyaltyCard.id },
+        data: { consentPending: false },
+        select: LOYALTY_CARD_TX_SELECT,
       });
     }
 
@@ -506,6 +575,16 @@ export class MerchantTransactionService {
           message: `Le client a atteint la limite d'accumulation (${accumulationLimit} tampons)`,
         });
       }
+    }
+
+    // Before the transaction row: "first earn" must not see the one being created.
+    if (type === 'EARN_STAMPS') {
+      loyaltyCard = await reserveWelcomeBonusInTx(prisma, {
+        card: loyaltyCard,
+        clientId,
+        merchantId,
+        offer: resolveWelcomeOffer(p.welcomeRules, p.plan),
+      });
     }
 
     let newStamps: number;
@@ -546,6 +625,31 @@ export class MerchantTransactionService {
       },
     });
 
+    // Its own ledger row: never counted as a visit, a purchase or a wheel ticket.
+    let welcomeBonus = 0;
+    if (type === 'EARN_STAMPS' && p.welcomeProof) {
+      welcomeBonus = await consumeWelcomeBonusInTx(prisma, {
+        card: loyaltyCard,
+        merchant: p.welcomeRules,
+        balance: newStamps,
+        accumulationLimit,
+      });
+      if (welcomeBonus > 0) {
+        await prisma.transaction.create({
+          data: {
+            clientId,
+            merchantId,
+            teamMemberId: p.teamMemberId || null,
+            performedByName: p.performedByName || null,
+            type: 'WELCOME_BONUS',
+            amount: 0,
+            stamps: welcomeBonus,
+          },
+        });
+        newStamps += welcomeBonus;
+      }
+    }
+
     await prisma.loyaltyCard.update({
       where: { clientId_merchantId: { clientId, merchantId } },
       data: { stamps: newStamps, lastVisitAt: new Date(), expiryReminderSentAt: null },
@@ -561,7 +665,12 @@ export class MerchantTransactionService {
       plan: p.plan ?? (await this.planService.resolveEffectivePlan(merchantId)).plan,
     });
 
-    return { transaction: newTransaction, newStamps, actualStampsAdded, luckyWheelTicketsAwarded };
+    // Last: a refusal rolls back everything above.
+    const linkedBooking = p.booking
+      ? await creditBookingVisitInTx(prisma, { booking: p.booking, merchantId, clientId, transactionId: newTransaction.id })
+      : undefined;
+
+    return { transaction: newTransaction, newStamps, actualStampsAdded, luckyWheelTicketsAwarded, welcomeBonus, linkedBooking };
   }
 
   // ─── Private: real-time events + pushes after a committed transaction ────
@@ -576,7 +685,16 @@ export class MerchantTransactionService {
     result: AppliedTransaction;
   }): void {
     const { clientId, merchantId, merchant, type, stamps, rewardTitle, result } = p;
-    const shownStamps = type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps;
+    // Includes the welcome gift: older apps show this number and the new balance.
+    const shownStamps = type === 'EARN_STAMPS' ? result.actualStampsAdded + result.welcomeBonus : stamps;
+    const welcomeFields = result.welcomeBonus > 0 ? { welcomeBonus: result.welcomeBonus } : {};
+
+    // Stamps given from a booking are already tied to it; any other stamp looks for the visit it belongs to.
+    if (result.linkedBooking) {
+      this.booking?.announceVisit(result.linkedBooking);
+    } else if (type === 'EARN_STAMPS' && this.booking) {
+      void this.booking.checkInFromTransaction(merchantId, clientId, result.transaction.id);
+    }
 
     // ── Real-time: emit WebSocket events IMMEDIATELY (sub-100ms) ──
     // A PURCHASE moves no stamp: the client hears about it through the
@@ -590,6 +708,7 @@ export class MerchantTransactionService {
         newBalance: result.newStamps,
         type,
         rewardTitle,
+        ...welcomeFields,
       });
     }
 
@@ -630,12 +749,37 @@ export class MerchantTransactionService {
     }
   }
 
-  async getTransactions(merchantId: string, page: number = 1, limit: number = 20) {
+  /**
+   * Merchant history, newest first, with the optional chips of the app (kind, period,
+   * staff, client search). Page 1 also carries the totals of the filtered rows.
+   */
+  async getTransactions(merchantId: string, page: number = 1, limit: number = 20, filters: TransactionHistoryQuery = {}) {
     const skip = (page - 1) * limit;
 
-    const where = { merchantId, type: { not: 'LOYALTY_PROGRAM_CHANGE' as const } };
+    const search = filters.search?.trim();
+    const clientIds = search ? await this.findClientIdsForSearch(merchantId, search) : undefined;
+    const pagination = (total: number) => buildPagination(total, page, limit);
+    if (clientIds?.length === 0) {
+      return { transactions: [], pagination: pagination(0), ...(page === 1 && { summary: summarizeByType([]) }) };
+    }
 
-    const [transactions, total] = await Promise.all([
+    const where = buildTransactionWhere(merchantId, {
+      kind: filters.kind,
+      from: filters.from ? new Date(filters.from) : undefined,
+      staff: filters.staff,
+      clientIds,
+    });
+    // Cancelled rows count for nothing: the totals only read the active ones.
+    const summaryQuery = page === 1 && filters.kind !== 'cancelled'
+      ? this.transactionRepoDelegate.groupBy({
+          by: ['type'],
+          where: { ...where, status: 'ACTIVE' },
+          _count: true,
+          _sum: { stamps: true, amount: true },
+        })
+      : null;
+
+    const [transactions, total, summaryGroups] = await Promise.all([
       this.transactionRepoDelegate.findMany({
         where,
         select: {
@@ -662,6 +806,7 @@ export class MerchantTransactionService {
         take: limit,
       }),
       this.transactionRepoDelegate.count({ where }),
+      summaryQuery,
     ]);
 
     const maskedTransactions = transactions.map((tx: any) => {
@@ -680,8 +825,22 @@ export class MerchantTransactionService {
 
     return {
       transactions: maskedTransactions,
-      pagination: buildPagination(total, page, limit),
+      pagination: pagination(total),
+      ...(summaryGroups && { summary: summarizeByType(summaryGroups) }),
     };
+  }
+
+  /**
+   * Client search of the history, resolved from this merchant's cards (left cards included:
+   * their history stays) so Postgres never scans the global clients table.
+   */
+  private async findClientIdsForSearch(merchantId: string, search: string): Promise<string[]> {
+    const cards = await this.loyaltyCardRepo.findMany({
+      where: { merchantId, client: { OR: buildClientSearchFilter(search) } },
+      select: { clientId: true },
+      take: MAX_HISTORY_SEARCH_CLIENTS,
+    });
+    return cards.map((c) => c.clientId);
   }
 
   // ─── Private: Transaction Notifications ──────────────────────────────────
@@ -757,6 +916,8 @@ export class MerchantTransactionService {
     if (stamps === 0) {
       throw new BadRequestException('Le nombre de tampons ne peut pas être zéro');
     }
+    // The note is appended to the client's push notification (UGC policy).
+    assertClean({ note });
 
     const [client, merchant] = await Promise.all([
       this.clientRepo.findUnique({

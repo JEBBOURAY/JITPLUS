@@ -9,7 +9,7 @@ import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
 import { openDirections, openFirst } from '@jitplus/shared/src/openLinks';
 import type { StoreWithDistance } from '@/utils/merchantStores';
-import { wp, hp, ms } from '@/utils/responsive';
+import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import type { Merchant } from '@/types';
 
 const CONTACT_UI: Record<FicheContact['key'], { Icon: LucideIcon; labelKey: string }> = {
@@ -63,12 +63,12 @@ function MerchantQuickActions({ merchant, stores }: Props) {
             onPress={() => { haptic(); openContact(contact); }}
             style={({ pressed }) => [
               styles.pill,
-              { borderColor: theme.border, backgroundColor: pressed ? theme.bgInput : theme.bg },
+              { borderColor: theme.border, backgroundColor: pressed ? theme.bgInput : theme.bgCard },
             ]}
             accessibilityRole={contact.key === 'directions' ? 'button' : 'link'}
             accessibilityLabel={label}
           >
-            <Icon size={ms(16)} color={theme.text} strokeWidth={2} />
+            <Icon size={ms(16)} color={theme.text} strokeWidth={1.75} />
             <Text style={[styles.label, { color: theme.text, fontFamily: fonts.semibold }]} numberOfLines={1}>{label}</Text>
           </Pressable>
         );
@@ -82,9 +82,9 @@ const styles = StyleSheet.create({
   row: { gap: wp(8), paddingHorizontal: wp(16) },
   pill: {
     flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    height: ms(38), paddingHorizontal: wp(14), borderRadius: 999, borderWidth: 1,
+    height: ms(44), paddingHorizontal: wp(16), borderRadius: radius.full, borderWidth: StyleSheet.hairlineWidth,
   },
-  label: { fontSize: ms(14) },
+  label: { fontSize: fontSize.sm },
 });
 
 export default memo(MerchantQuickActions);

@@ -1,7 +1,7 @@
 import React, { useMemo, useCallback } from 'react';
+import { toast } from '@/components/ui/Toast';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -11,10 +11,10 @@ import {
   Platform,
   RefreshControl,
 } from 'react-native';
-import { Redirect, useRouter } from 'expo-router';
+import { Text } from '@/components/AppText';
+import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ArrowLeft,
   Check,
   X,
   Clock,
@@ -34,7 +34,7 @@ import {
   JitStats,
   JitStore,
 } from '@/components/icons';
-import { hapticLight, hapticSuccess } from '@/utils/haptics';
+import { hapticLight } from '@/utils/haptics';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { getPlanStatus } from '@/utils/plan';
 import { useAuth } from '@/contexts/AuthContext';
@@ -46,7 +46,7 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
-import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
+import { ScreenHeader } from '@/components/scratch/ScratchUI';
 
 const UPGRADE_WHATSAPP = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || (__DEV__ ? '212600000000' : '');
 const UPGRADE_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.com';
@@ -55,7 +55,6 @@ const UPGRADE_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.
 // external purchase mechanisms (WhatsApp / email upgrade flows). The
 // comparison table remains visible as purely informational content.
 const IS_IOS = Platform.OS === 'ios';
-const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
 const WHATSAPP_GREEN = '#25D366';
 
 interface FeatureRow {
@@ -68,7 +67,6 @@ interface FeatureRow {
 export default function PlanScreen() {
   const theme = useTheme();
   const dir = useDir();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, locale } = useLanguage();
   const { merchant, isTeamMember } = useAuth();
@@ -99,10 +97,9 @@ export default function PlanScreen() {
           onPress: async () => {
             try {
               await applyReferralMonths();
-              hapticSuccess();
-              Alert.alert(t('account.planReferralSuccess'), t('account.planReferralSuccessMsg'));
+              toast.success(t('account.planReferralSuccessMsg'));
             } catch (e) {
-              Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
+              toast.error(getErrorMessage(e, t('common.genericError')));
             }
           },
         },
@@ -113,19 +110,18 @@ export default function PlanScreen() {
   const handleContactWhatsApp = useCallback(async () => {
     hapticLight();
     if (!UPGRADE_WHATSAPP) {
-      Alert.alert(t('common.error'), t('account.planErrorWhatsapp'));
+      toast.error(t('account.planErrorWhatsapp'));
       return;
     }
     const msg = encodeURIComponent(
       t('account.planContactWhatsappMsg', { name: merchant?.nom ?? '', email: merchant?.email ?? '' }),
     );
     const url = `https://wa.me/${UPGRADE_WHATSAPP}?text=${msg}`;
+    // openURL directly: it rejects when nothing can open the link.
     try {
-      const can = await Linking.canOpenURL(url);
-      if (!can) throw new Error('unsupported');
       await Linking.openURL(url);
     } catch {
-      Alert.alert(t('common.error'), t('account.planErrorWhatsapp'));
+      toast.error(t('account.planErrorWhatsapp'));
     }
   }, [merchant?.nom, merchant?.email, t]);
 
@@ -136,12 +132,12 @@ export default function PlanScreen() {
       t('account.planContactEmailBody', { name: merchant?.nom ?? '', email: merchant?.email ?? '' }),
     );
     const url = `mailto:${UPGRADE_EMAIL}?subject=${subject}&body=${body}`;
+    // No canOpenURL: on Android 11+ it answers false for mailto: (no <queries>
+    // entry for it in the manifest), so the email button always failed.
     try {
-      const can = await Linking.canOpenURL(url);
-      if (!can) throw new Error('unsupported');
       await Linking.openURL(url);
     } catch {
-      Alert.alert(t('common.error'), t('account.planErrorEmail'));
+      toast.error(t('account.planErrorEmail'));
     }
   }, [merchant?.nom, merchant?.email, t]);
 
@@ -178,11 +174,6 @@ export default function PlanScreen() {
 
   const describeCell = (value: string | boolean) =>
     typeof value === 'boolean' ? (value ? t('common.included') : t('common.notIncluded')) : value;
-
-  const goBack = useCallback(() => {
-    hapticLight();
-    router.back();
-  }, [router]);
 
   const features: FeatureRow[] = useMemo(
     () => [
@@ -255,31 +246,7 @@ export default function PlanScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.headerBar, { flexDirection: dir.row, paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity
-          onPress={goBack}
-          style={styles.backBtn}
-          hitSlop={HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <ArrowLeft
-            size={22}
-            color={theme.text}
-            strokeWidth={icon.stroke}
-            style={dir.flip}
-          />
-        </TouchableOpacity>
-        <Text
-          style={[styles.headerTitle, { color: theme.text, textAlign: dir.textAlign }]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={1.3}
-          accessibilityRole="header"
-        >
-          {t('account.planPageTitle')}
-        </Text>
-        <DemoVideoButton id="forfait" variant="header" />
-      </View>
+      <ScreenHeader title={t('account.planPageTitle')} />
 
       {loading ? (
         <View style={styles.loading}>
@@ -586,21 +553,6 @@ const styles = StyleSheet.create({
   errorTitle: { fontSize: 18, fontFamily: font.semibold, marginTop: 4, textAlign: 'center' },
   errorText: { fontSize: 14, lineHeight: 20, textAlign: 'center', fontFamily: font.regular },
   retryBtn: { marginTop: 8, paddingHorizontal: 24 },
-
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 12,
-    gap: 10,
-  },
-  backBtn: { padding: 4 },
-  headerTitle: {
-    flex: 1,
-    fontSize: 28,
-    fontFamily: font.semibold,
-    letterSpacing: -0.5,
-  },
 
   guideContainer: {
     marginHorizontal: 4,

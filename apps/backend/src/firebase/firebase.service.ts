@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
+import * as Sentry from '@sentry/nestjs';
 import { IPushProvider } from '../common/interfaces';
 import { mapLimit } from '../common/tasks/cron-utils';
 
@@ -60,15 +61,12 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
       if (env === 'production') {
         // Escalate in prod: silent simulation in prod is a severe config bug
         this.logger.error(msg);
-        try {
-          const Sentry = require('@sentry/node');
-          Sentry.captureMessage?.('Firebase simulation mode in production', {
-            level: 'error',
-            tags: { source: 'firebase-service', env },
-          });
-        } catch {
-          // Sentry not installed — already logged
-        }
+        // @sentry/node is not a direct dependency: requiring it threw under pnpm
+        // and the catch swallowed it, so this alert never reached Sentry.
+        Sentry.captureMessage('Firebase simulation mode in production', {
+          level: 'error',
+          tags: { source: 'firebase-service', env },
+        });
       } else {
         this.logger.warn(msg);
       }

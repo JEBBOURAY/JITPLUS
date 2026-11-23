@@ -11,9 +11,11 @@ import {
   TransactionRecordedPayload,
   CouponRedeemedPayload,
 } from '@jitplus/shared/src/realtime';
+import { BOOKING_WS_EVENTS, type BookingChangedPayload } from '@jitplus/shared/src/booking';
 import { logInfo, logWarn } from '@/utils/devLogger';
 import { queryKeys, isLocalTransactionEcho } from './useQueryHooks';
 import { scratchKeys } from './useScratchHooks';
+import { markDashboardStale } from './queries/transactionCache';
 import { useAuthStore } from '@/stores/authStore';
 
 /**
@@ -31,15 +33,12 @@ export function useRealtimeEvents(socket: Socket | null) {
     // enough that the merchant sees activity feel "live" while still
     // collapsing bursts.
     let txDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let txListStale = false;
-    const debouncedInvalidateTx = (refreshList: boolean) => {
-      txListStale = txListStale || refreshList;
+    const debouncedInvalidateTx = () => {
       if (txDebounceTimer) clearTimeout(txDebounceTimer);
       txDebounceTimer = setTimeout(() => {
-        if (txListStale) queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
-        txListStale = false;
+        queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
         queryClient.invalidateQueries({ queryKey: queryKeys.homeStats });
-        queryClient.invalidateQueries({ queryKey: ['dashboard-trends'], refetchType: 'none' });
+        markDashboardStale(queryClient);
       }, 500);
     };
 
@@ -49,13 +48,12 @@ export function useRealtimeEvents(socket: Socket | null) {
         logWarn('RT', 'Ignoring event for different merchant:', payload.merchantId);
         return;
       }
-      // useRecordTransaction already refreshed the client and the list for this device's own transactions.
-      const isEcho = isLocalTransactionEcho(payload.clientId);
-      if (!isEcho) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.clientDetail(payload.clientId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.clientStatus(payload.clientId) });
-      }
-      debouncedInvalidateTx(!isEcho);
+      // This device's own transaction: its mutation already refreshed everything
+      // (invalidateAfterTransaction in hooks/queries/transactionCache.ts).
+      if (isLocalTransactionEcho(payload.clientId)) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.clientDetail(payload.clientId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clientStatus(payload.clientId) });
+      debouncedInvalidateTx();
 
       if (__DEV__) {
         logInfo('RT', 'Transaction recorded:', payload.type, payload.stamps, 'stamps for client', payload.clientId);
@@ -70,13 +68,24 @@ export function useRealtimeEvents(socket: Socket | null) {
       queryClient.invalidateQueries({ queryKey: scratchKeys.statsAll });
     };
 
+    // A booking was created or changed status (client app, another device, a scan check-in).
+    const onBookingChanged = (payload: BookingChangedPayload) => {
+      const currentMerchant = useAuthStore.getState().merchant;
+      if (currentMerchant && payload.merchantId !== currentMerchant.id) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookingAgendaRoot });
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookingPending });
+      queryClient.invalidateQueries({ queryKey: queryKeys.booking(payload.bookingId) });
+    };
+
     socket.on(WS_EVENTS.TRANSACTION_RECORDED, onTransactionRecorded);
     socket.on(WS_EVENTS.COUPON_REDEEMED, onCouponRedeemed);
+    socket.on(BOOKING_WS_EVENTS.CHANGED, onBookingChanged);
 
     return () => {
       if (txDebounceTimer) clearTimeout(txDebounceTimer);
       socket.off(WS_EVENTS.TRANSACTION_RECORDED, onTransactionRecorded);
       socket.off(WS_EVENTS.COUPON_REDEEMED, onCouponRedeemed);
+      socket.off(BOOKING_WS_EVENTS.CHANGED, onBookingChanged);
     };
   }, [socket, queryClient]);
 }

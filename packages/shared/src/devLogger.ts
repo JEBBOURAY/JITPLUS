@@ -74,11 +74,30 @@ export function logError(tag: string, message: string, error?: unknown, extra?: 
   console.error(...parts);
 }
 
+// A retried request (network retry, 401 refresh) goes through the response
+// interceptors twice with the same response or error object: log it once.
+const loggedOnce = new WeakSet<object>();
+function firstTime(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return true;
+  if (loggedOnce.has(value)) return false;
+  loggedOnce.add(value);
+  return true;
+}
+
+/** Log a successful API response once (dev only). */
+export function logApiResponse(
+  tag: string,
+  res: { status?: number; config?: { method?: string; url?: string } },
+): void {
+  if (!__DEV__ || !firstTime(res)) return;
+  logInfo(tag, `${res.config?.method?.toUpperCase() ?? '?'} ${res.config?.url ?? '?'} → ${res.status}`);
+}
+
 /**
  * Log an Axios-style API error with request/response details (dev only).
  */
 export function logApiError(tag: string, error: unknown): void {
-  if (!__DEV__) return;
+  if (!__DEV__ || !firstTime(error)) return;
 
   const axiosErr = error as {
     config?: { method?: string; url?: string; baseURL?: string };
@@ -91,7 +110,15 @@ export function logApiError(tag: string, error: unknown): void {
   const status = axiosErr?.response?.status;
   const data = axiosErr?.response?.data;
 
-  logError(tag, `${method} ${url} → ${status ?? 'NETWORK_ERROR'}`, error, {
+  // No response = server unreachable (backend still starting, offline, adb
+  // reverse missing). The app handles it (cache, retry): a warning, not the
+  // red error overlay with a stack trace.
+  if (status === undefined) {
+    logWarn(tag, `${method} ${url} → NETWORK_ERROR (${axiosErr?.message ?? 'no response'})`);
+    return;
+  }
+
+  logError(tag, `${method} ${url} → ${status}`, error, {
     responseData: data,
   });
 }

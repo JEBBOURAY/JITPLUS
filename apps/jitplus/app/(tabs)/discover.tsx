@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, FlatList, Pressable,
   Platform, TouchableOpacity, Keyboard,
-  useWindowDimensions, Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -72,12 +72,12 @@ export default function DiscoverScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
-  const { client, isGuest } = useAuth();
+  const { client } = useAuth();
   const { t, locale } = useLanguage();
   const isVeryCompact = screenHeight < COMPACT_SCREEN_HEIGHT;
   const ui = useMemo(() => buildSizes(isVeryCompact), [isVeryCompact]);
 
-  const { data: merchants = NO_MERCHANTS, isLoading, isError, isStale, isFetching, refetch } = useMerchants(client?.id ?? 'guest', !!client || isGuest);
+  const { data: merchants = NO_MERCHANTS, isLoading, isError, isStale, isFetching, refetch } = useMerchants(client?.id);
   // The tab stays mounted: refresh the list (and its deal badges) when the user
   // comes back to it, and only then. Read through a ref: with isStale in the
   // callback's deps, it also re-ran when the stale timer fired on screen (a
@@ -121,21 +121,12 @@ export default function DiscoverScreen() {
     router.push({ pathname: '/merchant/[id]', params: { id: merchant.id } });
   }, [router]);
 
-  // Guests get the count only (topDeal is null for them): the deal itself needs an account.
   const handleDealPress = useCallback((merchant: Merchant) => {
     haptic();
-    if (!client) {
-      Alert.alert(t('guest.loginRequired'), t('guest.loginRequiredDesc'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('welcome.createAccount'), onPress: () => router.push('/register') },
-        { text: t('welcome.login'), onPress: () => router.push('/login') },
-      ], { cancelable: true });
-      return;
-    }
     const dealId = merchant.topDeal?.id;
     if (isEntityId(dealId)) router.push({ pathname: '/deal/[id]', params: { id: dealId } });
     else router.push({ pathname: '/merchant/[id]', params: { id: merchant.id } });
-  }, [client, router, t]);
+  }, [router]);
 
   const openInMaps = useCallback((m: Merchant) => {
     if (m.latitude == null || m.longitude == null) return;

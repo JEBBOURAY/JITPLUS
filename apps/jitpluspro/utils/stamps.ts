@@ -21,7 +21,10 @@ export function computeStampsForAmount(
   if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(rate) || rate <= 0) {
     return { stamps: 0, capped: false };
   }
-  const raw = Math.floor(amount / rate);
+  // In cents, like the backend: a float division undercounts (3.3 / 1.1 = 2.999…).
+  const rateCents = Math.round(rate * 100);
+  if (rateCents <= 0) return { stamps: 0, capped: false };
+  const raw = Math.floor(Math.round(amount * 100) / rateCents);
   return { stamps: Math.min(raw, MAX_STAMPS_PER_TX), capped: raw > MAX_STAMPS_PER_TX };
 }
 
@@ -46,6 +49,12 @@ export function rescaleStamps(value: number, oldRef: number, newRef: number, min
 /** Slots on the client card: the cheapest reward, else stampsForReward. */
 export function cardSlots(rewardCosts: number[], stampsForReward: number): number {
   return rewardCosts.length > 0 ? Math.min(...rewardCosts) : stampsForReward;
+}
+
+/** Same rule as the backend: a quarter of the first reward, 1 to 5 stamps, 0 under 3 stamps. */
+export function computeWelcomeBonusMax(threshold: number): number {
+  if (threshold < 3) return 0;
+  return Math.min(Math.max(Math.floor(threshold / 4), 1), 5);
 }
 
 /** The gift that sizes the card the client sees: the cheapest one (first on a tie), or null without gifts. */

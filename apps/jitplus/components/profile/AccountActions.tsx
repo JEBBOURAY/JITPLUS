@@ -1,7 +1,6 @@
 import { memo, useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/AppText';
-import { useRouter } from 'expo-router';
 import { LogOut } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -16,11 +15,9 @@ import DeleteAccountModal from './DeleteAccountModal';
 function AccountActions() {
   const theme = useTheme();
   const fonts = useAppFonts();
-  const router = useRouter();
   const { t } = useLanguage();
   const { client, logout } = useAuth();
   const [showDelete, setShowDelete] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleLogout = useCallback(() => {
     haptic(HapticStyle.Medium);
@@ -29,35 +26,28 @@ function AccountActions() {
       {
         text: t('profile.logout'),
         style: 'destructive',
-        onPress: async () => { await logout(); router.replace('/login'); },
+        // The root layout sends the signed-out user to welcome, clearing the history.
+        onPress: async () => { await logout(); },
       },
     ]);
-  }, [logout, router, t]);
+  }, [logout, t]);
 
   const openDelete = useCallback(() => { haptic(HapticStyle.Heavy); setShowDelete(true); }, []);
   const closeDelete = useCallback(() => setShowDelete(false), []);
 
-  const confirmDelete = useCallback((password: string) => {
+  // Errors propagate to the modal, which stays open and shows them inline
+  // (a wrong password must be retyped, not replayed into the 3/min throttle).
+  const confirmDelete = useCallback(async (password: string) => {
+    await api.deleteAccount(password);
     setShowDelete(false);
-    const run = async () => {
-      setIsDeleting(true);
-      try {
-        await api.deleteAccount(password);
-        Alert.alert(t('profile.accountDeleted'), t('profile.accountDeletedMsg'));
-        await logout();
-        router.replace('/login');
-      } catch (error) {
-        if (__DEV__) console.error('Delete account error:', error);
-        Alert.alert(t('common.error'), t('profile.accountDeleteError'), [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('common.retry'), onPress: () => { run(); } },
-        ]);
-      } finally {
-        setIsDeleting(false);
-      }
-    };
-    run();
-  }, [logout, router, t]);
+    Alert.alert(t('profile.accountDeleted'), t('profile.accountDeletedMsg'));
+    // The account is gone: a failed logout must not surface as a deletion error.
+    try {
+      await logout();
+    } catch (error) {
+      if (__DEV__) console.warn('Logout after account deletion failed:', error);
+    }
+  }, [logout, t]);
 
   return (
     <View style={styles.wrap}>
@@ -78,20 +68,15 @@ function AccountActions() {
 
       <Pressable
         onPress={openDelete}
-        disabled={isDeleting}
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={t('profile.deleteAccount')}
         accessibilityHint={t('profile.deleteAccountDesc')}
         style={({ pressed }) => [styles.deleteLink, pressed && styles.pressed]}
       >
-        {isDeleting
-          ? <ActivityIndicator size="small" color={theme.textMuted} />
-          : (
-            <Text style={[styles.deleteText, { color: theme.textMuted, fontFamily: fonts.medium }]}>
-              {t('profile.deleteAccount')}
-            </Text>
-          )}
+        <Text style={[styles.deleteText, { color: theme.textMuted, fontFamily: fonts.medium }]}>
+          {t('profile.deleteAccount')}
+        </Text>
       </Pressable>
 
       <DeleteAccountModal

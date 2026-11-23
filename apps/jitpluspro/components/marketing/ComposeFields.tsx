@@ -1,5 +1,6 @@
 import { memo, useCallback, useImperativeHandle, useRef, useState, type Ref } from 'react';
-import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';

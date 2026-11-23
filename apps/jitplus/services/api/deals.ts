@@ -1,7 +1,7 @@
 import type { AxiosInstance } from 'axios';
 import type {
-  ClientDealDetail, ClientDealSummary, DealAlertPreferences, DealCategoryCountsResponse, DealCitiesResponse, DealEventType,
-  DealFeedResponse, DealFeedTab, DealReportReason, DealTeaserResponse,
+  ClientDealDetail, ClientDealSummary, DealAlertPreferences, DealCategoryCountsResponse, DealCitiesResponse, DealClaimResult,
+  DealEventType, DealFeedResponse, DealFeedSort, DealFeedTab, DealReportReason,
 } from '@jitplus/shared/src/deals';
 
 // Same patterns as the backend DTOs: a value they would reject is dropped
@@ -9,6 +9,8 @@ import type {
 const CITY_KEY_RE = /^[a-z_]{2,40}$/;
 const CATEGORY_RE = /^[A-Z_]{2,30}$/;
 const CURSOR_RE = /^\d{1,4}(\.\d{1,4})?$/;
+export const DEAL_SEARCH_MIN = 2;
+export const DEAL_SEARCH_MAX = 40;
 
 export interface DealPositionQuery {
   lat?: number | null;
@@ -19,6 +21,9 @@ export interface DealPositionQuery {
 export interface DealFeedQuery extends DealPositionQuery {
   tab: DealFeedTab;
   category?: string | null;
+  /** Searched in the deal title and the merchant name */
+  q?: string | null;
+  sort?: DealFeedSort | null;
   cursor?: string | null;
 }
 
@@ -64,6 +69,9 @@ export function buildDealPositionParams(q: DealPositionQuery): Params {
 export function buildDealFeedParams(q: DealFeedQuery): Params {
   const params: Params = { tab: q.tab, ...buildDealPositionParams(q) };
   if (q.category && CATEGORY_RE.test(q.category)) params.category = q.category;
+  const search = q.q?.trim().slice(0, DEAL_SEARCH_MAX) ?? '';
+  if (search.length >= DEAL_SEARCH_MIN) params.q = search;
+  if (q.sort === 'discount') params.sort = q.sort;
   if (q.cursor && CURSOR_RE.test(q.cursor)) params.cursor = q.cursor;
   return params;
 }
@@ -94,6 +102,9 @@ function toDealAlertPreferences(data: Partial<DealAlertPreferences> | null | und
   };
 }
 
+/** A deal opened from a shared link without an account is read through the public client-auth routes. */
+const dealsBase = (guest: boolean) => (guest ? '/client-auth/deals' : '/client/deals');
+
 export function createDealMethods(http: AxiosInstance) {
   return {
     async getDealFeed(q: DealFeedQuery): Promise<DealFeedResponse> {
@@ -111,12 +122,21 @@ export function createDealMethods(http: AxiosInstance) {
       return { counts };
     },
     /** Counts a view server-side (deduplicated there). */
-    async getDeal(id: string, q: DealPositionQuery = {}): Promise<ClientDealDetail> {
-      const { data } = await http.get(`/client/deals/${encodeURIComponent(id)}`, { params: buildDealPositionParams(q) });
+    async getDeal(id: string, q: DealPositionQuery = {}, guest = false): Promise<ClientDealDetail> {
+      const { data } = await http.get(`${dealsBase(guest)}/${encodeURIComponent(id)}`, { params: buildDealPositionParams(q) });
       return data;
     },
-    async recordDealEvent(id: string, type: DealEventType): Promise<void> {
-      await http.post(`/client/deals/${encodeURIComponent(id)}/events`, { type });
+    async recordDealEvent(id: string, type: DealEventType, guest = false): Promise<void> {
+      await http.post(`${dealsBase(guest)}/${encodeURIComponent(id)}/events`, { type });
+    },
+    /** "J'en profite": idempotent, returns when the pass was first taken. */
+    async claimDeal(id: string): Promise<DealClaimResult> {
+      const { data } = await http.post(`/client/deals/${encodeURIComponent(id)}/claim`);
+      return data;
+    },
+    async setDealSaved(id: string, saved: boolean): Promise<void> {
+      const path = `/client/deals/${encodeURIComponent(id)}/save`;
+      await (saved ? http.post(path) : http.delete(path));
     },
     async reportDeal(id: string, reason: DealReportReason, comment?: string): Promise<DealReportResult> {
       const body = comment?.trim() ? { reason, comment: comment.trim() } : { reason };
@@ -131,11 +151,6 @@ export function createDealMethods(http: AxiosInstance) {
     },
     async getDealCities(q: DealPositionQuery = {}): Promise<DealCitiesResponse> {
       const { data } = await http.get('/client/cities', { params: buildDealPositionParams({ lat: q.lat, lng: q.lng }) });
-      return data;
-    },
-    /** Guests only: a count and blurred thumbnails, never the deals themselves. */
-    async getDealTeaser(q: DealPositionQuery = {}): Promise<DealTeaserResponse> {
-      const { data } = await http.get('/client-auth/deals/teaser', { params: buildDealPositionParams(q) });
       return data;
     },
     async getDealAlerts(): Promise<DealAlertPreferences> {

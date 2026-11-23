@@ -31,3 +31,27 @@ export async function releaseUnverifiedEmail(
   });
   return count === 1;
 }
+
+/**
+ * Phone counterpart of {@link releaseUnverifiedEmail}. PATCH /client-auth/profile
+ * and complete-profile store a typed number with telephoneVerified=false, so an
+ * unverified number is only a claim: it must not lock the real owner out of
+ * their own number. ONLY call this once the new claimant has proven the number
+ * (WhatsApp code, verifyChangeContactOtp): merchants find clients by phone at
+ * the till, so releasing on a plain profile update let anyone take a number by
+ * typing it. The claim is dropped from a registered account still holding it
+ * unverified; verified numbers and merchant Quick-Add (anonymous) accounts are
+ * never touched. Conditional update, so a concurrent verification is never undone.
+ * Returns true when the claim was released.
+ */
+export async function releaseUnverifiedPhone(
+  clientRepo: Pick<IClientRepository, 'updateMany'>,
+  clientId: string,
+  telephone: string,
+): Promise<boolean> {
+  const { count } = await clientRepo.updateMany({
+    where: { id: clientId, telephone, telephoneVerified: false, isAnonymous: false },
+    data: { telephone: null },
+  });
+  return count === 1;
+}

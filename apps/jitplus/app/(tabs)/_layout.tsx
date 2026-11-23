@@ -1,5 +1,5 @@
 import { Tabs, Redirect } from 'expo-router';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, isProfileComplete } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import CustomTabBar from '@/components/CustomTabBar';
@@ -17,10 +17,9 @@ export default function TabLayout() {
   // entire tab navigator when unrelated auth fields change.
   const client = useAuthStore((s) => s.client);
   const isLoading = useAuthStore((s) => s.loading);
-  const isGuest = useAuthStore((s) => s.isGuest);
   const needsPasswordSetup = useAuthStore((s) => s.needsPasswordSetup);
   const isAuthenticated = !!client;
-  const isProfileComplete = !!client?.nom && !!client?.prenom && client?.termsAccepted !== false;
+  const profileComplete = isProfileComplete(client);
 
   if (isLoading) {
     return (
@@ -30,13 +29,12 @@ export default function TabLayout() {
     );
   }
 
-  // Guests can browse — they'll see GuestGuard on auth-required tabs
-  if (!isAuthenticated && !isGuest) {
-    return <Redirect href="/welcome" />;
-  }
+  // Signed out: the root layout sends them to the login screen (a second
+  // redirect here stacked a second login screen).
+  if (!isAuthenticated) return null;
 
   // Redirect to complete-profile if profile is incomplete (interrupted registration)
-  if (isAuthenticated && !isProfileComplete) {
+  if (isAuthenticated && !profileComplete) {
     // Only email-OTP new registrations need a password — tracked reliably via SecureStore
     return <Redirect href={{ pathname: '/complete-profile', params: { needsPassword: needsPasswordSetup ? '1' : '0' } }} />;
   }
@@ -69,8 +67,8 @@ export default function TabLayout() {
         options={{ title: t('tabs.discover'), freezeOnBlur: true }}
       />
       <Tabs.Screen
-        name="notifications"
-        options={{ title: t('tabs.notifications') }}
+        name="rdv"
+        options={{ title: t('tabs.rdv') }}
       />
     </Tabs>
   );

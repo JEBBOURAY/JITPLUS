@@ -16,26 +16,44 @@ export interface OfferInput {
   percentOff?: number | null;
   buyQty?: number | null;
   freeQty?: number | null;
+  priceFrom?: boolean | null;
+  priceUnit?: string | null;
 }
 
-export interface NormalizedOffer {
+/** A type alias (not an interface) so it can be stored as JSON in DealOfferChange. */
+export type NormalizedOffer = {
   type: DealType;
   originalPrice: number | null;
   dealPrice: number | null;
   percentOff: number | null;
   buyQty: number | null;
   freeQty: number | null;
-}
+  priceFrom: boolean;
+  priceUnit: string | null;
+};
+
+export const OFFER_FIELDS = [
+  'type', 'originalPrice', 'dealPrice', 'percentOff', 'buyQty', 'freeQty', 'priceFrom', 'priceUnit',
+] as const satisfies readonly (keyof NormalizedOffer)[];
 
 const toPrice = (v: number | null | undefined) => (v == null ? null : Math.round(v * 100) / 100);
 
 function priceOrNull(v: number | null | undefined, label: string): number | null {
   const price = toPrice(v);
   if (price == null) return null;
-  if (!Number.isFinite(price) || price < 0 || price > DEAL_LIMITS.MAX_PRICE) {
+  if (!Number.isFinite(price) || price <= 0 || price > DEAL_LIMITS.MAX_PRICE) {
     throw new BadRequestException(`${label} invalide`);
   }
   return price;
+}
+
+function percent(v: number | null | undefined): number {
+  if (v == null || !Number.isInteger(v) || v < DEAL_LIMITS.MIN_PERCENT || v > DEAL_LIMITS.MAX_PERCENT) {
+    throw new BadRequestException(
+      `La réduction doit être comprise entre ${DEAL_LIMITS.MIN_PERCENT} et ${DEAL_LIMITS.MAX_PERCENT} %`,
+    );
+  }
+  return v;
 }
 
 function qty(v: number | null | undefined, label: string): number {
@@ -45,7 +63,11 @@ function qty(v: number | null | undefined, label: string): number {
   return v;
 }
 
-/** Keep only the fields the type uses, so a type change never leaves stale values. */
+/**
+ * Keep only the fields the type uses, so a type change never leaves stale
+ * values. A price is optional except for a price drop; "à partir de" and the
+ * unit only mean something next to a price the client pays.
+ */
 export function normalizeOffer(input: OfferInput): NormalizedOffer {
   const empty: NormalizedOffer = {
     type: input.type,
@@ -54,31 +76,36 @@ export function normalizeOffer(input: OfferInput): NormalizedOffer {
     percentOff: null,
     buyQty: null,
     freeQty: null,
+    priceFrom: false,
+    priceUnit: null,
   };
+  const display = { priceFrom: input.priceFrom === true, priceUnit: input.priceUnit ?? null };
   switch (input.type) {
     case 'PERCENT_OFF': {
-      const pct = input.percentOff;
-      if (pct == null || !Number.isInteger(pct) || pct < DEAL_LIMITS.MIN_PERCENT || pct > DEAL_LIMITS.MAX_PERCENT) {
-        throw new BadRequestException(
-          `La réduction doit être comprise entre ${DEAL_LIMITS.MIN_PERCENT} et ${DEAL_LIMITS.MAX_PERCENT} %`,
-        );
-      }
-      return { ...empty, percentOff: pct };
+      const pct = percent(input.percentOff);
+      const original = priceOrNull(input.originalPrice, 'Prix initial');
+      if (original == null) return { ...empty, percentOff: pct };
+      return { ...empty, ...display, originalPrice: original, dealPrice: Math.round(original * (100 - pct)) / 100, percentOff: pct };
     }
     case 'PRICE_DROP': {
+      if (input.dealPrice === 0) throw new BadRequestException('Pour un produit gratuit, choisissez « Produit offert »');
       const original = priceOrNull(input.originalPrice, 'Prix initial');
       const price = priceOrNull(input.dealPrice, 'Prix promo');
       if (original == null || price == null) {
         throw new BadRequestException('Le prix initial et le prix promo sont requis');
       }
-      if (!(original > 0) || price >= original) {
-        throw new BadRequestException('Le prix promo doit être inférieur au prix initial');
+      if (price >= original) throw new BadRequestException('Le prix promo doit être inférieur au prix initial');
+      const pct = Math.round((1 - price / original) * 100);
+      if (pct < DEAL_LIMITS.MIN_PERCENT) {
+        throw new BadRequestException(`La réduction doit être d’au moins ${DEAL_LIMITS.MIN_PERCENT} %`);
       }
-      const pct = Math.min(DEAL_LIMITS.MAX_PERCENT, Math.max(DEAL_LIMITS.MIN_PERCENT, Math.round((1 - price / original) * 100)));
-      return { ...empty, originalPrice: original, dealPrice: price, percentOff: pct };
+      return { ...empty, ...display, originalPrice: original, dealPrice: price, percentOff: Math.min(DEAL_LIMITS.MAX_PERCENT, pct) };
     }
-    case 'BUY_X_GET_Y':
-      return { ...empty, buyQty: qty(input.buyQty, 'Quantité achetée'), freeQty: qty(input.freeQty, 'Quantité offerte') };
+    case 'BUY_X_GET_Y': {
+      const quantities = { buyQty: qty(input.buyQty, 'Quantité achetée'), freeQty: qty(input.freeQty, 'Quantité offerte') };
+      const unitPrice = priceOrNull(input.originalPrice, 'Prix');
+      return unitPrice == null ? { ...empty, ...quantities } : { ...empty, ...display, ...quantities, originalPrice: unitPrice };
+    }
     case 'FREE_ITEM':
       return { ...empty, originalPrice: priceOrNull(input.originalPrice, 'Valeur du produit') };
     case 'OTHER':

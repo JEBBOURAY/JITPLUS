@@ -1,13 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ScrollView,
   type LayoutChangeEvent,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Share2, Check } from 'lucide-react-native';
@@ -63,7 +63,7 @@ export default function ClientAppQrScreen() {
     try {
       const sharingAvailable = await Sharing.isAvailableAsync();
       if (!sharingAvailable) {
-        Alert.alert(t('common.error'), t('home.clientQrShareUnavailable'));
+        toast.error(t('home.clientQrShareUnavailable'));
         return;
       }
       if (!posterRef.current) {
@@ -79,7 +79,7 @@ export default function ClientAppQrScreen() {
         dialogTitle: t('home.clientQrExportDialog'),
       });
     } catch {
-      Alert.alert(t('common.error'), t('home.clientQrExportError'));
+      toast.error(t('home.clientQrExportError'));
     } finally {
       setExporting(false);
     }

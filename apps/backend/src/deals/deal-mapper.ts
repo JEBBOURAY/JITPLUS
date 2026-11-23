@@ -23,6 +23,8 @@ export function toMerchantDealDto(d: MerchantDealRow, now: Date = new Date()) {
     percentOff: d.percentOff,
     buyQty: d.buyQty,
     freeQty: d.freeQty,
+    priceFrom: d.priceFrom,
+    priceUnit: d.priceUnit,
     allStores: d.allStores,
     storeIds: d.stores.map((s) => s.storeId),
     startsAt: d.startsAt.toISOString(),
@@ -36,7 +38,9 @@ export function toMerchantDealDto(d: MerchantDealRow, now: Date = new Date()) {
       views: d.viewCount,
       linkClicks: d.linkClickCount,
       directions: d.directionsCount,
+      calls: d.callCount,
       shares: d.shareCount,
+      claims: d.claimCount,
     },
     createdAt: d.createdAt.toISOString(),
   };
@@ -67,6 +71,8 @@ export const CLIENT_DEAL_SELECT = {
   percentOff: true,
   buyQty: true,
   freeQty: true,
+  priceFrom: true,
+  priceUnit: true,
   allStores: true,
   startsAt: true,
   endsAt: true,
@@ -146,6 +152,8 @@ export function toClientDealSummary(d: ClientDealRow, pos?: Position | null) {
     percentOff: d.percentOff,
     buyQty: d.buyQty,
     freeQty: d.freeQty,
+    priceFrom: d.priceFrom,
+    priceUnit: d.priceUnit,
     startsAt: d.startsAt.toISOString(),
     endsAt: d.endsAt.toISOString(),
     isPopular: d.isPopular,
@@ -163,7 +171,16 @@ export function toClientDealSummary(d: ClientDealRow, pos?: Position | null) {
   };
 }
 
-export function toClientDealDetail(d: ClientDealDetailRow, isOver: boolean, pos?: Position | null) {
+/** What the deal page shows about the client reading it; all "no" for a guest. */
+export interface DealViewerState {
+  saved: boolean;
+  claimedAt: Date | null;
+  hasCard: boolean;
+}
+
+export const GUEST_VIEWER: DealViewerState = { saved: false, claimedAt: null, hasCard: false };
+
+export function toClientDealDetail(d: ClientDealDetailRow, isOver: boolean, viewer: DealViewerState, pos?: Position | null) {
   const stores = d.scope === 'LOCAL' ? concernedStores(d, d.merchant.stores) : [];
   return {
     ...toClientDealSummary(d, pos),
@@ -175,5 +192,8 @@ export function toClientDealDetail(d: ClientDealDetailRow, isOver: boolean, pos?
       .map((s) => ({ ...s, distanceKm: storeDistance(s, pos) }))
       .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity)),
     merchantPhone: d.merchant.phoneNumber,
+    saved: viewer.saved,
+    claimedAt: viewer.claimedAt?.toISOString() ?? null,
+    hasCard: viewer.hasCard,
   };
 }

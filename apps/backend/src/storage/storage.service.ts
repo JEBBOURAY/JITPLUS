@@ -31,9 +31,15 @@ export class StorageService implements IStorageProvider {
     const bucket = this.storage.bucket(this.bucketName);
     
     // Build a safe, human-readable filename from originalname + short random suffix
-    const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.pdf']);
+    // Raster images only, with the content type derived here from the extension:
+    // the bucket is public, so an SVG/HTML body or a client-chosen mimetype would
+    // turn any future caller that skips the image optimizer into stored XSS.
+    const CONTENT_TYPES: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+    };
     const extension = extname(file.originalname).toLowerCase();
-    if (!ALLOWED_EXT.has(extension)) {
+    const contentType = CONTENT_TYPES[extension];
+    if (!contentType) {
       throw new BadRequestException(`Extension de fichier non autorisée : ${extension}`);
     }
     // Validates the folder (no path traversal) and the owner segment.
@@ -42,7 +48,7 @@ export class StorageService implements IStorageProvider {
 
     const stream = fileUpload.createWriteStream({
       metadata: {
-        contentType: file.mimetype,
+        contentType,
       },
       resumable: false, // Upload simple pour les petits fichiers
     });

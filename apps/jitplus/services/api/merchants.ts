@@ -13,11 +13,11 @@ const WALLET_PAGE_SIZE = 100;
 /** Safety cap: 1000 cards. */
 const MAX_WALLET_PAGES = 10;
 
+export type MerchantReportReason = 'inappropriate' | 'spam' | 'fraud' | 'closed' | 'wrong_info' | 'other';
+
 export function createMerchantMethods(http: AxiosInstance) {
   async function fetchMerchantsPage(page = 1, limit = MERCHANTS_PAGE_SIZE): Promise<{ merchants: Merchant[]; totalPages: number }> {
-    const token = await getToken();
-    const url = token ? '/client/merchants' : '/client-auth/merchants';
-    const { data } = await http.get(url, { params: { page, limit } });
+    const { data } = await http.get('/client/merchants', { params: { page, limit } });
     if (Array.isArray(data)) return { merchants: data, totalPages: 1 };
     if (data?.merchants && Array.isArray(data.merchants)) {
       const totalPages = Number(data.pagination?.totalPages);
@@ -61,7 +61,7 @@ export function createMerchantMethods(http: AxiosInstance) {
       const first = await fetchMerchantsPage(1);
       const lastPage = Math.min(first.totalPages, MAX_MERCHANT_PAGES);
       const pages = [first.merchants];
-      // Small batches: the guest endpoint is throttled per minute.
+      // Small batches: the endpoint is throttled per minute.
       for (let start = 2; start <= lastPage; start += PAGE_FETCH_CONCURRENCY) {
         const batch = [];
         for (let p = start; p < start + PAGE_FETCH_CONCURRENCY && p <= lastPage; p++) batch.push(fetchMerchantsPage(p));
@@ -84,7 +84,7 @@ export function createMerchantMethods(http: AxiosInstance) {
       const { data } = await http.get(`${base}/${encodeURIComponent(id)}`);
       return data;
     },
-    async joinMerchant(merchantId: string): Promise<{ success: boolean; card: { id: string; stamps: number; createdAt: string } }> {
+    async joinMerchant(merchantId: string): Promise<{ success: boolean; card: { id: string; stamps: number; createdAt: string; welcomeBonus?: { stamps: number } | null; welcomeBonusGranted?: number } }> {
       const { data } = await http.post(`/client/merchants/${encodeURIComponent(merchantId)}/join`);
       return data;
     },
@@ -94,7 +94,7 @@ export function createMerchantMethods(http: AxiosInstance) {
     },
     async reportMerchant(
       merchantId: string,
-      reason: 'inappropriate' | 'spam' | 'fraud' | 'closed' | 'wrong_info' | 'other',
+      reason: MerchantReportReason,
       details?: string,
     ): Promise<{ success: boolean; message: string }> {
       const { data } = await http.post(`/client/merchants/${encodeURIComponent(merchantId)}/report`, { reason, details });

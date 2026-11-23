@@ -12,8 +12,6 @@ import { Easing, type WithSpringConfig } from 'react-native-reanimated';
 
 /** Strong ease-out for things entering or responding (0.23, 1, 0.32, 1). */
 export const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
-/** Ease-in-out for things moving on screen (0.77, 0, 0.175, 1). */
-export const EASE_IN_OUT = Easing.bezier(0.77, 0, 0.175, 1);
 
 /**
  * @param response      seconds to (visually) reach the target — lower is snappier

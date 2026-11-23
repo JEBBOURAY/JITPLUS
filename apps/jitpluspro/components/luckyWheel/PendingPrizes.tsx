@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { toast } from '@/components/ui/Toast';
+import { View, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Check } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -38,7 +40,7 @@ export function PendingPrizeList({ draws, showCampaign }: { draws: WheelPendingD
           try {
             await fulfil.mutateAsync(draw.id);
           } catch (e) {
-            Alert.alert(t('common.error'), getErrorMessage(e, t('luckyWheel.pending.giveError')));
+            toast.error(getErrorMessage(e, t('luckyWheel.pending.giveError')));
           } finally {
             setBusyId(null);
           }

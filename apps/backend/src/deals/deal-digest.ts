@@ -5,7 +5,8 @@ export interface DigestDeal {
   id: string;
   merchantId: string;
   merchantName: string;
-  category: string;
+  /** Main and secondary categories of the merchant, as in the feed */
+  categories: string[];
   scope: 'LOCAL' | 'ONLINE';
   title: string;
   cityKeys: string[];
@@ -40,7 +41,9 @@ export function dealsForClient(
   categories: readonly string[],
   blocked: ReadonlySet<string>,
 ): DigestDeal[] {
-  return deals.filter((d) => !blocked.has(d.merchantId) && (categories.length === 0 || categories.includes(d.category)));
+  return deals.filter(
+    (d) => !blocked.has(d.merchantId) && (categories.length === 0 || d.categories.some((c) => categories.includes(c))),
+  );
 }
 
 export interface DigestMessage {

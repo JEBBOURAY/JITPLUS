@@ -7,6 +7,7 @@ import { REWARDS_CACHE_TTL } from '../common/constants';
 import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 import { IStorageProvider, STORAGE_PROVIDER } from '../common/interfaces';
 import { assertImageAssignable } from '../storage/image-ownership';
+import { assertClean } from '../common/utils/content-moderation';
 
 @Injectable()
 export class RewardsService {
@@ -50,6 +51,8 @@ export class RewardsService {
   }
 
   async create(merchantId: string, data: { titre: string; cout: number; description?: string; imageUrl?: string }): Promise<Reward> {
+    // Shown to clients in jitplus (UGC policy), like the merchant profile.
+    assertClean({ titre: data.titre, description: data.description });
     if (data.cout <= 0) throw new BadRequestException('Le coût en tampons doit être supérieur à 0');
     assertImageAssignable(this.storage, merchantId, data.imageUrl);
 
@@ -70,6 +73,8 @@ export class RewardsService {
   }
 
   async update(id: string, merchantId: string, data: { titre?: string; cout?: number; description?: string; imageUrl?: string | null }): Promise<Reward> {
+    // Shown to clients in jitplus (UGC policy), like the merchant profile.
+    assertClean({ titre: data.titre, description: data.description });
     if (data.cout !== undefined && data.cout <= 0) throw new BadRequestException('Le coût en tampons doit être supérieur à 0');
     const reward = await this.rewardRepo.findOneByMerchant(id, merchantId);
     if (!reward) throw new NotFoundException('Récompense non trouvée ou ne vous appartient pas');

@@ -1,6 +1,29 @@
 import { BadRequestException } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'crypto';
-import { MAX_OTP_ATTEMPTS } from '../constants';
+import { MAX_OTP_ATTEMPTS, OTP_COOLDOWN_MS } from '../constants';
+
+/**
+ * Whether a code was sent less than OTP_COOLDOWN_MS ago (resend cooldown).
+ * Uses the send time stored in `createdAt` (reset on every resend). The `otps`
+ * row is shared by email between JitPlus (10 min codes) and Pro (5 min codes):
+ * deriving the send time from `expiresAt - <own expiry>` gave a wrong time for a
+ * row written by the other app (about 6 min of "please wait", or no cooldown).
+ */
+export function otpSentRecently(otp: { createdAt?: Date | null }, now = Date.now()): boolean {
+  return !!otp.createdAt && otp.createdAt.getTime() + OTP_COOLDOWN_MS > now;
+}
+
+/**
+ * Stored instead of a code hash when JitPlus sends nothing (unknown address on
+ * the forgot-password path): the client cooldown then answers the same with or
+ * without an account. No code hashes to it. Pro ignores such a row, since no
+ * code was ever sent to that inbox.
+ */
+export const OTP_DECOY_CODE = 'decoy';
+
+export function isDecoyOtp(otp: { code?: string | null }): boolean {
+  return otp.code === OTP_DECOY_CODE;
+}
 
 /** SHA-256 hash of an OTP code (for storage / comparison) */
 export function hashOtp(code: string): string {
@@ -46,6 +69,7 @@ export function otpDbOps(repo: {
 }
 
 const OTP_TOO_MANY_ATTEMPTS_MESSAGE = 'Trop de tentatives. Veuillez redemander un code';
+const OTP_EXPIRED_MESSAGE = 'Code expiré. Veuillez redemander un code';
 
 /** Outcome of a code check whose attempt was successfully reserved. */
 export type OtpCheckResult = { ok: true } | { ok: false; remaining: number };
@@ -67,19 +91,21 @@ export async function checkOtpCode(
   code: string,
   notFoundMessage: string,
   ops: OtpDbOps,
+  messages: { expired?: string; tooManyAttempts?: string } = {},
 ): Promise<OtpCheckResult> {
+  const tooManyAttempts = messages.tooManyAttempts ?? OTP_TOO_MANY_ATTEMPTS_MESSAGE;
   if (!otpRecord) {
     throw new BadRequestException(notFoundMessage);
   }
 
   if (new Date() > otpRecord.expiresAt) {
     await ops.deleteOtp(otpRecord.id);
-    throw new BadRequestException('Code expiré. Veuillez redemander un code');
+    throw new BadRequestException(messages.expired ?? OTP_EXPIRED_MESSAGE);
   }
 
   if ((await ops.claimAttempt(otpRecord.id)) !== 1) {
     await ops.deleteOtp(otpRecord.id);
-    throw new BadRequestException(OTP_TOO_MANY_ATTEMPTS_MESSAGE);
+    throw new BadRequestException(tooManyAttempts);
   }
 
   // Hash the user-supplied code and compare with stored hash (timing-safe)
@@ -92,7 +118,7 @@ export async function checkOtpCode(
   const remaining = MAX_OTP_ATTEMPTS - (otpRecord.attempts + 1);
   if (remaining <= 0) {
     await ops.deleteOtp(otpRecord.id);
-    throw new BadRequestException(OTP_TOO_MANY_ATTEMPTS_MESSAGE);
+    throw new BadRequestException(tooManyAttempts);
   }
   return { ok: false, remaining };
 }

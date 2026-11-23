@@ -5,23 +5,59 @@ import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
+  RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../../common/repositories';
 import { computeRewardThreshold } from '../utils/loyalty.utils';
 import {
   MAX_SCAN_RESULTS,
   DEFAULT_PAGE_SIZE,
   INACTIVE_CLIENT_DAYS,
+  NEW_CLIENT_DAYS,
+  ALMOST_REWARD_GAP,
   MS_PER_DAY,
 } from '../../common/constants';
 import { MERCHANT_LOYALTY_SELECT, CLIENT_SCAN_SELECT } from '../../common/prisma-selects';
 import { buildClientSearchFilter, buildTxMap, mapClientResponse, buildPagination, maskName } from '../../common/utils';
-import type { MerchantClientView } from '../../common/dto/pagination-query.dto';
+import type { MerchantClientSort, MerchantClientView } from '../../common/dto/pagination-query.dto';
 import { tryToE164Phone } from '../../common/utils/phone';
 import { ScanTicketService } from './scan-ticket.service';
 
-const CARD_STATS_SELECT = { clientId: true, stamps: true, createdAt: true } satisfies Prisma.LoyaltyCardSelect;
+const CARD_STATS_SELECT = { clientId: true, stamps: true, createdAt: true, consentPending: true } satisfies Prisma.LoyaltyCardSelect;
 /** Characters a typed phone number may contain; anything else is a name/email search. */
 const PHONE_SEARCH_PATTERN = /^\+?[\d\s().-]{8,20}$/;
+
+type CardsSort = MerchantClientSort | 'cardCreated';
+
+function defaultSort(view: MerchantClientView | undefined): CardsSort {
+  switch (view) {
+    case 'reward':
+    case 'almost':
+    case 'loyal':
+      return 'stamps';
+    case 'new':
+      return 'cardCreated';
+    case 'inactive':
+      return 'lastVisit';
+    default:
+      return 'recent';
+  }
+}
+
+function cardsOrder(sort: CardsSort): Prisma.LoyaltyCardOrderByWithRelationInput[] {
+  switch (sort) {
+    case 'stamps':
+      return [{ stamps: 'desc' }];
+    case 'lastVisit':
+      return [{ lastVisitAt: 'desc' }];
+    case 'cardCreated':
+      return [{ createdAt: 'desc' }];
+    case 'name':
+      // Quick-add clients may have no first name: they go after the named ones.
+      return [{ client: { prenom: { sort: 'asc', nulls: 'last' } } }, { client: { nom: 'asc' } }];
+    default:
+      return [{ client: { createdAt: 'desc' } }];
+  }
+}
 
 @Injectable()
 export class MerchantClientService {
@@ -31,6 +67,7 @@ export class MerchantClientService {
     @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     private scanTickets: ScanTicketService,
+    @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
   ) {}
 
   async getClients(
@@ -39,16 +76,16 @@ export class MerchantClientService {
     page = 1,
     limit = DEFAULT_PAGE_SIZE,
     view?: MerchantClientView,
+    sort?: MerchantClientSort,
   ) {
     const skip = (page - 1) * limit;
 
-    // The threshold drives both the "reward" filter and the progress bars in the app.
-    const thresholdPromise = this.merchantRepo
-      .findUnique({ where: { id: merchantId }, select: MERCHANT_LOYALTY_SELECT })
-      .then((merchant) => computeRewardThreshold(merchant));
-    const pagePromise = view
-      ? thresholdPromise.then((threshold) => this.findCardsForView(merchantId, view, threshold, search, skip, limit))
-      : this.findCardsForView(merchantId, undefined, 0, search, skip, limit);
+    // The threshold drives the "reward" / "almost" filters and the progress bars in the app.
+    const thresholdPromise = this.findRewardThreshold(merchantId);
+    const needsThreshold = view === 'reward' || view === 'almost';
+    const pagePromise = needsThreshold
+      ? thresholdPromise.then((threshold) => this.findCardsForView(merchantId, view, threshold, search, sort, skip, limit))
+      : this.findCardsForView(merchantId, view, 0, search, sort, skip, limit);
     const [rewardThreshold, { clients, cards, total }] = await Promise.all([thresholdPromise, pagePromise]);
 
     const pagination = buildPagination(total, page, limit);
@@ -77,12 +114,81 @@ export class MerchantClientService {
   }
 
   /**
+   * Size of each chip of the Clients tab, from the same filters as the list.
+   * Five index-backed counts on this merchant's cards, run side by side.
+   */
+  async getClientSegments(merchantId: string) {
+    const threshold = await this.findRewardThreshold(merchantId);
+    // One pass over the merchant's cards instead of 5 parallel counts: those took
+    // the whole Prisma pool (5 connections per instance) for each Clients tab open.
+    // Same filters as cardsWhere(): keep both in sync.
+    const now = Date.now();
+    const almostFrom = Math.max(1, threshold - ALMOST_REWARD_GAP);
+    const newSince = new Date(now - NEW_CLIENT_DAYS * MS_PER_DAY);
+    const inactiveBefore = new Date(now - INACTIVE_CLIENT_DAYS * MS_PER_DAY);
+    const [row] = await this.rawQuery.queryRaw<{
+      all: number; reward: number; almost: number; fresh: number; inactive: number;
+    }>(Prisma.sql`
+      SELECT
+        COUNT(*)::int AS "all",
+        COUNT(*) FILTER (WHERE lc.stamps >= ${threshold})::int AS reward,
+        COUNT(*) FILTER (WHERE lc.stamps >= ${almostFrom} AND lc.stamps < ${threshold})::int AS almost,
+        COUNT(*) FILTER (WHERE lc.created_at >= ${newSince})::int AS fresh,
+        COUNT(*) FILTER (WHERE lc.last_visit_at < ${inactiveBefore})::int AS inactive
+      FROM loyalty_cards lc
+      JOIN clients c ON c.id = lc.client_id
+      WHERE lc.merchant_id = ${merchantId}
+        AND lc.deactivated_at IS NULL
+        AND c.deleted_at IS NULL
+    `);
+    return {
+      all: row?.all ?? 0,
+      reward: row?.reward ?? 0,
+      almost: row?.almost ?? 0,
+      new: row?.fresh ?? 0,
+      inactive: row?.inactive ?? 0,
+    };
+  }
+
+  private findRewardThreshold(merchantId: string) {
+    return this.merchantRepo
+      .findUnique({ where: { id: merchantId }, select: MERCHANT_LOYALTY_SELECT })
+      .then((merchant) => computeRewardThreshold(merchant));
+  }
+
+  /** Active cards of the merchant, narrowed by the view and the client search. */
+  private cardsWhere(
+    merchantId: string,
+    view: MerchantClientView | undefined,
+    rewardThreshold: number,
+    search?: string,
+  ): Prisma.LoyaltyCardWhereInput {
+    const now = Date.now();
+    return {
+      merchantId,
+      deactivatedAt: null,
+      client: { deletedAt: null, ...(search ? { OR: buildClientSearchFilter(search) } : {}) },
+      ...(view === 'reward' && { stamps: { gte: rewardThreshold } }),
+      // At least one stamp: a fresh card is not "almost" there, and a 1-stamp reward leaves the range empty.
+      ...(view === 'almost' && {
+        stamps: { gte: Math.max(1, rewardThreshold - ALMOST_REWARD_GAP), lt: rewardThreshold },
+      }),
+      ...(view === 'new' && { createdAt: { gte: new Date(now - NEW_CLIENT_DAYS * MS_PER_DAY) } }),
+      ...(view === 'inactive' && {
+        lastVisitAt: { lt: new Date(now - INACTIVE_CLIENT_DAYS * MS_PER_DAY) },
+      }),
+    };
+  }
+
+  /**
    * Every list is driven from the merchant's loyalty cards so Postgres only
-   * reads this merchant's members (never the global clients table):
-   * - default view (no `view`): newest clients first, i.e. ordered by the
-   *   CLIENT's account creation date (not the card's), joined from the card side;
-   * - filtered views: the (merchantId, stamps) and (merchantId, lastVisitAt)
-   *   indexes serve the sort.
+   * reads this merchant's members (never the global clients table). Without an
+   * explicit sort each view keeps its own order:
+   * - everyone: newest clients first, i.e. ordered by the CLIENT's account
+   *   creation date (not the card's), joined from the card side;
+   * - reward / almost / loyal: most stamps first, (merchantId, stamps) index;
+   * - new: newest cards first, (merchantId, createdAt) index;
+   * - inactive: most recent visit first, (merchantId, lastVisitAt) index.
    * `id` is a tie-breaker that keeps pagination stable between pages.
    */
   private async findCardsForView(
@@ -90,22 +196,12 @@ export class MerchantClientService {
     view: MerchantClientView | undefined,
     rewardThreshold: number,
     search: string | undefined,
+    sort: MerchantClientSort | undefined,
     skip: number,
     take: number,
   ) {
-    const where: Prisma.LoyaltyCardWhereInput = {
-      merchantId,
-      deactivatedAt: null,
-      client: { deletedAt: null, ...(search ? { OR: buildClientSearchFilter(search) } : {}) },
-      ...(view === 'reward' && { stamps: { gte: rewardThreshold } }),
-      ...(view === 'inactive' && {
-        lastVisitAt: { lt: new Date(Date.now() - INACTIVE_CLIENT_DAYS * MS_PER_DAY) },
-      }),
-    };
-    const orderBy: Prisma.LoyaltyCardOrderByWithRelationInput[] =
-      !view ? [{ client: { createdAt: 'desc' } }, { id: 'asc' }]
-      : view === 'inactive' ? [{ lastVisitAt: 'desc' }, { id: 'asc' }]
-      : [{ stamps: 'desc' }, { id: 'asc' }];
+    const where = this.cardsWhere(merchantId, view, rewardThreshold, search);
+    const orderBy: Prisma.LoyaltyCardOrderByWithRelationInput[] = [...cardsOrder(sort ?? defaultSort(view)), { id: 'asc' }];
 
     const [rows, total] = await Promise.all([
       this.loyaltyCardRepo.findMany({
@@ -119,6 +215,7 @@ export class MerchantClientService {
     ]);
     return { clients: rows.map((row) => row.client), cards: rows, total };
   }
+
   /**
    * Verify that a client UUID exists and belongs to this merchant.
    * Prevents IDOR by confirming the client has a loyalty card with the merchant.
@@ -177,7 +274,7 @@ export class MerchantClientService {
       ? await Promise.all([
           this.loyaltyCardRepo.findMany({
             where: { merchantId, clientId: { in: clientIds } },
-            select: { clientId: true, stamps: true, createdAt: true, deactivatedAt: true },
+            select: { clientId: true, stamps: true, createdAt: true, deactivatedAt: true, consentPending: true },
           }),
           this.transactionRepo.groupBy({
             by: ['clientId'],
@@ -193,7 +290,7 @@ export class MerchantClientService {
     const txMap = buildTxMap(lastTransactions);
 
     return clients.map((client: any) => {
-      const loyaltyCard = loyaltyMap.get(client.id) as { stamps: number; createdAt: Date } | undefined;
+      const loyaltyCard = loyaltyMap.get(client.id) as { stamps: number; createdAt: Date; consentPending?: boolean } | undefined;
       const tx = txMap.get(client.id);
       return mapClientResponse(client, loyaltyCard, tx);
     });
@@ -244,11 +341,11 @@ export class MerchantClientService {
     const [client, loyaltyCard, merchant] = await Promise.all([
       this.clientRepo.findUnique({
         where: { id: clientId },
-        select: { id: true, nom: true, email: true, telephone: true, shareInfoMerchants: true, dateNaissance: true, deletedAt: true },
+        select: { id: true, prenom: true, nom: true, email: true, telephone: true, shareInfoMerchants: true, dateNaissance: true, deletedAt: true },
       }),
       this.loyaltyCardRepo.findUnique({
         where: { clientId_merchantId: { clientId, merchantId } },
-        select: { id: true, stamps: true, createdAt: true, deactivatedAt: true },
+        select: { id: true, stamps: true, createdAt: true, deactivatedAt: true, consentPending: true },
       }),
       this.merchantRepo.findUnique({
         where: { id: merchantId },
@@ -265,7 +362,8 @@ export class MerchantClientService {
     const stamps = loyaltyCard?.stamps ?? 0;
     const rewardThreshold = computeRewardThreshold(merchant);
 
-    const shared = isMember && client.shareInfoMerchants !== false;
+    // A card opened from a typed phone number is not the client's consent to share.
+    const shared = isMember && !loyaltyCard?.consentPending && client.shareInfoMerchants !== false;
 
     // Check if today is the client's birthday (only reveal if they share info)
     let isBirthday = false;
@@ -277,6 +375,8 @@ export class MerchantClientService {
 
     return {
       id: client.id,
+      // Masked like the client list when not shared: the till shows "S. B.", never a bare last name.
+      prenom: shared ? client.prenom : maskName(client.prenom),
       nom: shared ? client.nom : maskName(client.nom),
       email: shared ? client.email : null,
       telephone: shared ? client.telephone : null,
@@ -292,7 +392,7 @@ export class MerchantClientService {
     // IDOR protection: verify the client has an active loyalty card with this merchant
     const loyaltyCard = await this.loyaltyCardRepo.findUnique({
       where: { clientId_merchantId: { clientId, merchantId } },
-      select: { stamps: true, createdAt: true, deactivatedAt: true },
+      select: { stamps: true, createdAt: true, deactivatedAt: true, consentPending: true },
     });
     if (!loyaltyCard || loyaltyCard.deactivatedAt) throw new NotFoundException('Client non trouvé');
 
@@ -320,7 +420,8 @@ export class MerchantClientService {
 
     const rewardThreshold = computeRewardThreshold(merchant);
 
-    const shared = client.shareInfoMerchants !== false;
+    // A card opened from a typed phone number is not the client's consent to share.
+    const shared = !loyaltyCard.consentPending && client.shareInfoMerchants !== false;
     // Anonymous clients were created by the merchant via Quick-Add — the merchant
     // already typed the phone themselves, so phone/prenom stay visible regardless
     // of shareInfoMerchants. This lets the "Renvoyer le lien WhatsApp" button work.

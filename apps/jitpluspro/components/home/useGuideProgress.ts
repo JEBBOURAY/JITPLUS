@@ -88,7 +88,8 @@ export function useGuideProgress(active: boolean): GuideProgressState {
   const rewardsQuery = useRewards(ownerEnabled);
   // One-row probes: the guide only needs to know whether a client and a sent message exist.
   const clientsQuery = useHasClients(enabled);
-  const transactionsQuery = useTransactions(enabled);
+  // Same query as the unfiltered Transactions tab, so the guide and the tab share one cache.
+  const transactionsQuery = useTransactions(undefined, enabled);
   const notificationsQuery = useHasSentNotification(ownerEnabled);
   const rewards = rewardsQuery.data;
   const hasClients = clientsQuery.data ?? false;

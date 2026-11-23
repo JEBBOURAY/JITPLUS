@@ -10,7 +10,7 @@ function mockResponse() {
 
 function renderRegisterLink(ref: string | undefined): string {
   const res = mockResponse();
-  new DeeplinkController().handleProRegisterLink(ref, res as unknown as Response);
+  new DeeplinkController({} as never).handleProRegisterLink(ref, res as unknown as Response);
   expect(res.type).toHaveBeenCalledWith('html');
   return res.send.mock.calls[0][0] as string;
 }

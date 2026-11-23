@@ -38,13 +38,41 @@ export function dealTimeLeftLabel(
   return { text, urgent: left.urgent, ended: false };
 }
 
-/** Promo price and struck original price, in the merchant's currency (see moneyFormatter). */
-export function dealPrices(offer: DealOffer, money: MoneyFormatter): { price: string | null; original: string | null } {
-  if (offer.type === 'PRICE_DROP' && offer.dealPrice != null && offer.originalPrice != null) {
-    return { price: money(offer.dealPrice), original: money(offer.originalPrice) };
+export interface DealPriceTexts {
+  /** What the client pays: "Dès 79 DH / kg" */
+  price: string | null;
+  /** Shown next to it: the struck former price, or "Valeur 40 DH" for a free item */
+  original: string | null;
+  /** `original` is a former price to strike through */
+  struck: boolean;
+  /** "40 DH", when both prices are known */
+  savings: string | null;
+}
+
+const NO_PRICE: DealPriceTexts = { price: null, original: null, struck: false, savings: null };
+
+/**
+ * Price texts of a deal, ready to display, in the merchant's currency (see
+ * moneyFormatter). Each app provides the `deals.price.*` and `deals.valueOf` keys.
+ */
+export function dealPrices(offer: DealOffer, money: MoneyFormatter, t: DealTranslate): DealPriceTexts {
+  const paid = (amount: number) => {
+    const withUnit = offer.priceUnit
+      ? t('deals.price.per', { price: money(amount), unit: t(`deals.price.unit.${offer.priceUnit}`) })
+      : money(amount);
+    return offer.priceFrom ? t('deals.price.from', { price: withUnit }) : withUnit;
+  };
+  const { originalPrice: original, dealPrice: promo } = offer;
+  switch (offer.type) {
+    case 'PRICE_DROP':
+    case 'PERCENT_OFF':
+      if (original == null || promo == null) return NO_PRICE;
+      return { price: paid(promo), original: money(original), struck: true, savings: money(original - promo) };
+    case 'BUY_X_GET_Y':
+      return original == null ? NO_PRICE : { ...NO_PRICE, price: paid(original) };
+    case 'FREE_ITEM':
+      return original == null ? NO_PRICE : { ...NO_PRICE, original: t('deals.valueOf', { value: money(original) }) };
+    default:
+      return NO_PRICE;
   }
-  if (offer.type === 'FREE_ITEM' && offer.originalPrice != null) {
-    return { price: null, original: money(offer.originalPrice) };
-  }
-  return { price: null, original: null };
 }

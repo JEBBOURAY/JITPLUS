@@ -7,6 +7,8 @@ export interface StampCodeRedeemResult {
   stamps: number;
   newBalance: number;
   merchant: { id: string; nom: string };
+  /** Welcome gift credited by this scan, on top of `stamps` */
+  welcomeBonus?: number;
 }
 
 export function createStampCodeMethods(http: AxiosInstance) {

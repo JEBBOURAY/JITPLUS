@@ -1,4 +1,5 @@
 // Pure state and validation for the scratch campaign wizard (no React Native).
+import { wallParts } from '@jitplus/shared/src/zoneTime';
 import {
   SCRATCH_LIMITS,
   SCRATCH_DEFAULTS,
@@ -473,27 +474,10 @@ export function campaignFormReducer(state: CampaignForm, action: CampaignFormAct
 
 // Morocco wall clock (sending slots are in Morocco time)
 
-// Built once: creating an Intl formatter costs far more than using it, and lists format many dates.
-let moroccoFormatter: Intl.DateTimeFormat | undefined;
-
+// Hermes prints Africa/Casablanca at UTC+0: the wall clock comes from zoneTime (tzdata table).
 function moroccoParts(date: Date): { y: number; m: number; d: number; h: number; mi: number } | null {
-  try {
-    moroccoFormatter ??= new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Africa/Casablanca',
-      hourCycle: 'h23',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    const parts = moroccoFormatter.formatToParts(date);
-    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-    const res = { y: get('year'), m: get('month'), d: get('day'), h: get('hour') % 24, mi: get('minute') };
-    return Object.values(res).every(Number.isFinite) ? res : null;
-  } catch {
-    return null;
-  }
+  const p = wallParts(date, 'Africa/Casablanca');
+  return p ? { y: p.year, m: p.month, d: p.day, h: p.hour, mi: p.minute } : null;
 }
 
 /** Today in Morocco as YYYY-MM-DD (device date when Intl time zones are unavailable). */

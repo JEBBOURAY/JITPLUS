@@ -59,7 +59,10 @@ describe('store location: "my location" button', () => {
     const { result } = renderHook(() => useStoreLocation());
     await act(() => result.current.locateMe());
     expect(alert).toHaveBeenCalledTimes(1);
-    expect(alert).toHaveBeenCalledWith('stores.permissionDenied', 'stores.enableLocation');
+    expect(alert).toHaveBeenCalledWith('stores.permissionDenied', 'stores.enableLocation', expect.any(Array));
+    // Second button opens the OS settings.
+    const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+    expect(buttons[1].text).toBe('notifSettings.openSettingsAction');
     expect(loc.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
     expect(loc.getCurrentPositionAsync).not.toHaveBeenCalled();
   });

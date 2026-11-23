@@ -15,6 +15,21 @@ module.exports = {
     'react-hooks/purity': 'warn',
     'react-hooks/immutability': 'warn',
     'react-hooks/static-components': 'warn',
+    // Lexend has no Arabic glyphs: AppText swaps it for Cairo in Arabic.
+    'no-restricted-imports': ['error', {
+      paths: [{
+        name: 'react-native',
+        importNames: ['Text', 'TextInput'],
+        message: "Import Text/TextInput from '@/components/AppText' (Arabic font).",
+      }],
+    }],
   },
+  overrides: [
+    {
+      // Draw a fixed script whatever the app language, or wrap RN's Text itself.
+      files: ['components/AppText.tsx', 'components/social/SocialPost.tsx', 'app/social-post.tsx', '__tests__/**'],
+      rules: { 'no-restricted-imports': 'off' },
+    },
+  ],
   ignorePatterns: ['node_modules/', 'android/', 'ios/', 'build/', '.expo/'],
 };

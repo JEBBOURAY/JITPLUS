@@ -1,7 +1,18 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
 import {
-  View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert, Modal, Share, TouchableOpacity, ScrollView,
+  View,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Share,
+  TouchableOpacity,
+  ScrollView,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ban, FileText, Link2, Printer, QrCode, Share2, X } from 'lucide-react-native';
@@ -106,7 +117,7 @@ export default function StampCodeBatchScreen() {
         onPress: async () => {
           try {
             await revokeBatch.mutateAsync(batch.batchId);
-            Alert.alert(t('stampCodes.detail.revoked'));
+            toast.success(t('stampCodes.detail.revoked'));
           } catch (e) {
             Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
           }

@@ -1,15 +1,9 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Client } from '@/types';
 
-/** Persists guest mode so a relaunch doesn't send the guest back to the welcome screen. */
-export const GUEST_MODE_KEY = 'guest_mode';
-
-function persistGuestMode(isGuest: boolean) {
-  const op = isGuest
-    ? AsyncStorage.setItem(GUEST_MODE_KEY, '1')
-    : AsyncStorage.removeItem(GUEST_MODE_KEY);
-  op.catch(() => { /* non-fatal: guest mode just won't survive a relaunch */ });
+/** Signed in but sign-up unfinished: first name missing or terms never accepted (the last name is optional). */
+export function isProfileComplete(client: Client | null): boolean {
+  return !!client?.prenom && client?.termsAccepted !== false;
 }
 
 export interface AuthState {
@@ -17,14 +11,14 @@ export interface AuthState {
   client: Client | null;
   loading: boolean;
   needsPasswordSetup: boolean;
-  /** Guest mode — user is browsing without authentication */
-  isGuest: boolean;
+  /** Terms ticked on the sign-up screen of this run; memory only, so a relaunch asks again. */
+  signupTermsAccepted: boolean;
 
   // ── Actions ──
   setClient: (client: Client | null) => void;
   setLoading: (loading: boolean) => void;
   setNeedsPasswordSetup: (needs: boolean) => void;
-  setGuest: (isGuest: boolean) => void;
+  setSignupTermsAccepted: (accepted: boolean) => void;
   reset: () => void;
 }
 
@@ -32,7 +26,7 @@ const initialState = {
   client: null as Client | null,
   loading: true,
   needsPasswordSetup: false,
-  isGuest: false,
+  signupTermsAccepted: false,
 };
 
 /**
@@ -44,20 +38,10 @@ const initialState = {
 export const useAuthStore = create<AuthState>()((set) => ({
   ...initialState,
 
-  setClient: (client) =>
-    set((s) => {
-      if (client && s.isGuest) persistGuestMode(false);
-      return { client, isGuest: client ? false : s.isGuest };
-    }),
+  setClient: (client) => set({ client }),
   setLoading: (loading) => set({ loading }),
   setNeedsPasswordSetup: (needsPasswordSetup) => set({ needsPasswordSetup }),
-  setGuest: (isGuest) => {
-    persistGuestMode(isGuest);
-    set({ isGuest });
-  },
+  setSignupTermsAccepted: (signupTermsAccepted) => set({ signupTermsAccepted }),
   // Keep loading=false on logout reset, otherwise SplashGate can block on logo screen.
-  reset: () => {
-    persistGuestMode(false);
-    set({ ...initialState, loading: false });
-  },
+  reset: () => set({ ...initialState, loading: false }),
 }));

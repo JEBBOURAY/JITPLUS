@@ -11,17 +11,17 @@ import {
 const at = (iso: string) => new Date(iso).getTime();
 
 describe('scratch planned send: 30-day limit (Morocco time)', () => {
-  // 2026-10-08 09:00 in Morocco (UTC+1)
-  const now = at('2026-10-08T08:00:00Z');
+  // 2026-10-08 09:00 in Morocco (UTC+0 since 2026-09-20)
+  const now = at('2026-10-08T09:00:00Z');
 
   it('accepts a slot within 30 days and refuses one beyond', () => {
-    expect(isSlotTooFar('2026-11-07', '10:00', at('2026-10-08T09:30:00Z'))).toBe(false);
+    expect(isSlotTooFar('2026-11-07', '10:00', at('2026-10-08T10:30:00Z'))).toBe(false);
     expect(isSlotTooFar('2026-11-07', '10:00', now)).toBe(true);
     expect(isSlotUnavailable('2026-11-07', '10:00', now)).toBe(true);
   });
 
   it('picks no slot past the limit on the last day', () => {
-    expect(pickSendSlot('2026-11-07', '17:00', at('2026-10-08T10:30:00Z'))).toBe('10:00');
+    expect(pickSendSlot('2026-11-07', '17:00', at('2026-10-08T11:30:00Z'))).toBe('10:00');
   });
 
   it('rejects a planned slot beyond 30 days', () => {

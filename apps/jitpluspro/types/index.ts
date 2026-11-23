@@ -60,6 +60,11 @@ export interface Merchant {
   currency?: string;
   /** Stamps reset after this many days without a visit; null = never expire. */
   stampValidityDays?: number | null;
+  /** Welcome gift: bonus stamps reserved for new clients, unlocked by their first QR scan. */
+  welcomeBonusEnabled?: boolean;
+  welcomeBonusStamps?: number;
+  welcomeBonusTrigger?: WelcomeBonusTrigger;
+  welcomeBonusEndsAt?: string | null;
   plan?: MerchantPlan;
   planExpiresAt?: string | null;
   planActivatedByAdmin?: boolean;
@@ -129,7 +134,8 @@ export interface Reward {
   imageUrl?: string | null;
 }
 
-export type TransactionType = 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN' | 'COUPON_REDEEM' | 'PURCHASE';
+export type TransactionType = 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN' | 'COUPON_REDEEM' | 'PURCHASE' | 'WELCOME_BONUS';
+export type WelcomeBonusTrigger = 'CARD_OR_SCAN' | 'FIRST_SCAN';
 type GiftStatus = 'PENDING' | 'FULFILLED';
 
 export interface DashboardKpis {
@@ -240,8 +246,29 @@ export interface Transaction {
   fulfilledAt?: string | null;
 }
 
+/** Chips of the history (backend `TRANSACTION_KINDS`); `all` sends no filter. */
+export type TransactionKind = 'all' | 'stamps' | 'rewards' | 'games' | 'coupons' | 'adjustments' | 'cancelled';
+export type TransactionPeriod = 'all' | 'today' | 'week' | 'month' | 'thisMonth';
+
+export interface TransactionFilters {
+  kind: TransactionKind;
+  period: TransactionPeriod;
+  /** Team member id, `owner`, or null for everyone. */
+  staff: string | null;
+  search: string;
+}
+
+/** Totals of the filtered active rows, sent with page 1 (absent for cancelled rows and older APIs). */
+export interface TransactionsSummary {
+  stampsGiven: number;
+  rewardsRedeemed: number;
+  revenue: number;
+}
+
 export interface TransactionsPage {
   transactions: Transaction[];
+  pagination?: { page: number; limit: number; total: number; totalPages: number };
+  summary?: TransactionsSummary;
 }
 
 interface ReferredMerchant {
@@ -272,7 +299,18 @@ export interface ClientListItem {
   memberSince: string;
 }
 
-export type ClientListView = 'all' | 'reward' | 'loyal' | 'inactive';
+export type ClientListView = 'all' | 'reward' | 'almost' | 'new' | 'inactive';
+/** Explicit order of the Clients list (null in the screen = the view's own order). */
+export type ClientListSort = 'recent' | 'lastVisit' | 'stamps' | 'name';
+
+/** Size of each chip of the Clients tab. */
+export interface ClientSegments {
+  all: number;
+  reward: number;
+  almost: number;
+  new: number;
+  inactive: number;
+}
 
 export interface ClientsPage {
   clients: ClientListItem[];
@@ -332,4 +370,8 @@ export interface RecordTransactionPayload {
   idempotencyKey?: string;
   /** Ticket returned by QR verification / phone search; required to enroll a non-member. */
   scanTicket?: string;
+  /** The till was opened from this booking: the stamps are tied to it (EARN_STAMPS / PURCHASE only). */
+  bookingId?: string;
+  /** With bookingId: also close the booking. */
+  completeBooking?: boolean;
 }

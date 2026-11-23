@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Alert,
@@ -14,7 +12,9 @@ import {
   Keyboard,
   ToastAndroid,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Text, TextInput } from '@/components/AppText';
+import { useLocalSearchParams } from 'expo-router';
+import { useGoBack } from '@/hooks/useGoBack';
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
 import { randomUUID } from '@/utils/crypto';
@@ -49,7 +49,6 @@ type QuickAddResult = {
 
 export default function QuickAddScreen() {
   useRequireAuth();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const { t } = useLanguage();
@@ -252,10 +251,7 @@ export default function QuickAddScreen() {
     }
   }, [result, t]);
 
-  const handleDone = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/(tabs)');
-  }, [router]);
+  const handleDone = useGoBack();
 
   const country = COUNTRIES[countryIndex];
   const labelStyle = [styles.label, { color: theme.text, textAlign: dir.textAlign }];

@@ -1,21 +1,12 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Keyboard, TextInput } from 'react-native';
-import { haptic } from '@/utils/haptics';
+import { useEffect, useMemo } from 'react';
 import { useStampsOverview, useNotifications, useLuckyWheelAvailableDraws } from '@/hooks/useQueryHooks';
 import { prefetchImages } from '@/utils/imageCache';
-import { FOCUS_DELAY_MS } from '@/constants';
+import type { LoyaltyCard, LuckyWheelTicket } from '@/types';
 
-export function useHomeData(client: { prenom?: string | null } | null) {
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const searchInputRef = useRef<TextInput>(null);
+const NO_CARDS: LoyaltyCard[] = [];
+const NO_TICKETS: LuckyWheelTicket[] = [];
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 150);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
+export function useHomeData(enabled: boolean) {
   // ── React Query ──
   const {
     data: stampsData,
@@ -23,47 +14,24 @@ export function useHomeData(client: { prenom?: string | null } | null) {
     isError: loadError,
     refetch,
     isRefetching,
-  } = useStampsOverview(!!client);
+  } = useStampsOverview(enabled);
 
-  const { data: luckyWheelTickets = [] } = useLuckyWheelAvailableDraws(!!client);
-  const { data: notifData } = useNotifications(!!client);
+  const { data: luckyWheelTickets = NO_TICKETS, refetch: refetchWheelTickets } = useLuckyWheelAvailableDraws(enabled);
+  const { data: notifData } = useNotifications(enabled);
+
+  const rawCards = stampsData?.cards ?? NO_CARDS;
 
   // Prefetch merchant logos
   useEffect(() => {
-    if (stampsData?.cards?.length) {
-      prefetchImages(stampsData.cards.map((c) => c.merchant?.logoUrl));
-    }
-  }, [stampsData]);
+    if (rawCards.length) prefetchImages(rawCards.map((c) => c.merchant?.logoUrl));
+  }, [rawCards]);
 
-  const toggleSearch = useCallback(() => {
-    haptic();
-    setShowSearch((v) => {
-      if (!v) setTimeout(() => searchInputRef.current?.focus(), FOCUS_DELAY_MS);
-      else { setSearchQuery(''); Keyboard.dismiss(); }
-      return !v;
-    });
-  }, []);
-
-  // ── Search, most recently used first ──
-  const cards = useMemo(() => {
-    const rawCards = stampsData?.cards ?? [];
-    const q = debouncedSearch.toLowerCase();
-    const filtered = q
-      ? rawCards.filter((c) =>
-        c.merchant?.nomBoutique?.toLowerCase().includes(q) ||
-        c.merchant?.categorie?.toLowerCase().includes(q))
-      : [...rawCards];
-    return filtered.sort((a, b) =>
-      new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
-  }, [stampsData?.cards, debouncedSearch]);
+  // ── Most recently used first ──
+  const cards = useMemo(() => [...rawCards].sort((a, b) =>
+    new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()),
+  [rawCards]);
 
   return {
-    showSearch,
-    searchQuery,
-    debouncedSearch,
-    searchInputRef,
-
-    stampsData,
     isLoading,
     loadError,
     isRefetching,
@@ -71,8 +39,7 @@ export function useHomeData(client: { prenom?: string | null } | null) {
     notifData,
     cards,
 
-    setSearchQuery,
     refetch,
-    toggleSearch,
+    refetchWheelTickets,
   };
 }

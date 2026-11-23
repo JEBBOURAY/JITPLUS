@@ -1,7 +1,7 @@
 import { extname } from 'path';
 import { randomBytes } from 'crypto';
 
-const ALLOWED_UPLOAD_FOLDERS = new Set(['logos', 'products', 'stores', 'covers', 'gallery', 'rewards', 'card-backgrounds', 'deals']);
+const ALLOWED_UPLOAD_FOLDERS = new Set(['logos', 'products', 'stores', 'covers', 'gallery', 'rewards', 'card-backgrounds', 'deals', 'collections']);
 
 const OWNER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const FILE_NAME_PATTERN = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9]+)?$/;

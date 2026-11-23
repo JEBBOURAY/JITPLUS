@@ -7,6 +7,7 @@ export enum UploadType {
   REWARD = 'reward',
   CARD_BACKGROUND = 'cardBackground',
   DEAL = 'deal',
+  COLLECTION = 'collection',
 }
 
 export class UploadQueryDto {

@@ -1,7 +1,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { DealScope, DealStatus, DealType } from '@prisma/client';
-import { DEAL_REPORT_REASONS, DEAL_SCOPES, DEAL_TYPES, DEAL_FEED_TABS, DEAL_EVENT_TYPES } from './dto';
+import {
+  DEAL_EVENT_TYPES, DEAL_FEED_SORTS, DEAL_FEED_TABS, DEAL_PRICE_UNITS, DEAL_REPORT_REASONS, DEAL_SCOPES, DEAL_TYPES,
+} from './dto';
 import { DEAL_ENDING_SOON_HOURS, DEAL_LIMITS } from './deal-limits';
 import { MOROCCO_CITIES } from './morocco-cities';
 
@@ -33,6 +35,8 @@ describe('deal enums and constants stay in sync (Prisma ↔ shared ↔ backend)'
     expect([...DEAL_REPORT_REASONS]).toEqual(sharedArray('DEAL_REPORT_REASONS'));
     expect([...DEAL_FEED_TABS]).toEqual(sharedArray('DEAL_FEED_TABS'));
     expect([...DEAL_EVENT_TYPES]).toEqual(sharedArray('DEAL_EVENT_TYPES'));
+    expect([...DEAL_FEED_SORTS]).toEqual(sharedArray('DEAL_FEED_SORTS'));
+    expect([...DEAL_PRICE_UNITS]).toEqual(sharedArray('DEAL_PRICE_UNITS'));
   });
 
   it('limits match the shared constants', () => {

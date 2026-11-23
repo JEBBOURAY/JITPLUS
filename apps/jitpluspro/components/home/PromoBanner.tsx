@@ -1,9 +1,11 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, I18nManager } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { Text } from '@/components/AppText';
 import Svg, { G, Rect } from 'react-native-svg';
 import { Check } from 'lucide-react-native';
 import { hapticLight } from '@/utils/haptics';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useDir } from '@/hooks/useDir';
 import { PROMO_OUTLINE, PROMO_SURFACE, PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
 import { PROMO_ICON_GRID, type PromoIcon } from '@/components/home/PromoIcons';
 
@@ -55,7 +57,7 @@ function PromoBanner({
   // The tone's text-safe variant for the tag and the drawing, its fill under the white action label.
   const ink = PROMO_TONES[tone][scheme];
   const fill = PROMO_TONES[tone].fill;
-  const isRTL = I18nManager.isRTL;
+  const { isRTL } = useDir();
   const iconX = isRTL ? ICON_EDGE : width - ICON_EDGE;
   const iconTransform = `translate(${iconX - ICON_SIZE / 2} 0) scale(${ICON_SCALE})`;
 

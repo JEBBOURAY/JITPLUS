@@ -1,10 +1,34 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Text } from '@/components/AppText';
 import { ChevronRight, Plus } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
+import PremiumLockCard from '@/components/PremiumLockCard';
+import { Button } from '@/components/scratch/ScratchUI';
+import type { GameNamespace } from './GameScreen';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
+
+/** Opens the plan page. Never on iOS: no call to action for the plan there (App Store 3.1.1 / 3.1.3). */
+export function DiscoverPremiumButton() {
+  const { t } = useLanguage();
+  const router = useRouter();
+  if (Platform.OS === 'ios') return null;
+  return <Button label={t('messages.discoverPremium')} onPress={() => router.push('/plan')} />;
+}
+
+/** Top of a game list for a merchant without the plan: what the plan unlocks, then the plan button. */
+export function GamePremiumLock({ ns }: { ns: GameNamespace }) {
+  return (
+    <>
+      <PremiumLockCard titleKey={`${ns}.list.premiumTitle`} descriptionKey={`${ns}.list.premiumDesc`} />
+      <DiscoverPremiumButton />
+    </>
+  );
+}
 
 /** "+" button in the header of a game list. */
 export function HeaderAddButton({ label, onPress }: { label: string; onPress: () => void }) {

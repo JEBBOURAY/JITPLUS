@@ -27,7 +27,7 @@ function DealRow({ deal, onPress, hideMerchant }: Props) {
   const fonts = useAppFonts();
   const { t, locale } = useLanguage();
   const badge = dealBadgeLabel(deal, t);
-  const { price, original } = dealPrices(deal, moneyFormatter(deal.merchant.currency, locale));
+  const { price, original, struck } = dealPrices(deal, moneyFormatter(deal.merchant.currency, locale), t);
   const time = dealTimeLeftLabel(deal.endsAt, t);
   const timeColor = time.urgent ? theme.warning : theme.textMuted;
   const online = deal.scope === 'ONLINE';
@@ -67,10 +67,10 @@ function DealRow({ deal, onPress, hideMerchant }: Props) {
             ) : null}
             {original ? (
               <Text
-                style={[styles.original, { color: theme.textMuted, fontFamily: fonts.regular }, deal.type === 'PRICE_DROP' && styles.struck]}
+                style={[styles.original, { color: theme.textMuted, fontFamily: fonts.regular }, struck && styles.struck]}
                 maxFontSizeMultiplier={1.3}
               >
-                {deal.type === 'FREE_ITEM' ? t('deals.valueOf', { value: original }) : original}
+                {original}
               </Text>
             ) : null}
             {badge ? (

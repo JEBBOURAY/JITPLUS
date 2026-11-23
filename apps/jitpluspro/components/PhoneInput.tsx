@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, forwardRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, StyleProp, ViewStyle, TextInputProps } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, StyleProp, ViewStyle, TextInputProps } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { ChevronDown, Phone } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

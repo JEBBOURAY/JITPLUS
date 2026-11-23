@@ -1,25 +1,25 @@
 import { useState, useEffect, useCallback, useReducer, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { HelpCircle, ChevronRight } from 'lucide-react-native';
 import { useShallow } from 'zustand/react/shallow';
+import { pluralKey } from '@jitplus/shared';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import api from '@/services/api';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRewards } from '@/hooks/useQueryHooks';
+import { queryKeys, useRewards } from '@/hooks/useQueryHooks';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { getErrorMessage } from '@/utils/error';
@@ -39,22 +39,33 @@ import { useCurrency } from '@/hooks/useCurrency';
 import CurrencyPicker from '@/components/settings/CurrencyPicker';
 import { OwnerOnlyNotice, Toast, useDiscardGuard, useToast } from '@/components/stores/StoreUi';
 import { hapticSuccess } from '@/utils/haptics';
+import { getIntlLocale } from '@/config/currency';
 import { confirmAsync } from '@/utils/confirm';
 import { MAX_STAMPS_PER_TX } from '@/constants/app';
 import {
   cheapestReward,
   computeStampsForAmount,
+  computeWelcomeBonusMax,
   DEFAULT_AMOUNT_PER_STAMP,
   DEFAULT_STAMP_VALIDITY_DAYS,
   STAMP_VALIDITY_PRESETS,
 } from '@/utils/stamps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Merchant, Reward } from '@/types';
+import type { Merchant, Reward, WelcomeBonusTrigger } from '@/types';
 
 const EMPTY_REWARDS: Reward[] = [];
 
 const SIM_AMOUNT = 100;
 const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+const WELCOME_END_PRESETS = [30, 90] as const;
+
+/** End of the day, `days` from now, as sent to the server. */
+function endOfDayIn(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
 
 interface RulesState {
   stampEarningMode: 'PER_VISIT' | 'PER_AMOUNT';
@@ -63,11 +74,27 @@ interface RulesState {
   validityDays: number;
   hasAccumulationLimit: boolean;
   accumulationLimit: string;
+  welcomeEnabled: boolean;
+  welcomeStamps: number;
+  welcomeTrigger: WelcomeBonusTrigger;
+  welcomeEndsAt: string | null;
+  /** End-date chip picked in this draft; a saved date highlights none of them. */
+  welcomeEndPreset: number | null;
   saving: boolean;
 }
 
 /** Saved loyalty rules the draft is reset from. */
-type SavedRules = Pick<Merchant, 'stampEarningMode' | 'amountPerStamp' | 'stampValidityDays' | 'accumulationLimit'>;
+type SavedRules = Pick<
+  Merchant,
+  | 'stampEarningMode'
+  | 'amountPerStamp'
+  | 'stampValidityDays'
+  | 'accumulationLimit'
+  | 'welcomeBonusEnabled'
+  | 'welcomeBonusStamps'
+  | 'welcomeBonusTrigger'
+  | 'welcomeBonusEndsAt'
+>;
 
 const initialRulesState: RulesState = {
   stampEarningMode: 'PER_VISIT',
@@ -76,6 +103,11 @@ const initialRulesState: RulesState = {
   validityDays: DEFAULT_STAMP_VALIDITY_DAYS,
   hasAccumulationLimit: false,
   accumulationLimit: '',
+  welcomeEnabled: false,
+  welcomeStamps: 1,
+  welcomeTrigger: 'CARD_OR_SCAN',
+  welcomeEndsAt: null,
+  welcomeEndPreset: null,
   saving: false,
 };
 
@@ -97,6 +129,11 @@ function rulesReducer(state: RulesState, action: RulesAction): RulesState {
         validityDays: m.stampValidityDays ?? DEFAULT_STAMP_VALIDITY_DAYS,
         hasAccumulationLimit: m.accumulationLimit != null,
         accumulationLimit: m.accumulationLimit?.toString() || '',
+        welcomeEnabled: !!m.welcomeBonusEnabled,
+        welcomeStamps: m.welcomeBonusStamps ?? 1,
+        welcomeTrigger: m.welcomeBonusTrigger ?? 'CARD_OR_SCAN',
+        welcomeEndsAt: m.welcomeBonusEndsAt ?? null,
+        welcomeEndPreset: null,
       };
     }
   }
@@ -137,8 +174,9 @@ function SwitchRow({ theme, label, caption, value, locked, onPress }: SwitchRowP
 }
 
 /**
- * Loyalty programme rules: how a stamp is earned, the currency, and the two
- * optional rules (expiry, accumulation limit). Gifts have their own screen.
+ * Loyalty programme rules: how a stamp is earned, the currency, and the
+ * optional rules (expiry, accumulation limit, welcome gift). Gifts have their
+ * own screen.
  */
 export default function LoyaltyProgramScreen() {
   const shouldWait = useRequireAuth();
@@ -147,7 +185,7 @@ export default function LoyaltyProgramScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const { row, textAlign, flip } = useDir();
   const qc = useQueryClient();
 
@@ -156,7 +194,10 @@ export default function LoyaltyProgramScreen() {
     const m = useAuthStore.getState().merchant;
     return m ? rulesReducer(initialRulesState, { type: 'LOAD_SAVED', saved: m }) : initialRulesState;
   });
-  const { stampEarningMode, amountPerStamp, hasValidity, validityDays, hasAccumulationLimit, accumulationLimit, saving } = state;
+  const {
+    stampEarningMode, amountPerStamp, hasValidity, validityDays, hasAccumulationLimit, accumulationLimit, saving,
+    welcomeEnabled, welcomeStamps, welcomeTrigger, welcomeEndsAt, welcomeEndPreset,
+  } = state;
   const set = useCallback((payload: Partial<RulesState>) => dispatch({ type: 'SET', payload }), []);
 
   // Currency is open to every plan and saved as soon as it is picked.
@@ -195,6 +236,10 @@ export default function LoyaltyProgramScreen() {
     amountPerStamp: s.merchant.amountPerStamp,
     stampValidityDays: s.merchant.stampValidityDays,
     accumulationLimit: s.merchant.accumulationLimit,
+    welcomeBonusEnabled: s.merchant.welcomeBonusEnabled,
+    welcomeBonusStamps: s.merchant.welcomeBonusStamps,
+    welcomeBonusTrigger: s.merchant.welcomeBonusTrigger,
+    welcomeBonusEndsAt: s.merchant.welcomeBonusEndsAt,
   } : null)));
 
   useEffect(() => {
@@ -207,13 +252,26 @@ export default function LoyaltyProgramScreen() {
   const draftValidity = hasValidity ? validityDays : null;
   const validityChanged = draftValidity !== (saved?.stampValidityDays ?? null);
 
+  const welcomeGoal = mainReward?.cout ?? merchant?.stampsForReward ?? 10;
+  const welcomeMax = computeWelcomeBonusMax(welcomeGoal);
+  const welcomeDraftStamps = Math.max(Math.min(welcomeStamps, welcomeMax), 1);
+  const welcomeChanged = !!saved && (
+    welcomeEnabled !== !!saved.welcomeBonusEnabled ||
+    (welcomeEnabled && (
+      welcomeDraftStamps !== (saved.welcomeBonusStamps ?? 1) ||
+      welcomeTrigger !== (saved.welcomeBonusTrigger ?? 'CARD_OR_SCAN') ||
+      welcomeEndsAt !== (saved.welcomeBonusEndsAt ?? null)
+    ))
+  );
+
   // The rules are Pro only (the server refuses them on the free plan).
   const hasChanges = isPremium && !!saved && (
     stampEarningMode !== (saved.stampEarningMode || 'PER_VISIT') ||
     (isPerAmount && parsedAmountPerStamp !== Number(saved.amountPerStamp ?? DEFAULT_AMOUNT_PER_STAMP)) ||
     validityChanged ||
     hasAccumulationLimit !== (saved.accumulationLimit != null) ||
-    (hasAccumulationLimit && (limitVal || null) !== (saved.accumulationLimit ?? null))
+    (hasAccumulationLimit && (limitVal || null) !== (saved.accumulationLimit ?? null)) ||
+    welcomeChanged
   );
   useDiscardGuard(hasChanges, saving);
 
@@ -281,13 +339,21 @@ export default function LoyaltyProgramScreen() {
       if (isPerAmount) payload.amountPerStamp = parsedAmountPerStamp;
       if (validityChanged) payload.stampValidityDays = draftValidity;
       if (forceCap) payload.forceCapClients = true;
+      if (welcomeChanged) {
+        payload.welcomeBonusEnabled = welcomeEnabled;
+        if (welcomeEnabled) {
+          payload.welcomeBonusStamps = welcomeDraftStamps;
+          payload.welcomeBonusTrigger = welcomeTrigger;
+          payload.welcomeBonusEndsAt = welcomeEndsAt;
+        }
+      }
       const res = await api.patch('/merchant/loyalty-settings', payload);
       updateMerchant(res.data);
 
       // A cap changes client balances shown elsewhere (home tab, client detail, transaction-amount).
-      qc.invalidateQueries({ queryKey: ['clients'] });
-      qc.invalidateQueries({ queryKey: ['client-status'] });
-      qc.invalidateQueries({ queryKey: ['client-detail'] });
+      qc.invalidateQueries({ queryKey: queryKeys.clientsRoot });
+      qc.invalidateQueries({ queryKey: queryKeys.clientStatusRoot });
+      qc.invalidateQueries({ queryKey: queryKeys.clientDetailRoot });
       hapticSuccess();
       showToast(t('settingsPage.saveSuccess'));
     } catch (err: unknown) {
@@ -298,6 +364,7 @@ export default function LoyaltyProgramScreen() {
   }, [
     isPerAmount, parsedAmountPerStamp, hasAccumulationLimit, limitVal, rewards, saved, stampEarningMode,
     validityChanged, draftValidity, updateMerchant, qc, showToast, set, t,
+    welcomeChanged, welcomeEnabled, welcomeDraftStamps, welcomeTrigger, welcomeEndsAt,
   ]);
 
   if (shouldWait) return null;
@@ -332,6 +399,42 @@ export default function LoyaltyProgramScreen() {
   const validityPresets: number[] = STAMP_VALIDITY_PRESETS.includes(validityDays as (typeof STAMP_VALIDITY_PRESETS)[number])
     ? [...STAMP_VALIDITY_PRESETS]
     : [...STAMP_VALIDITY_PRESETS, validityDays].sort((a, b) => a - b);
+
+  const welcomeUnavailable = welcomeMax === 0;
+  const welcomeActive = welcomeEnabled && !locked && !welcomeUnavailable;
+  // A past end date leaves the switch on while no client gets the gift any more.
+  const welcomeEndDate = welcomeEndsAt ? new Date(welcomeEndsAt).toLocaleDateString(getIntlLocale(locale)) : null;
+  const welcomeEnded = !!welcomeEndsAt && new Date(welcomeEndsAt).getTime() < Date.now();
+  const welcomeCaption = welcomeUnavailable && !locked
+    ? t('settingsPage.welcomeUnavailable')
+    : welcomeActive && welcomeEnded
+      ? t('settingsPage.welcomeEndedOn', { date: welcomeEndDate })
+      : welcomeActive
+        ? t(pluralKey('settingsPage.welcomeOn', welcomeDraftStamps), { count: welcomeDraftStamps })
+        : t('settingsPage.welcomeOff');
+  const toggleWelcome = () => {
+    if (!welcomeEnabled && welcomeUnavailable) {
+      Alert.alert(t('settingsPage.welcomeToggle'), t('settingsPage.welcomeUnavailable'));
+      return;
+    }
+    // First activation starts at the recommended maximum.
+    set(welcomeEnabled || saved?.welcomeBonusEnabled
+      ? { welcomeEnabled: !welcomeEnabled }
+      : { welcomeEnabled: true, welcomeStamps: welcomeMax });
+  };
+  const renderChip = (key: string, label: string, active: boolean, onPress: () => void, a11yLabel = label) => (
+    <TouchableOpacity
+      key={key}
+      style={[styles.chip, { backgroundColor: active ? theme.primary : fill }]}
+      onPress={onPress}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={a11yLabel}
+    >
+      <Text style={[styles.chipText, { color: active ? '#fff' : theme.textSecondary }]} maxFontSizeMultiplier={1.2}>{label}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -542,6 +645,63 @@ export default function LoyaltyProgramScreen() {
                 {t('common.stamps')}
               </Text>
             </View>
+          )}
+
+          <SwitchRow
+            theme={theme}
+            label={t('settingsPage.welcomeToggle')}
+            caption={welcomeCaption}
+            value={welcomeEnabled && !welcomeUnavailable}
+            locked={locked}
+            onPress={guard(toggleWelcome)}
+          />
+          {welcomeActive && (
+            <>
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
+                {t('settingsPage.welcomeStamps')}
+              </Text>
+              <View style={[styles.chipRow, { flexDirection: row }]}>
+                {Array.from({ length: welcomeMax }, (_, i) => i + 1).map((n) =>
+                  renderChip(`stamps-${n}`, `+${n}`, n === welcomeDraftStamps, () => set({ welcomeStamps: n }), t(pluralKey('settingsPage.welcomeStampsA11y', n), { count: n })),
+                )}
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
+                {t('settingsPage.welcomeTrigger')}
+              </Text>
+              <View style={[styles.chipRow, { flexDirection: row }]}>
+                {renderChip('card', t('settingsPage.welcomeTriggerCard'), welcomeTrigger === 'CARD_OR_SCAN', () => set({ welcomeTrigger: 'CARD_OR_SCAN' }))}
+                {renderChip('scan', t('settingsPage.welcomeTriggerScan'), welcomeTrigger === 'FIRST_SCAN', () => set({ welcomeTrigger: 'FIRST_SCAN' }))}
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
+                {t('settingsPage.welcomeEnd')}
+              </Text>
+              <View style={[styles.chipRow, { flexDirection: row }]}>
+                {renderChip('end-none', t('settingsPage.welcomeEndNone'), !welcomeEndsAt, () => set({ welcomeEndsAt: null, welcomeEndPreset: null }))}
+                {WELCOME_END_PRESETS.map((days) =>
+                  renderChip(`end-${days}`, t('settingsPage.validityDays', { days }), welcomeEndPreset === days, () => set({ welcomeEndsAt: endOfDayIn(days), welcomeEndPreset: days }), t('settingsPage.validityPresetA11y', { days })),
+                )}
+              </View>
+              {!!welcomeEndDate && (
+                <Text style={[styles.caption, { color: welcomeEnded ? theme.danger : theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
+                  {t(welcomeEnded ? 'settingsPage.welcomeEndedOn' : 'settingsPage.welcomeEndsOn', { date: welcomeEndDate })}
+                </Text>
+              )}
+
+              <Text style={[styles.caption, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
+                {isPerAmount
+                  ? t(pluralKey('settingsPage.welcomePreviewAmount', welcomeDraftStamps), { count: welcomeDraftStamps })
+                  : t('settingsPage.welcomePreviewVisit', {
+                      balance: welcomeDraftStamps + 1,
+                      goal: welcomeGoal,
+                      visits: welcomeGoal - welcomeDraftStamps,
+                    })}
+              </Text>
+              <Text style={[styles.caption, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
+                {t(welcomeTrigger === 'CARD_OR_SCAN' ? 'settingsPage.welcomeHintCard' : 'settingsPage.welcomeHintScan')}
+              </Text>
+            </>
           )}
         </View>
 

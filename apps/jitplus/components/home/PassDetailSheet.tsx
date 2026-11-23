@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CalendarClock, Check, QrCode, Store, Ticket, Trophy } from 'lucide-react-native';
+import { CalendarClock, Check, Gift, QrCode, Store, Ticket, Trophy } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import MerchantLogo from '@/components/MerchantLogo';
@@ -11,7 +11,8 @@ import { useAppFonts } from '@/utils/fonts';
 import { hp, ms, wp, fontSize as FS, radius } from '@/utils/responsive';
 
 export interface PassDetail {
-  kind: 'coupon' | 'prize';
+  /** coupon = scratch card or offered by the shop; collection = gift of a completed collection. */
+  kind: 'coupon' | 'collection' | 'prize';
   tag: string;
   headline: string;
   detail?: string | null;
@@ -32,6 +33,12 @@ interface Props {
 
 const STEP_ICONS = [Store, QrCode];
 
+const KIND_STYLE = {
+  coupon: { accent: palette.violet, darkText: palette.violetLight, Icon: Ticket },
+  collection: { accent: palette.goldDark, darkText: palette.goldLight, Icon: Gift },
+  prize: { accent: palette.emerald, darkText: palette.emerald, Icon: Trophy },
+} as const;
+
 /** Explains a coupon or a won gift: what it is, how to use it, until when. */
 export default React.memo(function PassDetailSheet({ pass, onClose }: Props) {
   const theme = useTheme();
@@ -44,10 +51,10 @@ export default React.memo(function PassDetailSheet({ pass, onClose }: Props) {
   const [shown, setShown] = useState<PassDetail | null>(pass);
   useEffect(() => { if (pass) setShown(pass); }, [pass]);
 
-  const isPrize = shown?.kind === 'prize';
-  const accent = isPrize ? palette.emerald : palette.violet;
-  const accentText = isPrize ? palette.emerald : (isDark ? palette.violetLight : palette.violet);
-  const BadgeIcon = isPrize ? Trophy : Ticket;
+  const kindStyle = KIND_STYLE[shown?.kind ?? 'coupon'];
+  const accent = kindStyle.accent;
+  const accentText = isDark ? kindStyle.darkText : kindStyle.accent;
+  const BadgeIcon = kindStyle.Icon;
 
   // Long prizes (description + conditions + large text) scroll; the header stays
   // draggable and the button stays on screen.
@@ -95,7 +102,7 @@ export default React.memo(function PassDetailSheet({ pass, onClose }: Props) {
             return (
               <View key={i} style={styles.row}>
                 <View style={[styles.stepIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#fff' }]}>
-                  <Icon size={ms(15)} color={isDark ? palette.violetLight : palette.violet} strokeWidth={2} />
+                  <Icon size={ms(15)} color={theme.primary} strokeWidth={2} />
                 </View>
                 <Text style={[styles.rowText, { color: theme.text, fontFamily: fonts.medium }]}>{step}</Text>
               </View>

@@ -64,6 +64,9 @@ describe('Accueil promo sheets', () => {
     );
     expect(getByText('home.gamesGuideWheelStepsLabel')).toBeTruthy();
     expect(getByText('home.gamesGuideScratchStepsLabel')).toBeTruthy();
+    expect(getByText('home.gamesGuideCollectionStepsLabel')).toBeTruthy();
+    expect(getByText('home.gamesGuideIdeasLabel')).toBeTruthy();
+    expect(getByLabelText('home.gamesGuideChoice6 : home.gamesGuidePickCollection')).toBeTruthy();
     expect(getByLabelText('home.gamesGuideChoice3 : home.gamesGuidePickScratch')).toBeTruthy();
     fireEvent.press(getByLabelText('home.gamesGuideCta'));
     expect(onStart).toHaveBeenCalledTimes(1);

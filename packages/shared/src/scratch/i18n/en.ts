@@ -56,10 +56,6 @@ export const scratchEn = {
     eid: 'Eid',
     charcoal: 'Charcoal',
   },
-  coupon: {
-    code: 'Code',
-    showAtCheckout: 'Show this QR code or this code at the till',
-  },
   rules: {
     title: 'Rules',
     body: 'The scratch card is offered free of charge by the shop, with no purchase required. Every card wins a coupon, usable once at this shop under the stated conditions. The shop can end the campaign at any time: unused cards and coupons are then cancelled. Apple Inc. and Google LLC are neither organisers nor sponsors of this promotion.',

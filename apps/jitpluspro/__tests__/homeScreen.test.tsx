@@ -1,4 +1,5 @@
 import { render, fireEvent } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 import HomeScreen from '@/app/(tabs)/index';
 import { useGuideSheetStore } from '@/components/home/guideSheetStore';
 
@@ -35,9 +36,17 @@ jest.mock('@/hooks/useQueryHooks', () => ({
   useAdminNotifUnreadCount: () => ({ data: { count: mockUnread } }),
   useHomeStats: () => ({ data: undefined, isLoading: false, isRefetching: false, refetch: jest.fn() }),
   useRewards: () => ({ data: mockRewards }),
+  usePendingBookingsCount: () => 0,
 }));
 jest.mock('@/hooks/useExitOnBack', () => ({ useExitOnBack: jest.fn() }));
 jest.mock('@/hooks/usePersistedFlag', () => ({ usePersistedFlag: () => ({ value: true, setValue: jest.fn() }) }));
+// Saved tool usage of the merchant; the real ranking runs on it.
+let mockToolUsage: Record<string, { score: number; at: number }> = {};
+const mockRecordToolUse = jest.fn();
+jest.mock('@/hooks/useToolUsage', () => ({
+  ...jest.requireActual('@/hooks/useToolUsage'),
+  useToolUsage: () => ({ usage: mockToolUsage, record: mockRecordToolUse }),
+}));
 
 // Covered by their own tests; only the screen's wiring matters here.
 jest.mock('@/components/home/HomeHero', () => () => null);
@@ -55,14 +64,15 @@ describe('Accueil screen', () => {
     mockPlan = { isPremium: true, isFreePlan: false, isTrial: false, daysRemaining: 0 };
     mockRewards = [{ id: 'r1' }];
     mockUnread = 0;
+    mockToolUsage = {};
     useGuideSheetStore.setState({ visible: false, progress: null });
   });
 
-  it('greets the merchant and lists the ten tools', () => {
+  it('greets the merchant and lists the eleven tools', () => {
     const { getByText, getAllByRole } = render(<HomeScreen />);
     expect(getByText('Café Atlas')).toBeTruthy();
     const tools = getAllByRole('button').filter((b) => String(b.props.accessibilityLabel).includes('Hint'));
-    expect(tools).toHaveLength(10);
+    expect(tools).toHaveLength(11);
   });
 
   it('opens a tool, the account and the notifications', () => {
@@ -110,19 +120,65 @@ describe('Accueil screen', () => {
     expect(member.getByRole('button', { name: 'home.qaLoyalty, home.toolLoyaltyHint' })).toBeTruthy();
   });
 
+  it('keeps the start guide first until it is finished, then last', () => {
+    const toolKeys = (screen: ReturnType<typeof render>) =>
+      screen.getAllByRole('button')
+        .map((b) => String(b.props.accessibilityLabel))
+        .filter((label) => label.includes('Hint') || label.startsWith('home.setupLabel'));
+
+    useGuideSheetStore.setState({ progress: { done: 2, total: 7 } });
+    const pending = render(<HomeScreen />);
+    expect(toolKeys(pending)[0]).toMatch(/^home\.setupLabel/);
+    pending.unmount();
+
+    useGuideSheetStore.setState({ progress: { done: 7, total: 7 } });
+    const done = render(<HomeScreen />);
+    const labels = toolKeys(done);
+    expect(labels[labels.length - 1]).toMatch(/^home\.setupLabel/);
+  });
+
+  it('orders the other tools by how often the merchant opens them', () => {
+    const now = Date.now();
+    mockToolUsage = { games: { score: 5, at: now }, team: { score: 2, at: now } };
+    useGuideSheetStore.setState({ progress: { done: 2, total: 7 } });
+    const { getAllByRole, getByRole } = render(<HomeScreen />);
+    const labels = getAllByRole('button')
+      .map((b) => String(b.props.accessibilityLabel))
+      .filter((label) => label.includes('Hint') || label.startsWith('home.setupLabel'));
+    expect(labels[0]).toMatch(/^home\.setupLabel/);
+    expect(labels[1]).toBe('home.qaGames, home.toolGamesHint');
+    expect(labels[2]).toBe('home.qaTeam, home.toolTeamHint');
+
+    fireEvent.press(getByRole('button', { name: 'home.qaDeals, home.toolDealsHint' }));
+    expect(mockRecordToolUse).toHaveBeenCalledWith('deals');
+  });
+
   it('announces unread notifications on the bell', () => {
     mockUnread = 3;
     const { getByRole } = render(<HomeScreen />);
     expect(getByRole('button', { name: 'home.openNotifications' }).props.accessibilityValue).toEqual({ text: '3' });
   });
 
-  it('shows the Pro teaser on a free plan only', () => {
-    const paid = render(<HomeScreen />);
-    expect(paid.queryByText('home.proTeaserTitle')).toBeNull();
-    paid.unmount();
+  describe('Pro teaser', () => {
+    const originalOS = Platform.OS;
+    afterEach(() => { Platform.OS = originalOS; });
 
-    mockPlan = { isPremium: false, isFreePlan: true, isTrial: false, daysRemaining: 0 };
-    const free = render(<HomeScreen />);
-    expect(free.getByText('home.proTeaserTitle')).toBeTruthy();
+    it('shows on a free plan only (Android)', () => {
+      Platform.OS = 'android';
+      const paid = render(<HomeScreen />);
+      expect(paid.queryByText('home.proTeaserTitle')).toBeNull();
+      paid.unmount();
+
+      mockPlan = { isPremium: false, isFreePlan: true, isTrial: false, daysRemaining: 0 };
+      const free = render(<HomeScreen />);
+      expect(free.getByText('home.proTeaserTitle')).toBeTruthy();
+    });
+
+    it('never shows on iOS (App Store 3.1.1)', () => {
+      Platform.OS = 'ios';
+      mockPlan = { isPremium: false, isFreePlan: true, isTrial: false, daysRemaining: 0 };
+      const free = render(<HomeScreen />);
+      expect(free.queryByText('home.proTeaserTitle')).toBeNull();
+    });
   });
 });

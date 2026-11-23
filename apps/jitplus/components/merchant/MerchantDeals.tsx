@@ -11,7 +11,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
 import { isEntityId } from '@/utils/ids';
-import { wp, hp, ms } from '@/utils/responsive';
+import { wp, hp, ms, fontSize } from '@/utils/responsive';
 import FicheSection from './FicheSection';
 
 interface Props {
@@ -21,13 +21,11 @@ interface Props {
   activeDealCount?: number;
   isAuthenticated: boolean;
   onLocked: () => void;
-  /** Overview: show this many deals and a link to the deals tab. */
-  limit?: number;
-  onSeeAll?: () => void;
 }
 
+
 /** Deals of the merchant, or a sign-in teaser for guests. */
-function MerchantDeals({ deals, activeDealCount, isAuthenticated, onLocked, limit, onSeeAll }: Props) {
+function MerchantDeals({ deals, activeDealCount, isAuthenticated, onLocked }: Props) {
   const theme = useTheme();
   const fonts = useAppFonts();
   const { t } = useLanguage();
@@ -49,7 +47,7 @@ function MerchantDeals({ deals, activeDealCount, isAuthenticated, onLocked, limi
           accessibilityRole="button"
         >
           <View style={[styles.lockIcon, { backgroundColor: theme.bgInput }]}>
-            <Lock size={ms(18)} color={theme.textSecondary} strokeWidth={2} />
+            <Lock size={ms(20)} color={theme.textSecondary} strokeWidth={1.75} />
           </View>
           <View style={styles.flex}>
             <Text style={[styles.lockedTitle, { color: theme.text, fontFamily: fonts.semibold }]}>
@@ -64,16 +62,14 @@ function MerchantDeals({ deals, activeDealCount, isAuthenticated, onLocked, limi
   }
 
   if (!deals || deals.length === 0) return null;
-  const truncated = limit != null && deals.length > limit;
-  const visible = truncated ? deals.slice(0, limit) : deals;
 
   return (
     <FicheSection
       title={`${t('deals.merchant.title')} (${deals.length})`}
-      action={truncated && onSeeAll ? { label: t('merchant.seeAll'), onPress: onSeeAll } : undefined}
+      variant="plain"
     >
       <View style={styles.list}>
-        {visible.map((deal) => <DealRow key={deal.id} deal={deal} onPress={openDeal} hideMerchant />)}
+        {deals.map((deal) => <DealRow key={deal.id} deal={deal} onPress={openDeal} hideMerchant />)}
       </View>
     </FicheSection>
   );
@@ -83,10 +79,10 @@ export default memo(MerchantDeals);
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  list: { gap: hp(10) },
+  list: { gap: hp(12) },
   locked: { flexDirection: 'row', alignItems: 'center', gap: wp(12) },
-  lockIcon: { width: ms(40), height: ms(40), borderRadius: ms(20), alignItems: 'center', justifyContent: 'center' },
-  lockedTitle: { fontSize: ms(15) },
-  lockedBody: { fontSize: ms(13), lineHeight: ms(18), marginTop: hp(2) },
-  unlock: { fontSize: ms(14) },
+  lockIcon: { width: ms(44), height: ms(44), borderRadius: ms(22), alignItems: 'center', justifyContent: 'center' },
+  lockedTitle: { fontSize: fontSize.md },
+  lockedBody: { fontSize: fontSize.sm, lineHeight: ms(18), marginTop: hp(2) },
+  unlock: { fontSize: fontSize.sm },
 });

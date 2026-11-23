@@ -96,6 +96,12 @@ export const discoverStyles = StyleSheet.create({
   },
   catBadge: { alignSelf: 'flex-start', paddingHorizontal: wp(8), paddingVertical: hp(2), borderRadius: radius.sm },
   catBadgeText: { fontSize: ms(11), fontWeight: '600' },
+  welcomeBadge: { flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(6), alignSelf: 'flex-start', paddingHorizontal: wp(8), paddingVertical: hp(3), borderRadius: radius.sm, backgroundColor: palette.violet + '12' },
+  welcomeBadgeText: { flexShrink: 1, fontSize: ms(11), fontWeight: '600', color: palette.violet },
+  rewardRow: { flexDirection: 'row', alignItems: 'center', gap: wp(5), marginTop: hp(5) },
+  rewardText: { flexShrink: 1, fontSize: ms(12), fontWeight: '600' },
+  calloutCta: { flexDirection: 'row', alignItems: 'center', gap: wp(2), marginTop: hp(8), alignSelf: 'flex-start' },
+  calloutCtaText: { fontSize: ms(12), fontWeight: '600', color: palette.violet },
 
   // Empty
   emptyOverlay: {

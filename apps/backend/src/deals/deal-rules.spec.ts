@@ -10,18 +10,30 @@ import {
 } from './deal-rules';
 
 describe('normalizeOffer', () => {
-  it('keeps only the percentage of a PERCENT_OFF deal', () => {
-    expect(normalizeOffer({ type: 'PERCENT_OFF', percentOff: 30, originalPrice: 100, buyQty: 2 })).toEqual({
+  it('keeps only the percentage of a PERCENT_OFF deal without a price', () => {
+    expect(normalizeOffer({ type: 'PERCENT_OFF', percentOff: 30, buyQty: 2, priceFrom: true, priceUnit: 'KG' })).toEqual({
       type: 'PERCENT_OFF',
       originalPrice: null,
       dealPrice: null,
       percentOff: 30,
       buyQty: null,
       freeQty: null,
+      priceFrom: false,
+      priceUnit: null,
     });
   });
 
-  it.each([0, 100, 12.5, null])('rejects a percentage of %p', (percentOff) => {
+  it('computes the promo price of a PERCENT_OFF deal that gives its price', () => {
+    expect(normalizeOffer({ type: 'PERCENT_OFF', percentOff: 30, originalPrice: 99.9, priceFrom: true, priceUnit: 'KG' })).toMatchObject({
+      originalPrice: 99.9,
+      dealPrice: 69.93,
+      percentOff: 30,
+      priceFrom: true,
+      priceUnit: 'KG',
+    });
+  });
+
+  it.each([0, 4, 100, 12.5, null])('rejects a percentage of %p', (percentOff) => {
     expect(() => normalizeOffer({ type: 'PERCENT_OFF', percentOff })).toThrow(BadRequestException);
   });
 
@@ -40,6 +52,12 @@ describe('normalizeOffer', () => {
     });
   });
 
+  it('rejects a free promo price and a discount under the minimum', () => {
+    expect(() => normalizeOffer({ type: 'PRICE_DROP', originalPrice: 100, dealPrice: 0 })).toThrow('Produit offert');
+    expect(() => normalizeOffer({ type: 'PRICE_DROP', originalPrice: 100, dealPrice: 99.6 })).toThrow('au moins 5 %');
+    expect(normalizeOffer({ type: 'PRICE_DROP', originalPrice: 100, dealPrice: 95 }).percentOff).toBe(5);
+  });
+
   it('rejects a promo price that is not lower', () => {
     expect(() => normalizeOffer({ type: 'PRICE_DROP', originalPrice: 100, dealPrice: 100 })).toThrow(BadRequestException);
     expect(() => normalizeOffer({ type: 'PRICE_DROP', originalPrice: 100 })).toThrow(BadRequestException);
@@ -49,6 +67,19 @@ describe('normalizeOffer', () => {
     expect(normalizeOffer({ type: 'BUY_X_GET_Y', buyQty: 1, freeQty: 1 })).toMatchObject({ buyQty: 1, freeQty: 1 });
     expect(() => normalizeOffer({ type: 'BUY_X_GET_Y', buyQty: 1 })).toThrow(BadRequestException);
     expect(() => normalizeOffer({ type: 'BUY_X_GET_Y', buyQty: 21, freeQty: 1 })).toThrow(BadRequestException);
+  });
+
+  it('keeps the unit price of a BUY_X_GET_Y deal, and the value of a free item without a unit', () => {
+    expect(normalizeOffer({ type: 'BUY_X_GET_Y', buyQty: 2, freeQty: 1, originalPrice: 25, priceUnit: 'PIECE' })).toMatchObject({
+      originalPrice: 25,
+      dealPrice: null,
+      priceUnit: 'PIECE',
+    });
+    expect(normalizeOffer({ type: 'FREE_ITEM', originalPrice: 40, priceFrom: true, priceUnit: 'KG' })).toMatchObject({
+      originalPrice: 40,
+      priceFrom: false,
+      priceUnit: null,
+    });
   });
 
   it('clears every value of OTHER', () => {

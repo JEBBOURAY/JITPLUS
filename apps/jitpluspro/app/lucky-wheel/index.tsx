@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,9 +15,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useLuckyWheelCampaigns, useLuckyWheelFulfilledPrizes, useLuckyWheelPendingPrizes } from '@/hooks/useQueryHooks';
 import { ms } from '@/utils/responsive';
 import { font } from '@/constants/design';
-import PremiumLockCard from '@/components/PremiumLockCard';
 import { Button, MoreOptions, Notice, ScreenHeader, Section } from '@/components/scratch/ScratchUI';
-import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
+import { CampaignRow, GameEmptyState, GamePremiumLock, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
 import { WheelTile } from '@/components/luckyWheel/WheelStage';
 import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { WheelStatusPill, formatWheelPeriod } from '@/components/luckyWheel/WheelUI';
@@ -107,12 +107,7 @@ export default function LuckyWheelListScreen() {
 
   const header = (
     <View style={styles.headerContent}>
-      {!isPremium && (
-        <>
-          <PremiumLockCard titleKey="luckyWheel.list.premiumTitle" descriptionKey="luckyWheel.list.premiumDesc" />
-          <Button label={t('messages.discoverPremium')} onPress={() => router.push('/plan')} />
-        </>
-      )}
+      {!isPremium && <GamePremiumLock ns="luckyWheel" />}
       {isPremium && isTeamMember && <Notice text={t('luckyWheel.list.ownerOnly')} />}
       {campaignsQuery.isError && <Notice tone="danger" text={t('luckyWheel.list.loadError')} />}
 

@@ -26,6 +26,11 @@ export function firstChar(s: string | null | undefined): string {
   return Array.from(s?.trim() ?? '')[0] ?? '';
 }
 
+/** "Prénom Nom", or '' when the client has neither. */
+export function getFullName(client: Client | null | undefined): string {
+  return [client?.prenom, client?.nom].map((part) => part?.trim()).filter(Boolean).join(' ');
+}
+
 export function getInitials(client: Client | null): string {
   if (!client) return '?';
   const initials = `${firstChar(client.prenom)}${firstChar(client.nom)}`;

@@ -12,9 +12,10 @@ export type MerchantNotifPrefs = Record<MerchantNotifPrefKey, boolean>;
 
 /**
  * Preference group of each category. `null` = always delivered: plan, quota,
- * account status and security alerts cannot be turned off.
+ * account status, bookings and security alerts cannot be turned off.
  */
 const CATEGORY_PREF: Record<MerchantInboxCategory, MerchantNotifPrefKey | null> = {
+  BOOKING: null,
   SECURITY: null,
   PLAN: null,
   STATUS: null,
@@ -39,6 +40,7 @@ export const MARKETING_WEEKLY_CAP = 3;
 
 /** Android channel per category (created by the Pro app in setupAndroidChannels). */
 export const CATEGORY_CHANNEL: Record<MerchantInboxCategory, string> = {
+  BOOKING: 'jitpro-default',
   SECURITY: 'login-alerts',
   PLAN: 'jitpro-default',
   STATUS: 'jitpro-default',
@@ -75,5 +77,5 @@ export const MERCHANT_PUSH_ACTIONS = [
   'open_logo', 'open_plan', 'open_referral', 'open_security', 'open_notifications',
   'open_deals', 'open_lucky_wheel', 'open_scratch_campaigns', 'open_stamp_codes',
   'open_team', 'open_stores', 'open_client_qr', 'open_quick_add', 'open_games',
-  'open_notification_settings', 'open_verify_email', 'open_support',
+  'open_notification_settings', 'open_verify_email', 'open_support', 'open_agenda',
 ] as const;

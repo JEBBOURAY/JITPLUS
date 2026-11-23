@@ -6,6 +6,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 jest.mock('expo-image', () => ({ Image: () => null }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn(), replace: jest.fn(), canGoBack: () => true }) }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 24, bottom: 16, left: 0, right: 0 }),
 }));
@@ -56,8 +57,8 @@ describe('demo videos screen', () => {
     expect(row().props.accessibilityState).toEqual({ checked: true });
   });
 
-  it('has no back arrow: the system back gesture is the way out', () => {
-    const { queryByRole } = render(<DemoVideosScreen />);
-    expect(queryByRole('button', { name: 'common.back' })).toBeNull();
+  it('has a back arrow', () => {
+    const { getByRole } = render(<DemoVideosScreen />);
+    expect(getByRole('button', { name: 'common.back' })).toBeTruthy();
   });
 });

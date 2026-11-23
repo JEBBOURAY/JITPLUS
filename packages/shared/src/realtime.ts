@@ -13,6 +13,7 @@ export const WS_EVENTS = {
   NOTIFICATION_NEW: 'notification:new',
   SCRATCH_CARDS_CHANGED: 'scratch:cards_changed',
   COUPON_UPDATED: 'coupon:updated',
+  COLLECTION_UPDATED: 'collection:updated',
 
   // Server → Merchant (jitpluspro app)
   TRANSACTION_RECORDED: 'transaction:recorded',
@@ -27,6 +28,16 @@ export interface CouponUpdatedPayload {
   merchantId: string;
   status: 'ACTIVE' | 'REDEEMED' | 'EXPIRED' | 'CANCELLED';
   reason?: 'redeemed' | 'cancelled' | 'extended';
+}
+
+/** Sent to the client when an item of a collection is ticked for them at the till. */
+export interface CollectionUpdatedPayload {
+  merchantId: string;
+  collectionId: string;
+  checked: number;
+  total: number;
+  /** Gift coupon when this tick completed the collection */
+  couponId?: string;
 }
 
 /** Sent to the client when their list of scratch cards changes. */
@@ -49,6 +60,8 @@ export interface StampsUpdatedPayload {
   newBalance: number;
   type: 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS';
   rewardTitle?: string;
+  /** Part of `stamps` that comes from the welcome gift */
+  welcomeBonus?: number;
 }
 
 export interface NotificationNewPayload {

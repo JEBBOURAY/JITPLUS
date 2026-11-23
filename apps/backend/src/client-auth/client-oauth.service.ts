@@ -49,7 +49,7 @@ export class ClientOAuthService {
       ) {
         const devEmail = 'dev-google@test.com';
         let client = await this.clientRepo.findUnique({ where: { email: devEmail }, select: CLIENT_AUTH_SELECT });
-        const isNewUser = !client || !client.nom;
+        const isNewUser = !client || !client.prenom;
         if (!client) {
           client = await this.clientRepo.create({
             data: { email: devEmail, googleId: 'dev-google-id', prenom: 'Dev', nom: 'Google', termsAccepted: true },
@@ -117,7 +117,7 @@ export class ClientOAuthService {
         }
       }
 
-      const isNewUser = !client || !client.nom;
+      const isNewUser = !client || !client.prenom;
       return this.sessions.buildAuthResponse(client, isNewUser);
     } catch (error) {
       if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException || error instanceof ForbiddenException) {
@@ -222,7 +222,7 @@ export class ClientOAuthService {
         }
       }
 
-      const isNewUser = !client || !client.nom;
+      const isNewUser = !client || !client.prenom;
       return this.sessions.buildAuthResponse(client, isNewUser);
     } catch (error) {
       if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException || error instanceof ForbiddenException) {

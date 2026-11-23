@@ -106,10 +106,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
 
   return {
     isLoading: auth.isLoading,
-    isSuccess: auth.isSuccess,
     error: auth.error,
     promptGoogle,
-    noAccount: auth.noAccount,
-    dismissNoAccount: auth.dismissNoAccount,
   };
 }

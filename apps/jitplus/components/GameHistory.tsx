@@ -1,5 +1,5 @@
-// History list shared by the lucky wheel and the scratch cards, on their dark
-// stage: an empty state, titled groups, and one row per draw or card.
+// History list shared by the games on their dark stage (lucky wheel, scratch
+// cards, collections): an empty state, titled groups, and one row per entry.
 import React, { type ReactNode } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Clock, type LucideIcon } from 'lucide-react-native';
@@ -70,7 +70,7 @@ export function GameHistoryRow({
           {merchant ? `${merchant} · ${date}` : date}
         </Text>
         {deadline && (
-          <Text style={[styles.rowDeadline, { fontFamily: fonts.medium }]} numberOfLines={1}>{deadline}</Text>
+          <Text style={[styles.rowDeadline, { fontFamily: fonts.medium }]} numberOfLines={2}>{deadline}</Text>
         )}
       </View>
       <View style={[styles.pill, { backgroundColor: tone.bg }]}>

@@ -1,13 +1,14 @@
-// Login header: brass arch around the logo, greeting, brand name and tagline.
+// Login header: brass arch around the logo, greeting, brand name, tagline and value line.
 // Memoised with stable Animated values as props, so typing in the form below
 // never re-renders the arch SVGs or rebuilds their animation nodes.
 import React, { useMemo } from 'react';
-import { Animated, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import BrandName from '@/components/BrandName';
 import { palette } from '@/contexts/ThemeContext';
 import { font, shadow } from '@/constants/design';
 import { fontSize, hp, ms, radius } from '@/utils/responsive';
-import ArchCrest from './ArchCrest';
+import ArchCrest, { ARCH_CREST_BASE_WIDTH } from '@jitplus/shared/src/login/ArchCrest';
 
 /** Brass readable on white (≈5:1); the lighter palette.gold is used in dark mode. */
 const BRASS_TEXT = '#8A6420';
@@ -26,11 +27,13 @@ interface LoginHeaderProps {
   isCompact: boolean;
   greeting: string;
   tagline: string;
+  /** What JitPlus Pro does; hidden while the form is open (compact header). */
+  subtitle?: string;
   taglineColor: string;
 }
 
 export default React.memo(function LoginHeader({
-  dark, anims, compact, isCompact, greeting, tagline, taglineColor,
+  dark, anims, compact, isCompact, greeting, tagline, subtitle, taglineColor,
 }: LoginHeaderProps) {
   const textStyle = useMemo(() => ({
     opacity: anims.text,
@@ -41,6 +44,7 @@ export default React.memo(function LoginHeader({
     <View style={styles.header}>
       <ArchCrest
         dark={dark}
+        width={ms(ARCH_CREST_BASE_WIDTH)}
         draw={anims.draw}
         reveal={anims.reveal}
         keystone={anims.keystone}
@@ -62,6 +66,7 @@ export default React.memo(function LoginHeader({
         <Text style={[styles.greeting, { color: dark ? palette.gold : BRASS_TEXT }]}>{greeting}</Text>
         <BrandName fontSize={ms(27)} />
         <Text style={[styles.tagline, { color: taglineColor }]}>{tagline}</Text>
+        {!!subtitle && !isCompact && <Text style={[styles.subtitle, { color: taglineColor }]}>{subtitle}</Text>}
       </Animated.View>
     </View>
   );
@@ -102,5 +107,14 @@ const styles = StyleSheet.create({
     marginTop: hp(5),
     fontSize: fontSize.sm,
     fontFamily: font.medium,
+    textAlign: 'center',
+  },
+  subtitle: {
+    marginTop: hp(10),
+    maxWidth: 320,
+    fontSize: fontSize.sm,
+    lineHeight: fontSize.sm * 1.45,
+    fontFamily: font.regular,
+    textAlign: 'center',
   },
 });

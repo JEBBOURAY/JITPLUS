@@ -1,4 +1,5 @@
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { ChevronDown } from 'lucide-react-native';
 import { JitGift } from '@/components/icons';
 import { useTheme, palette } from '@/contexts/ThemeContext';

@@ -149,6 +149,9 @@ export function useLuckyWheel(visible: boolean, onClose: () => void, preferredMe
   }, [spinAnim]);
 
   const handleClose = useCallback(() => {
+    // The ticket is spent server-side as soon as the spin starts: closing now
+    // would drop a result (maybe a win) the client never sees.
+    if (spinLockRef.current) return;
     stopSpin();
     spinLockRef.current = false;
     setSpinning(false);
@@ -257,6 +260,7 @@ export function useLuckyWheel(visible: boolean, onClose: () => void, preferredMe
   }, [dismissResult]);
 
   const handleRequestClose = useCallback(() => {
+    if (spinLockRef.current) return;
     if (result) dismissResult();
     else if (phase === 'history') setPhase('wheel');
     else handleClose();
@@ -270,8 +274,10 @@ export function useLuckyWheel(visible: boolean, onClose: () => void, preferredMe
   const showWheel = useCallback(() => setPhase('wheel'), []);
   const showHistory = useCallback(() => setPhase('history'), []);
 
-  const spinRotation = spinAnim.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] });
-  const contentTranslate = contentFade.interpolate({ inputRange: [0, 1], outputRange: [hp(10), 0] });
+  // Stable nodes: a new interpolation each render re-bound the wheel's rotation
+  // mid-spin (queries refetched by the draw re-render this hook).
+  const spinRotation = useMemo(() => spinAnim.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] }), [spinAnim]);
+  const contentTranslate = useMemo(() => contentFade.interpolate({ inputRange: [0, 1], outputRange: [hp(10), 0] }), [contentFade]);
 
   const canSpin = !!ticket && !!segments?.length && !spinning && !result;
   const spinsLeft = group?.tickets.length ?? 0;

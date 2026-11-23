@@ -5,6 +5,7 @@ import { Text, TextInput } from '@/components/AppText';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { MAX_PASSWORD_LENGTH } from '@/utils/passwordStrength';
+import { authStyles } from '@/components/login/authUi';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
 interface PasswordFieldProps {
@@ -22,51 +23,74 @@ interface PasswordFieldProps {
   autoFocus?: boolean;
   returnKeyType: 'next' | 'done';
   onSubmitEditing?: () => void;
+  /** New password (iOS strong-password / keychain hints) instead of the current one. */
+  isNew?: boolean;
+  /**
+   * `auth`: the sign-in look (authStyles field, violet icon, violet border while
+   * focused). `form` (default): the settings look of change / set password.
+   */
+  variant?: 'form' | 'auth';
+  editable?: boolean;
 }
 
 /** Password input with its own show/hide toggle, so toggling re-renders the field only. */
 export const PasswordField = memo(function PasswordField({
   inputRef, icon: Icon, label, value, onChangeText, placeholder, valid = false, invalid = false,
-  autoFocus, returnKeyType, onSubmitEditing,
+  autoFocus, returnKeyType, onSubmitEditing, isNew = false, variant = 'form', editable,
 }: PasswordFieldProps) {
   const theme = useTheme();
   const { t } = useLanguage();
   const [visible, setVisible] = useState(false);
   const toggleVisible = useCallback(() => setVisible((v) => !v), []);
+  const [focused, setFocused] = useState(false);
+  const onFocus = useCallback(() => setFocused(true), []);
+  const onBlur = useCallback(() => setFocused(false), []);
   const EyeIcon = visible ? EyeOff : Eye;
+  const auth = variant === 'auth';
+  const highlighted = valid || (auth && focused);
 
   return (
-    <View style={styles.inputContainer}>
+    <View style={auth ? styles.authContainer : styles.inputContainer}>
       {label ? <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>{label}</Text> : null}
-      <View style={[styles.inputWrapper, {
+      <View style={[auth ? authStyles.inputWrapper : styles.inputWrapper, {
         backgroundColor: theme.inputBg,
-        borderColor: invalid ? theme.danger : valid ? palette.violet : theme.inputBorder,
+        borderColor: invalid ? theme.danger : highlighted ? palette.violet : theme.inputBorder,
         borderWidth: valid ? 2 : 1.5,
       }]}>
-        <Icon size={ms(18)} color={valid ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
+        {auth
+          ? <Icon size={ms(17)} color={palette.violet} strokeWidth={1.75} />
+          : <Icon size={ms(18)} color={valid ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />}
         <TextInput
           ref={inputRef}
-          style={[styles.input, { color: theme.text }]}
+          style={[auth ? authStyles.inputField : styles.input, { color: theme.text }]}
           placeholder={placeholder}
           placeholderTextColor={theme.inputPlaceholder}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={!visible}
+          textContentType={isNew ? 'newPassword' : 'password'}
+          autoComplete={isNew ? 'new-password' : 'current-password'}
           autoCapitalize="none"
           autoCorrect={false}
           autoFocus={autoFocus}
           returnKeyType={returnKeyType}
           maxLength={MAX_PASSWORD_LENGTH}
           onSubmitEditing={onSubmitEditing}
+          editable={editable}
+          importantForAutofill={auth ? 'yes' : undefined}
+          onFocus={auth ? onFocus : undefined}
+          onBlur={auth ? onBlur : undefined}
         />
         <TouchableOpacity
           onPress={toggleVisible}
-          activeOpacity={0.7}
-          hitSlop={8}
+          activeOpacity={auth ? undefined : 0.7}
+          hitSlop={auth ? 10 : 8}
           accessibilityRole="button"
           accessibilityLabel={visible ? t('login.hidePassword') : t('login.showPassword')}
         >
-          <EyeIcon size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
+          {auth
+            ? <EyeIcon size={ms(19)} color={theme.inputPlaceholder} strokeWidth={1.75} />
+            : <EyeIcon size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
         </TouchableOpacity>
       </View>
     </View>
@@ -88,6 +112,7 @@ export function PasswordStrengthBar({ strength }: { strength: { pct: number; col
 const styles = StyleSheet.create({
   fieldLabel: { fontSize: fontSize.xs, fontWeight: '600', marginBottom: hp(6), marginLeft: wp(4) },
   inputContainer: { marginBottom: hp(16) },
+  authContainer: { marginBottom: hp(12) },
   inputWrapper: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: radius.lg, paddingHorizontal: wp(14), height: hp(58),

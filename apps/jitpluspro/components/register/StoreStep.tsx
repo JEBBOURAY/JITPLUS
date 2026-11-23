@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
-import { ActivityIndicator, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, Keyboard, StyleSheet, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { Check, ChevronDown, Tag } from 'lucide-react-native';
 import { JitStore } from '@/components/icons';
 import MerchantCategoryIcon from '@/components/MerchantCategoryIcon';

@@ -19,8 +19,8 @@ import WheelStatus from './luckyWheel/WheelStatus';
 import WheelMerchantRow from './luckyWheel/WheelMerchantRow';
 import WheelLegalNotice from './luckyWheel/WheelLegalNotice';
 import { useLuckyWheel } from './luckyWheel/useLuckyWheel';
+import { GAME_STAGE_GRADIENT } from './GameStage';
 
-const BG_GRADIENT = ['#24104A', '#150830', '#0B0418'] as const;
 
 interface Props {
   visible: boolean;
@@ -51,7 +51,7 @@ export default React.memo(function LuckyWheelModal({ visible, onClose, merchantI
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleRequestClose}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient colors={BG_GRADIENT} style={styles.root}>
+      <LinearGradient colors={GAME_STAGE_GRADIENT} style={styles.root}>
         <WheelHeader
           phase={phase}
           spinning={spinning}

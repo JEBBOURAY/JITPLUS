@@ -8,8 +8,10 @@ import { detectProhibitedContent } from '../notifications/content-filter';
 import { diffDaysYmd, moroccoWallTimeToUtc, moroccoYmd } from '../common/utils/morocco-time';
 import { AuditAction, AuditLogService, AuditTargetType } from '../admin/audit-log.service';
 import type { CreateDealDto, DuplicateDealDto, UpdateDealDto } from './dto';
-import { DEAL_LIMITS } from './deal-limits';
+import { DEAL_DAILY_STATS_DAYS, DEAL_LIMITS } from './deal-limits';
 import {
+  NormalizedOffer,
+  OFFER_FIELDS,
   addDaysYmd,
   normalizeDealLink,
   normalizeOffer,
@@ -35,6 +37,20 @@ export function cityKeysOf(stores: StoreRow[]): string[] {
 /** Uploaded with type=deal (stored under deals/<merchantId>/). */
 export function isDealImage(url: string, merchantId: string): boolean {
   return url.includes(`/deals/${merchantId}/`);
+}
+
+/** The offer of a stored deal, in the shape normalizeOffer returns. */
+function storedOffer(d: MerchantDealRow): NormalizedOffer {
+  return {
+    type: d.type,
+    originalPrice: d.originalPrice?.toNumber() ?? null,
+    dealPrice: d.dealPrice?.toNumber() ?? null,
+    percentOff: d.percentOff,
+    buyQty: d.buyQty,
+    freeQty: d.freeQty,
+    priceFrom: d.priceFrom,
+    priceUnit: d.priceUnit,
+  };
 }
 
 interface StoreScope {
@@ -67,8 +83,19 @@ export class DealsMerchantService {
     return { deals: deals.map((d) => toMerchantDealDto(d, now)), limits };
   }
 
+  /** One deal with its figures day by day (the chart of the detail screen). */
   async get(merchantId: string, id: string) {
-    return toMerchantDealDto(await this.findOwned(merchantId, id));
+    const deal = await this.findOwned(merchantId, id);
+    const since = new Date(addDaysYmd(moroccoYmd(), -DEAL_DAILY_STATS_DAYS));
+    const daily = await this.prisma.dealDailyStat.findMany({
+      where: { dealId: id, day: { gte: since } },
+      select: { day: true, views: true, actions: true, claims: true },
+      orderBy: { day: 'asc' },
+    });
+    return {
+      ...toMerchantDealDto(deal),
+      daily: daily.map((d) => ({ day: d.day.toISOString().slice(0, 10), views: d.views, actions: d.actions, claims: d.claims })),
+    };
   }
 
   async limits(merchantId: string, now: Date = new Date()) {
@@ -151,19 +178,14 @@ export class DealsMerchantService {
     const conditions = dto.conditions !== undefined ? dto.conditions : existing.conditions;
     this.moderate(title, description, conditions);
 
-    const offerFieldsSent = ['type', 'originalPrice', 'dealPrice', 'percentOff', 'buyQty', 'freeQty'].some(
-      (k) => (dto as Record<string, unknown>)[k] !== undefined,
-    );
-    const offer = offerFieldsSent
-      ? normalizeOffer({
-          type: dto.type ?? existing.type,
-          originalPrice: dto.originalPrice !== undefined ? dto.originalPrice : existing.originalPrice?.toNumber(),
-          dealPrice: dto.dealPrice !== undefined ? dto.dealPrice : existing.dealPrice?.toNumber(),
-          percentOff: dto.percentOff !== undefined ? dto.percentOff : existing.percentOff,
-          buyQty: dto.buyQty !== undefined ? dto.buyQty : existing.buyQty,
-          freeQty: dto.freeQty !== undefined ? dto.freeQty : existing.freeQty,
-        })
-      : null;
+    const before = storedOffer(existing);
+    const sent = Object.fromEntries(OFFER_FIELDS.filter((k) => dto[k] !== undefined).map((k) => [k, dto[k]]));
+    // Pro sends the whole offer with every save: an untouched offer is not re-validated,
+    // so deals created under older, looser rules (e.g. 3 %) stay editable.
+    const offerTouched = OFFER_FIELDS.some((k) => k in sent && sent[k] !== before[k]);
+    const offer = offerTouched ? normalizeOffer({ ...before, ...sent }) : null;
+    // Clients may already have seen the offer: its edits are kept for moderation.
+    const offerChanged = !!offer && existing.startsAt <= now && OFFER_FIELDS.some((k) => offer[k] !== before[k]);
 
     const linkUrl =
       dto.linkUrl !== undefined ? normalizeDealLink(dto.linkUrl, existing.scope === 'ONLINE') : existing.linkUrl;
@@ -200,6 +222,7 @@ export class DealsMerchantService {
           await tx.dealStore.createMany({ data: scope.storeIds.map((storeId) => ({ dealId: id, storeId })) });
         }
       }
+      if (offer && offerChanged) await tx.dealOfferChange.create({ data: { dealId: id, before, after: offer } });
       return tx.deal.update({
         where: { id },
         data: {
@@ -265,6 +288,8 @@ export class DealsMerchantService {
       percentOff: source.type === 'PERCENT_OFF' ? source.percentOff : null,
       buyQty: source.buyQty,
       freeQty: source.freeQty,
+      priceFrom: source.priceFrom,
+      priceUnit: source.priceUnit as CreateDealDto['priceUnit'],
       // A deal whose selected stores were all closed falls back to every store.
       allStores: source.allStores || activeStoreIds.length === 0,
       storeIds: activeStoreIds,

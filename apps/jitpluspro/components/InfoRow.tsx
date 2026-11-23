@@ -1,5 +1,6 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, type AccessibilityState, type AccessibilityRole } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type AccessibilityState, type AccessibilityRole } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ChevronRight, type LucideIcon } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useDir } from '@/hooks/useDir';

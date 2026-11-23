@@ -1,7 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Linking } from 'react-native';
+import { Text } from '@/components/AppText';
 import * as Location from 'expo-location';
-import { Redirect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Check, Mail, Navigation, Phone } from 'lucide-react-native';
 import { JitPin, JitStore } from '@/components/icons';
 import { useAuth, useAuthActions } from '@/contexts/AuthContext';
@@ -72,6 +74,16 @@ interface Props {
  * Everything shared by all locations (description, category, social links,
  * hours…) is edited on the brand from the "Ma boutique" hub.
  */
+/** Stale link to a deleted store: leave once, back to the list underneath. */
+function StaleStoreExit() {
+  const router = useRouter();
+  useEffect(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/stores');
+  }, [router]);
+  return null;
+}
+
 export default function StoreFormScreen({ mode, storeId }: Props) {
   const router = useRouter();
   const theme = useTheme();
@@ -174,21 +186,24 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'));
+        Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('notifSettings.openSettingsAction'), onPress: () => { Linking.openSettings().catch(() => {}); } },
+        ]);
         return;
       }
       const { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       mapRef.current?.animateToRegion({ latitude: coords.latitude, longitude: coords.longitude, ...MAP_DELTA });
       await placePin(coords.latitude, coords.longitude);
     } catch {
-      Alert.alert(t('common.error'), t('stores.locationError'));
+      toast.error(t('stores.locationError'));
     } finally {
       setLocating(false);
     }
   }, [placePin, t]);
 
   const alertAddressNotFound = useCallback(() => {
-    Alert.alert(t('common.error'), t('stores.addressNotFound'));
+    toast.error(t('stores.addressNotFound'));
   }, [t]);
 
   // Re-entrancy guard: a double-tap in the same frame as the mutation starting
@@ -235,7 +250,8 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
 
   if (isTeamMember) return <OwnerOnlyNotice />;
   // A stale link to a deleted store.
-  if (!isCreate && !loading && !store) return <Redirect href="/stores" />;
+  // Back to the list underneath instead of stacking a second /stores.
+  if (!isCreate && !loading && !store) return <StaleStoreExit />;
 
   const hasPin = form.latitude != null && form.longitude != null;
   const region = {

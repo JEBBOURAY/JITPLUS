@@ -60,9 +60,7 @@ export class AdminController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Admin logout — revokes the current session token' })
   async logout(@CurrentUser() user: JwtPayload) {
-    if (user.sessionId) {
-      await this.adminService.logout(user.sessionId);
-    }
+    await this.adminService.logout(user.sessionId, user.sub);
     return { message: 'Déconnecté' };
   }
 

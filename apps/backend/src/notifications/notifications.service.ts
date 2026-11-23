@@ -35,6 +35,7 @@ const MEMBER_SELECT = {
   pushToken: true,
   notifPush: true,
   email: true,
+  emailVerified: true,
   notifEmail: true,
   prenom: true,
   language: true,
@@ -348,6 +349,8 @@ export class NotificationsService {
     title: string,
     body: string,
     data?: Record<string, string>,
+    /** Android channel; defaults to the push provider's offers channel. */
+    androidChannelId?: string,
   ): Promise<void> {
     try {
       // 1. Lookup client push preferences + merchant details (cached 5 min)
@@ -379,7 +382,7 @@ export class NotificationsService {
       let successCount = 0;
       let failureCount = 0;
       if (client?.pushToken && client.notifPush) {
-        const result = await this.pushProvider.sendMulticast([client.pushToken], title, body, imageUrl, fcmData);
+        const result = await this.pushProvider.sendMulticast([client.pushToken], title, body, imageUrl, fcmData, androidChannelId);
         successCount = result.successCount;
         failureCount = result.failureCount;
 
@@ -525,8 +528,10 @@ export class NotificationsService {
 
     for await (const members of this.merchantMemberPages(merchantId)) {
       for (const c of members) {
-        // Has an email and respects the client opt-out preference
-        if (c.notifEmail && c.email) {
+        // Has a VERIFIED email and respects the client opt-out preference: an
+        // address typed on a profile but never proven may be someone else's
+        // inbox (harassment, spam complaints against the sending domain).
+        if (c.notifEmail && c.email && c.emailVerified) {
           recipients.push({ id: c.id, email: c.email, prenom: c.prenom, language: c.language });
         }
       }
@@ -690,14 +695,15 @@ export class NotificationsService {
     }
 
     // Emit WebSocket events
-    for (const clientId of clientIds) {
-      this.eventsGateway.emitNotificationNew(clientId, {
-        clientId,
+    try {
+      await this.eventsGateway.emitNotificationNewToClients(clientIds, {
         notificationId: notification.id,
         merchantId,
         title: 'WhatsApp',
         body,
       });
+    } catch (error) {
+      this.logger.warn(`WebSocket emit failed for WhatsApp blast: ${error}`);
     }
 
     return { recipientCount: recipients.length, successCount, failureCount };
@@ -915,15 +921,12 @@ export class NotificationsService {
 
       // 4. WebSocket events for this page
       try {
-        for (const clientId of clientIds) {
-          this.eventsGateway.emitNotificationNew(clientId, {
-            clientId,
-            notificationId,
-            merchantId: null,
-            title,
-            body,
-          });
-        }
+        await this.eventsGateway.emitNotificationNewToClients(clientIds, {
+          notificationId,
+          merchantId: null,
+          title,
+          body,
+        });
       } catch (error) {
         this.logger.warn(`WebSocket emit failed for admin broadcast: ${error}`);
       }
@@ -1025,7 +1028,7 @@ export class NotificationsService {
 
     while (true) {
       const batch = await this.clientRepo.findMany({
-        where: { email: { not: null }, notifEmail: true, deletedAt: null },
+        where: { email: { not: null }, emailVerified: true, notifEmail: true, deletedAt: null },
         select: { id: true, email: true, prenom: true, language: true },
         take: NotificationsService.CLIENT_BATCH_SIZE,
         ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),

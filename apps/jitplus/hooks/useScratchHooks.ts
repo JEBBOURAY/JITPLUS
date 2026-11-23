@@ -80,6 +80,8 @@ export function useScratchCardDraw() {
       qc.setQueryData(scratchKeys.card(cardId), result.card);
       qc.setQueryData(scratchKeys.coupon(result.coupon.id), result.coupon);
       qc.invalidateQueries({ queryKey: scratchKeys.cards });
+      // Campaign mode reads the same card through its campaign key.
+      qc.invalidateQueries({ queryKey: scratchKeys.cardsByCampaign });
       qc.invalidateQueries({ queryKey: scratchKeys.coupons });
     },
   });

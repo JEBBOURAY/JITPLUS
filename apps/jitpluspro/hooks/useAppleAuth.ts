@@ -3,7 +3,7 @@
  * On Android/web Apple Sign-In is not available and the hook degrades gracefully.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { router } from 'expo-router';
+import { resetTo } from '@/utils/navReset';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { isAppleSignInAvailable, requestAppleCredential } from '@/utils/socialSignIn';
@@ -51,7 +51,7 @@ export function useAppleAuth() {
     if (result.success) {
       // Keep the spinner during navigation to avoid a brief re-enable flicker
       hapticSuccess();
-      router.replace('/(tabs)');
+      resetTo('/(tabs)');
       return;
     }
     setIsLoading(false);

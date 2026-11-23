@@ -14,9 +14,11 @@ import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload, JwtTokenPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto, WalletPaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpEmailDto, VerifyOtpEmailDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto, ReportMerchantDto } from './dto';
+import { SignupFunnelService, failedCodeStep, signupPlatform } from './signup-funnel.service';
+import { SignupEventDto, SendOtpEmailDto, VerifyOtpEmailDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto, ReportMerchantDto } from './dto';
 import { ConsumeClaimDto } from '../merchant/dto/quick-add.dto';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
+import { requestLang } from '../common/i18n/error-messages';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -29,10 +31,13 @@ export class ClientAuthController {
     private readonly clientService: ClientService,
     private readonly jwtService: JwtService,
     private readonly clientClaimService: ClientClaimService,
+    private readonly signupFunnel: SignupFunnelService,
   ) {}
 
+  // Per-IP limits sized for mobile networks, where many clients share one address.
+  // Accounts keep their own protections: OTP cooldown and attempts, login lockout.
   @Post('refresh')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
   async refreshToken(@Body() dto: RefreshTokenDto) {
     return this.clientSessionService.refreshAccessToken(dto.refresh_token);
   }
@@ -54,31 +59,57 @@ export class ClientAuthController {
   }
 
   @Post('send-otp-email')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
-  async sendOtpEmail(@Body() dto: SendOtpEmailDto) {
-    return this.clientOtpService.sendOtpEmail(dto.email, dto.isRegister ?? false);
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  async sendOtpEmail(@Body() dto: SendOtpEmailDto, @Headers() headers: Record<string, string | string[] | undefined>) {
+    const { codeSent, ...result } = await this.clientOtpService.sendOtpEmail(dto.email, dto.isRegister ?? false, requestLang(headers));
+    // Only real codes: an "account exists" mail is not a step of the funnel.
+    if (dto.isRegister && codeSent) this.signupFunnel.record('code_requested', 'email', signupPlatform(headers['user-agent']?.toString()));
+    return result;
+  }
+
+  /** Sign-up steps only the app can see. Counters only: nothing identifies the caller. */
+  @Post('signup-event')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  signupEvent(@Body() dto: SignupEventDto, @Headers('user-agent') userAgent?: string): void {
+    this.signupFunnel.record(dto.step, dto.method, signupPlatform(userAgent));
   }
 
   @Post('verify-otp-email')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
-  async verifyOtpEmail(@Body() dto: VerifyOtpEmailDto) {
-    return this.clientOtpService.verifyOtpEmail(dto.email, dto.code, dto.isRegister ?? false);
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
+  async verifyOtpEmail(@Body() dto: VerifyOtpEmailDto, @Headers('user-agent') userAgent?: string) {
+    if (!dto.isRegister) return this.clientOtpService.verifyOtpEmail(dto.email, dto.code, false);
+    const platform = signupPlatform(userAgent);
+    try {
+      const result = await this.clientOtpService.verifyOtpEmail(dto.email, dto.code, true);
+      if (result.isNewUser) this.signupFunnel.record('account_started', 'email', platform);
+      return result;
+    } catch (error) {
+      const step = failedCodeStep(error instanceof Error ? error.message : undefined);
+      if (step) this.signupFunnel.record(step, 'email', platform);
+      throw error;
+    }
   }
 
   @Post('google-login')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async googleLogin(@Body() dto: GoogleLoginDto) {
-    return this.clientOAuthService.googleLogin(dto.idToken);
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  async googleLogin(@Body() dto: GoogleLoginDto, @Headers('user-agent') userAgent?: string) {
+    const result = await this.clientOAuthService.googleLogin(dto.idToken);
+    // Terms not accepted yet = a sign-up in progress (Google already gives the name).
+    if (!result.client.termsAccepted) this.signupFunnel.record('account_started', 'google', signupPlatform(userAgent));
+    return result;
   }
 
   @Post('apple-login')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async appleLogin(@Body() dto: AppleLoginDto) {
-    return this.clientOAuthService.appleLogin(dto.identityToken, dto.givenName, dto.familyName, dto.rawNonce);
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  async appleLogin(@Body() dto: AppleLoginDto, @Headers('user-agent') userAgent?: string) {
+    const result = await this.clientOAuthService.appleLogin(dto.identityToken, dto.givenName, dto.familyName, dto.rawNonce);
+    if (!result.client.termsAccepted) this.signupFunnel.record('account_started', 'apple', signupPlatform(userAgent));
+    return result;
   }
 
   @Post('login-email')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async loginWithEmail(@Body() dto: LoginEmailDto) {
     return this.clientAuthService.loginWithEmailPassword(dto.email, dto.password);
   }
@@ -105,8 +136,16 @@ export class ClientAuthController {
 
   @Post('complete-profile')
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
-  async completeProfile(@CurrentUser() user: JwtPayload, @Body() dto: CompleteProfileDto) {
-    return this.clientAuthService.completeProfile(user.userId, dto.prenom, dto.nom, dto.termsAccepted, dto.telephone, dto.dateNaissance, dto.password);
+  async completeProfile(@CurrentUser() user: JwtPayload, @Body() dto: CompleteProfileDto, @Headers('user-agent') userAgent?: string) {
+    const { firstCompletion, ...result } = await this.clientAuthService.completeProfile(user.userId, dto.prenom, dto.nom ?? '', dto.termsAccepted, dto.telephone, dto.dateNaissance, dto.password);
+    if (firstCompletion) {
+      const platform = signupPlatform(userAgent);
+      this.signupFunnel.record('completed', firstCompletion.method, platform);
+      if (firstCompletion.method === 'email') {
+        this.signupFunnel.record(firstCompletion.withPassword ? 'password_set' : 'password_skipped', 'email', platform);
+      }
+    }
+    return result;
   }
 
   @Get('profile')
@@ -225,6 +264,7 @@ export class ClientController {
   }
 
   @Post('merchants/:id/join')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   @HttpCode(HttpStatus.OK)
   async joinMerchant(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.joinMerchant(user.userId, id);

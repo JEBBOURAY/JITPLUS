@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, useWindowDimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
+import { View, StyleSheet, Alert } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Clock, Layers, Plus, Save, Send, Tag, type LucideIcon } from 'lucide-react-native';
 import { JitStamp } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,24 +16,18 @@ import { useRewards } from '@/hooks/useQueryHooks';
 import {
   useCreateScratchCampaign,
   useScheduleScratchCampaign,
-  useScratchAudienceEstimate,
   useScratchCampaign,
   useUnscheduleScratchCampaign,
   useUpdateScratchCampaign,
 } from '@/hooks/useScratchHooks';
 import { getErrorMessage } from '@/utils/error';
-import { resolveImageUrl } from '@/utils/imageUrl';
 import { ms } from '@/utils/responsive';
 import { font } from '@/constants/design';
-import PremiumLockCard from '@/components/PremiumLockCard';
-import MerchantLogo from '@/components/MerchantLogo';
 import {
   SCRATCH_AUDIENCE_TYPES,
-  SCRATCH_CARD_DESIGNS,
   SCRATCH_LIMITS,
   SCRATCH_SEND_SLOTS,
   addDaysYmd,
-  describeCouponConditions,
   expectedRewardCounts,
   formatRewardValue,
   rewardDisplay,
@@ -52,17 +47,18 @@ import {
 } from '@/components/scratch/ScratchUI';
 import { DateField, formatYmd } from '@/components/scratch/DateField';
 import { RewardEditor } from '@/components/scratch/RewardEditor';
-import { ScratchPreview } from '@/components/scratch/ScratchPreview';
+import { ScratchLookStep, type ScratchPreviewChoice } from '@/components/scratch/ScratchLookStep';
+import { useAudienceEstimate } from '@/components/scratch/useAudienceEstimate';
 import {
   HelpText,
   ReviewBlock,
   ReviewLine,
   WizardFooter,
-  WizardLoading,
-  WizardMessage,
   WizardShell,
   useGameWizard,
+  useWizardTemplate,
 } from '@/components/games/GameWizard';
+import { GameLoadError, GameNoAccess, GameScreenLoading, GameScreenNotice, useBackTo } from '@/components/games/GameScreen';
 import { digitsOnly } from '@/components/games/gameForm';
 import {
   AUDIENCE_DEFAULT_VALUES,
@@ -82,8 +78,6 @@ import {
   isSlotTooFar,
   isSlotUnavailable,
   moroccoToday,
-  moroccoWallTimeToIso,
-  moroccoYmdOf,
   pickSendSlot,
   rewardToInput,
   sendAtIso,
@@ -99,21 +93,19 @@ import {
 
 const TEMPLATE_ICONS: Record<CampaignTemplate, LucideIcon> = { simple: Tag, tiers: Layers, stamps: JitStamp };
 
-type PreviewSide = 'before' | 'after';
-
 export default function ScratchCampaignWizard() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { t, locale } = useLanguage();
-  const { row, textAlign } = useDir();
+  const { textAlign } = useDir();
   const router = useRouter();
-  const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{ id?: string }>();
   const editId = typeof params.id === 'string' ? params.id : undefined;
 
   const merchant = useAuthStore((s) => s.merchant);
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const { isPremium } = usePlanStatus(merchant);
+  const canManage = isPremium && !isTeamMember;
 
   const { money, symbol: currencySymbol } = useMoney();
   const labelFor = useCallback<RewardLabelFn>((type, value) => formatRewardValue({ type, value, label: '' }, t, money), [t, money]);
@@ -125,12 +117,9 @@ export default function ScratchCampaignWizard() {
   }));
   const [campaignId, setCampaignId] = useState<string | undefined>(editId);
   const [dirty, setDirty] = useState(false);
-  const [template, setTemplate] = useState<CampaignTemplate | null>(editId ? null : 'simple');
-  const rewardsTouchedRef = useRef(false);
   const audienceOptions = useMoreOptions(!MAIN_AUDIENCE_TYPES.includes(form.audienceType));
   const dateOptions = useMoreOptions(form.durationDays == null);
-  const [previewSide, setPreviewSide] = useState<PreviewSide>('after');
-  const [previewRewardKey, setPreviewRewardKey] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ScratchPreviewChoice>({ side: 'after', rewardKey: null });
   // Current time for the send slots, refreshed while the wizard stays open.
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -153,39 +142,23 @@ export default function ScratchCampaignWizard() {
   }, [existing, today, labelFor]);
   const isScheduled = existing?.status === 'SCHEDULED';
 
-  const leave = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/scratch-campaigns');
-  }, [router]);
+  const leave = useBackTo('/scratch-campaigns');
 
   // Amount limits are shown in the merchant's currency.
   const validate = useCallback((s: WizardStep) => {
     const err = validateStep(form, s, today);
     return err && { ...err, params: { ...err.params, currency: currencySymbol } };
   }, [form, today, currencySymbol]);
-  const {
-    step,
-    index: stepIndex,
-    isLast,
-    stepLabels,
-    heading,
-    hint,
-    nextLabel,
-    scrollRef,
-    goTo,
-    next,
-    back,
-    ensureValid,
-    allowLeave,
-  } = useGameWizard({
+  const wizard = useGameWizard({
     steps: WIZARD_STEPS,
     validate,
     dirty,
     onLeave: leave,
     i18nPrefix: 'scratch.wizard',
   });
+  const { step, index: stepIndex, stepLabels, goTo, ensureValid, allowLeave } = wizard;
 
-  const { data: catalogData } = useRewards(isPremium && !isTeamMember);
+  const { data: catalogData } = useRewards(canManage);
   // A fresh [] on each render would re-render every memoised RewardEditor.
   const catalog = useMemo(() => catalogData ?? [], [catalogData]);
   const createMutation = useCreateScratchCampaign();
@@ -194,21 +167,7 @@ export default function ScratchCampaignWizard() {
   const unscheduleMutation = useUnscheduleScratchCampaign();
   const busy = createMutation.isPending || updateMutation.isPending || scheduleMutation.isPending || unscheduleMutation.isPending;
 
-  const audienceValue = form.audienceType === 'ALL_CLIENTS' ? null : parseInt(form.audienceValue, 10) || null;
-  const [debouncedAudience, setDebouncedAudience] = useState<{ type: ScratchAudienceType; value: number | null }>({
-    type: form.audienceType,
-    value: audienceValue,
-  });
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedAudience({ type: form.audienceType, value: audienceValue }), 400);
-    return () => clearTimeout(timer);
-  }, [form.audienceType, audienceValue]);
-  const audienceValid = debouncedAudience.type === 'ALL_CLIENTS' || (debouncedAudience.value != null && debouncedAudience.value >= 1);
-  const estimate = useScratchAudienceEstimate(
-    debouncedAudience.type,
-    debouncedAudience.value,
-    isPremium && !isTeamMember && audienceValid && stepIndex >= 1,
-  );
+  const estimate = useAudienceEstimate(form.audienceType, form.audienceValue, canManage && stepIndex >= 1);
 
   const assured = assuredChance(form.rewards);
   const rewardInputs = useMemo(() => form.rewards.map((r) => rewardToInput(r, labelFor)), [form.rewards, labelFor]);
@@ -221,43 +180,38 @@ export default function ScratchCampaignWizard() {
     setDirty(true);
     dispatch({ type: 'SET', patch, today });
   }, [today]);
+  const applyTemplateRewards = useCallback((tpl: CampaignTemplate) => {
+    const rewards = templateRewards(tpl);
+    // Pre-fill the free product with the first catalog reward when there is one.
+    const product = rewards.find((r) => r.type === 'FREE_PRODUCT');
+    if (product && catalog[0]) {
+      product.label = catalog[0].titre.slice(0, SCRATCH_LIMITS.LABEL_MAX);
+      product.rewardId = catalog[0].id;
+    }
+    setDirty(true);
+    dispatch({ type: 'SET_REWARDS', rewards });
+  }, [catalog]);
+  const { template, choose: applyTemplate, markTouched: markRewardsTouched } = useWizardTemplate<CampaignTemplate>({
+    initial: editId ? null : 'simple',
+    apply: applyTemplateRewards,
+    i18nPrefix: 'scratch.wizard',
+  });
+
   const setReward = useCallback((key: string, patch: Partial<RewardForm>) => {
     setDirty(true);
-    rewardsTouchedRef.current = true;
+    markRewardsTouched();
     dispatch({ type: 'SET_REWARD', key, patch });
-  }, []);
+  }, [markRewardsTouched]);
   const removeReward = useCallback((key: string) => {
     setDirty(true);
-    rewardsTouchedRef.current = true;
+    markRewardsTouched();
     dispatch({ type: 'REMOVE_REWARD', key });
-  }, []);
+  }, [markRewardsTouched]);
   const addReward = useCallback(() => {
     setDirty(true);
-    rewardsTouchedRef.current = true;
+    markRewardsTouched();
     dispatch({ type: 'ADD_REWARD' });
-  }, []);
-
-  const applyTemplate = useCallback((nextTemplate: CampaignTemplate) => {
-    const apply = () => {
-      const rewards = templateRewards(nextTemplate);
-      // Pre-fill the free product with the first catalog reward when there is one.
-      const product = rewards.find((r) => r.type === 'FREE_PRODUCT');
-      if (product && catalog[0]) {
-        product.label = catalog[0].titre.slice(0, SCRATCH_LIMITS.LABEL_MAX);
-        product.rewardId = catalog[0].id;
-      }
-      rewardsTouchedRef.current = false;
-      setTemplate(nextTemplate);
-      setDirty(true);
-      dispatch({ type: 'SET_REWARDS', rewards });
-    };
-    if (nextTemplate === template) return;
-    if (!rewardsTouchedRef.current) return apply();
-    Alert.alert(t('scratch.wizard.templateReplaceTitle'), t('scratch.wizard.templateReplaceBody'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('scratch.wizard.templateReplaceConfirm'), onPress: apply },
-    ]);
-  }, [catalog, template, t]);
+  }, [markRewardsTouched]);
 
   const selectAudience = useCallback((type: ScratchAudienceType) => {
     set({ audienceType: type, audienceValue: type === 'ALL_CLIENTS' ? form.audienceValue : AUDIENCE_DEFAULT_VALUES[type] });
@@ -282,11 +236,11 @@ export default function ScratchCampaignWizard() {
       // Saving a scheduled campaign as a draft must cancel its sending.
       if (isScheduled) await unscheduleMutation.mutateAsync(id);
       setDirty(false);
-      Alert.alert(t('scratch.wizard.draftSaved'));
+      toast.success(t('scratch.wizard.draftSaved'));
       allowLeave();
       router.replace({ pathname: '/scratch-campaigns/[id]', params: { id } });
     } catch (e) {
-      Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
+      toast.error(getErrorMessage(e, t('common.genericError')));
     }
   }, [busy, ensureValid, saveDraft, isScheduled, unscheduleMutation, allowLeave, router, t]);
 
@@ -295,17 +249,17 @@ export default function ScratchCampaignWizard() {
       const id = await saveDraft();
       setDirty(false);
       await scheduleMutation.mutateAsync({ id, sendAt: sendAtIso(form) });
-      Alert.alert(form.sendMode === 'now' ? t('scratch.wizard.sentSuccess') : t('scratch.wizard.scheduledSuccess'));
+      toast.success(form.sendMode === 'now' ? t('scratch.wizard.sentSuccess') : t('scratch.wizard.scheduledSuccess'));
       allowLeave();
       router.replace({ pathname: '/scratch-campaigns/[id]', params: { id } });
     } catch (e) {
-      Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
+      toast.error(getErrorMessage(e, t('common.genericError')));
     }
   }, [saveDraft, scheduleMutation, form, allowLeave, router, t]);
 
   const handleSend = useCallback(() => {
     if (busy || !ensureValid()) return;
-    if (estimate.data?.total === 0) return Alert.alert(t('common.error'), t('scratch.wizard.audienceEmpty'));
+    if (estimate.data?.total === 0) return toast.error(t('scratch.wizard.audienceEmpty'));
     const count = estimate.data?.total ?? '…';
     const body = form.sendMode === 'now'
       ? t('scratch.wizard.confirmSendNow', { count })
@@ -316,70 +270,31 @@ export default function ScratchCampaignWizard() {
     ]);
   }, [busy, ensureValid, estimate.data?.total, form.sendMode, form.sendDay, form.sendSlot, locale, t, doSend]);
 
-  const merchantName = merchant?.nom ?? '';
-  const logoUrl = merchant?.logoUrl ? resolveImageUrl(merchant.logoUrl) : null;
-  const previewIndex = Math.max(0, form.rewards.findIndex((r) => r.key === previewRewardKey));
-  const previewInput = rewardInputs[previewIndex];
-  const previewDisplay = useMemo(() => (previewInput ? rewardDisplay(previewInput, t, money) : null), [previewInput, t, money]);
-  const previewConditions = useMemo(() => {
-    if (!previewInput) return [];
-    const lines = describeCouponConditions(
-      {
-        conditions: {
-          minPurchaseAmount: previewInput.minPurchaseAmount,
-          allowedWeekdays: previewInput.allowedWeekdays,
-          allowedFromMin: previewInput.allowedFromMin,
-          allowedToMin: previewInput.allowedToMin,
-        },
-        expiresAt: moroccoWallTimeToIso(form.couponExpiresOn, '23:59'),
-      },
-      t,
-      (iso) => formatYmd(moroccoYmdOf(new Date(iso)), locale, false),
-      money,
-    );
-    if (previewInput.minDelayHours === 24 || previewInput.minDelayHours === 48) {
-      lines.unshift(t(`scratch.wizard.previewDelay${previewInput.minDelayHours}`));
-    }
-    return lines;
-  }, [previewInput, form.couponExpiresOn, t, locale, money]);
-
   if (shouldWait) return null;
 
   const title = editId ? t('scratch.wizard.titleEdit') : t('scratch.wizard.titleCreate');
 
-  if (!isPremium || isTeamMember) {
-    return (
-      <WizardMessage title={title} onBack={leave}>
-        {isTeamMember
-          ? <View style={styles.padded}><Notice text={t('scratch.list.ownerOnly')} /></View>
-          : <PremiumLockCard titleKey="scratch.list.premiumTitle" descriptionKey="scratch.list.premiumDesc" />}
-      </WizardMessage>
-    );
-  }
+  if (!canManage) return <GameNoAccess title={title} onBack={leave} ns="scratch" isTeamMember={isTeamMember} />;
 
-  if (editId && loadingExisting) return <WizardLoading />;
+  if (editId && loadingExisting) return <GameScreenLoading />;
 
   // Without the loaded campaign, saving would replace it with an empty form (PUT is a full replacement).
   if (editId && !existing) {
     return (
-      <WizardMessage title={title} onBack={leave}>
-        <View style={[styles.padded, styles.gap]}>
-          <Notice tone="danger" text={t('scratch.wizard.loadError')} />
-          <Button label={t('common.retry')} onPress={() => void refetchExisting()} loading={refetchingExisting} />
-        </View>
-      </WizardMessage>
+      <GameLoadError
+        title={title}
+        onBack={leave}
+        text={t('scratch.wizard.loadError')}
+        onRetry={() => void refetchExisting()}
+        retrying={refetchingExisting}
+      />
     );
   }
 
   if (existing && existing.status !== 'DRAFT' && existing.status !== 'SCHEDULED') {
-    return (
-      <WizardMessage title={title} onBack={leave}>
-        <View style={styles.padded}><Notice text={t('scratch.wizard.notEditable')} /></View>
-      </WizardMessage>
-    );
+    return <GameScreenNotice title={title} onBack={leave} text={t('scratch.wizard.notEditable')} />;
   }
 
-  const previewWidth = Math.min(width - 96, 360);
   const sendYmd = sendYmdOf(form, today);
   const message = form.message.trim();
   const campaignName = form.name.trim();
@@ -394,42 +309,26 @@ export default function ScratchCampaignWizard() {
     : t('scratch.wizard.summarySendLater', { date: formatYmd(form.sendDay, locale), slot: form.sendSlot });
   const reachLine = estimate.data ? t('scratch.wizard.reach', { count: estimate.data.total }) : t('scratch.wizard.estimateLoading');
 
-  let footer: ReactNode;
-  if (!isLast) {
-    footer = (
-      <WizardFooter onBack={stepIndex > 0 ? back : undefined} primary={{ label: nextLabel, onPress: next }} />
-    );
-  } else {
-    footer = (
-      <WizardFooter
-        secondary={{
-          icon: Save,
-          label: isScheduled ? t('scratch.wizard.unscheduleSave') : t('scratch.wizard.saveDraft'),
-          onPress: handleSaveDraft,
-          disabled: busy,
-        }}
-        primary={{
-          icon: form.sendMode === 'now' ? Send : Clock,
-          label: form.sendMode === 'now' ? t('scratch.wizard.sendBtn') : t('scratch.wizard.scheduleBtn'),
-          onPress: handleSend,
-          loading: busy,
-          disabled: estimate.data?.total === 0,
-        }}
-      />
-    );
-  }
+  const lastFooter = (
+    <WizardFooter
+      secondary={{
+        icon: Save,
+        label: isScheduled ? t('scratch.wizard.unscheduleSave') : t('scratch.wizard.saveDraft'),
+        onPress: handleSaveDraft,
+        disabled: busy,
+      }}
+      primary={{
+        icon: form.sendMode === 'now' ? Send : Clock,
+        label: form.sendMode === 'now' ? t('scratch.wizard.sendBtn') : t('scratch.wizard.scheduleBtn'),
+        onPress: handleSend,
+        loading: busy,
+        disabled: estimate.data?.total === 0,
+      }}
+    />
+  );
 
   return (
-    <WizardShell
-      title={title}
-      onBack={back}
-      stepLabels={stepLabels}
-      index={stepIndex}
-      heading={heading}
-      hint={hint}
-      scrollRef={scrollRef}
-      footer={footer}
-    >
+    <WizardShell title={title} wizard={wizard} lastFooter={lastFooter}>
       {step === 'gift' && (
         <>
           {!editId && (
@@ -601,109 +500,7 @@ export default function ScratchCampaignWizard() {
       )}
 
       {step === 'look' && (
-        <>
-          <Section title={t('scratch.wizard.previewCard')}>
-            <View style={[styles.designRow, { flexDirection: row }]}>
-              {SCRATCH_CARD_DESIGNS.map((d) => {
-                const selected = d.id === form.designId;
-                return (
-                  <TouchableOpacity
-                    key={d.id}
-                    onPress={() => set({ designId: d.id })}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={t(d.nameKey)}
-                    style={[styles.designSwatch, { borderColor: selected ? theme.primary : 'transparent' }]}
-                  >
-                    <LinearGradient colors={[d.gradient[0], d.gradient[1]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.designInner}>
-                      <View style={[styles.designDot, { backgroundColor: d.gradient[1] }]} />
-                    </LinearGradient>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <ChipRow>
-              <Chip label={t('scratch.wizard.previewBefore')} selected={previewSide === 'before'} onPress={() => setPreviewSide('before')} />
-              <Chip label={t('scratch.wizard.previewAfter')} selected={previewSide === 'after'} onPress={() => setPreviewSide('after')} />
-            </ChipRow>
-            {previewSide === 'after' && form.rewards.length > 1 && (
-              <ChipRow>
-                {rewardInputs.map((input, i) => (
-                  <Chip
-                    key={form.rewards[i].key}
-                    label={rewardDisplay(input, t, money).headline || t('scratch.wizard.rewardN', { n: i + 1 })}
-                    selected={previewIndex === i}
-                    onPress={() => setPreviewRewardKey(form.rewards[i].key)}
-                  />
-                ))}
-              </ChipRow>
-            )}
-
-            <ScratchPreview
-              designId={form.designId}
-              width={previewWidth}
-              merchantName={merchantName}
-              logoUrl={logoUrl}
-              side={previewSide}
-              rewardText={previewDisplay?.headline}
-              rewardDetail={previewDisplay?.detail}
-              footer={campaignName || t('scratch.card.offeredBy', { merchant: merchantName })}
-              message={message}
-              expiresLabel={t('scratch.card.expiresOn', { date: formatYmd(form.cardExpiresOn, locale, false) })}
-            />
-            {previewSide === 'after' && (
-              <View style={[styles.conditionsBox, { backgroundColor: theme.bgInput, borderColor: theme.borderLight }]}>
-                <Text style={[styles.conditionsTitle, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
-                  {t('scratch.wizard.previewConditions')}
-                </Text>
-                {previewConditions.map((line, i) => (
-                  <Text key={i} style={[styles.conditionLine, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
-                    • {line}
-                  </Text>
-                ))}
-              </View>
-            )}
-            {!merchant?.logoUrl && <Notice tone="warning" text={t('scratch.wizard.previewNoLogo')} />}
-          </Section>
-
-          <Section title={t('scratch.wizard.nameTitle')}>
-            <FieldLabel text={t('scratch.wizard.name')} hint={t('scratch.wizard.nameHint')} />
-            <Input
-              value={form.name}
-              onChangeText={(name) => set({ name })}
-              placeholder={t('scratch.wizard.namePlaceholder')}
-              maxLength={SCRATCH_LIMITS.NAME_MAX}
-              accessibilityLabel={t('scratch.wizard.name')}
-            />
-            <FieldLabel text={t('scratch.wizard.message')} hint={t('scratch.wizard.messageHint')} />
-            <Input
-              value={form.message}
-              onChangeText={(msg) => set({ message: msg })}
-              placeholder={t('scratch.wizard.messagePlaceholder')}
-              maxLength={SCRATCH_LIMITS.MESSAGE_MAX}
-              multiline
-              accessibilityLabel={t('scratch.wizard.message')}
-            />
-          </Section>
-
-          <Section title={t('scratch.wizard.previewPush')}>
-            <View style={[styles.push, { backgroundColor: theme.bgElevated, borderColor: theme.borderLight, flexDirection: row }]}>
-              <MerchantLogo logoUrl={merchant?.logoUrl} style={styles.pushLogo} />
-              <View style={styles.flex}>
-                <Text style={[styles.pushApp, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.2}>
-                  {t('scratch.wizard.previewPushApp')}
-                </Text>
-                <Text style={[styles.pushTitle, { color: theme.text, textAlign }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
-                  {t('scratch.wizard.pushTitle', { merchant: merchantName })}
-                </Text>
-                <Text style={[styles.pushBody, { color: theme.textSecondary, textAlign }]} numberOfLines={3} maxFontSizeMultiplier={1.3}>
-                  {message ? t('scratch.wizard.pushBody', { message }) : t('scratch.wizard.pushBodyDefault')}
-                </Text>
-              </View>
-            </View>
-            <HelpText text={t('scratch.wizard.previewPushHint')} />
-          </Section>
-        </>
+        <ScratchLookStep form={form} rewardInputs={rewardInputs} set={set} preview={preview} onPreviewChange={setPreview} />
       )}
 
       {step === 'review' && (
@@ -743,22 +540,7 @@ export default function ScratchCampaignWizard() {
 }
 
 const styles = StyleSheet.create({
-  padded: { padding: 16 },
-  gap: { gap: 12 },
-  flex: { flex: 1 },
   reach: { borderRadius: 12, padding: 14, gap: 2, minHeight: 56, justifyContent: 'center' },
   reachMain: { fontSize: ms(17), fontFamily: font.semibold },
   timeline: { fontSize: ms(13), lineHeight: ms(20), fontFamily: font.medium },
-  designRow: { flexWrap: 'wrap', gap: 10 },
-  designSwatch: { width: 56, borderWidth: 2, borderRadius: 12, padding: 3 },
-  designInner: { width: '100%', height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  designDot: { width: 16, height: 16, borderRadius: 999, borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)' },
-  push: { borderRadius: 16, borderWidth: 1, padding: 12, gap: 10, alignItems: 'flex-start' },
-  pushLogo: { width: 38, height: 38, borderRadius: 8 },
-  pushApp: { fontSize: ms(11), fontFamily: font.medium, marginBottom: 2 },
-  pushTitle: { fontSize: ms(14), fontFamily: font.semibold, lineHeight: ms(19) },
-  pushBody: { fontSize: ms(13), fontFamily: font.regular, lineHeight: ms(18), marginTop: 2 },
-  conditionsBox: { alignSelf: 'stretch', borderRadius: 12, borderWidth: 1, padding: 12, gap: 3 },
-  conditionsTitle: { fontSize: ms(12), fontFamily: font.semibold, marginBottom: 2 },
-  conditionLine: { fontSize: ms(13), fontFamily: font.regular, lineHeight: ms(18) },
 });

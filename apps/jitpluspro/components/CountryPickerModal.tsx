@@ -1,13 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Modal,
   FlatList,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { Search, X, ArrowLeft, Check } from 'lucide-react-native';
 import { COUNTRIES } from '@/constants/Countries';
 import { useLanguage } from '@/contexts/LanguageContext';

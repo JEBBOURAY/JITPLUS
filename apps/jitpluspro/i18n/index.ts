@@ -3,6 +3,7 @@ import { Platform, NativeModules } from 'react-native';
 import fr from './locales/fr';
 import en from './locales/en';
 import ar from './locales/ar';
+import { IOS_STORE_COPY } from './iosStoreCopy';
 
 export type AppLocale = 'fr' | 'en' | 'ar';
 
@@ -34,6 +35,9 @@ function getDeviceLocale(): AppLocale {
 export const detectedLocale = getDeviceLocale();
 
 const i18n = new I18n({ fr, en, ar });
+// App Store 3.1.1 / 3.1.3: no "upgrade" / "contact us" calls to action for the
+// Pro plan on iOS (deep-merged over the regular strings).
+if (Platform.OS === 'ios') i18n.store(IOS_STORE_COPY);
 
 i18n.defaultLocale = 'fr';
 i18n.locale = detectedLocale;

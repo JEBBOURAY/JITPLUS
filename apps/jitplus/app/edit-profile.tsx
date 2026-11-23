@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  ActivityIndicator, Alert, I18nManager, Keyboard, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform,
   Pressable, ScrollView, StyleSheet, View,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { useNavigation, usePreventRemove, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Calendar, Mail, User } from 'lucide-react-native';
+import { Calendar, Mail, User } from 'lucide-react-native';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PremiumPhoneInput from '@/components/PremiumPhoneInput';
+import { HeaderBackButton } from '@/components/ScreenHeader';
 import { FieldLabel, OtpVerificationModal, ProfileTextField, VerificationBadge } from '@/components/profile';
 import { useProfileEditing } from '@/hooks/useProfileEditing';
 import { formatDateInput } from '@/utils/dateInput';
@@ -21,7 +22,6 @@ import { fontSize as FS, hp, ms, radius, wp } from '@/utils/responsive';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-const BACK_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
 
 export default function EditProfileScreen() {
   const theme = useTheme();
@@ -54,10 +54,10 @@ export default function EditProfileScreen() {
   });
 
   useEffect(() => {
+    // Signed out (or 401): let the root layout reset the history to welcome.
     if (client?.id) return;
     disablePrevention();
-    router.replace('/login');
-  }, [client?.id, router, disablePrevention]);
+  }, [client?.id, disablePrevention]);
 
   // iOS swipe-back can't show the discard prompt on native-stack, so it is
   // disabled while there are unsaved changes.
@@ -106,16 +106,7 @@ export default function EditProfileScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + hp(6), borderBottomColor: theme.border }]}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          disabled={isSaving}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-          style={({ pressed }) => [styles.backBtn, { backgroundColor: theme.bgCard, borderColor: theme.border }, pressed && styles.pressed]}
-        >
-          <ArrowLeft size={ms(20)} color={theme.text} strokeWidth={2} style={BACK_FLIP} />
-        </Pressable>
+        <HeaderBackButton onPress={() => router.back()} disabled={isSaving} />
         <Text style={[styles.headerTitle, { color: theme.text, fontFamily: fonts.semibold }]} numberOfLines={1} accessibilityRole="header">
           {t('profile.editProfile')}
         </Text>
@@ -268,14 +259,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(16),
     paddingBottom: hp(10),
     borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  backBtn: {
-    width: ms(40),
-    height: ms(40),
-    borderRadius: ms(20),
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   backBtnSpacer: { width: ms(40) },
   headerTitle: { flex: 1, fontSize: FS.lg, textAlign: 'center' },

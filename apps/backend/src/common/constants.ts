@@ -26,12 +26,24 @@ export function getAdminDashboardOrigin(): string {
 
 /** A merchant's client is "inactive" after this many days without a visit */
 export const INACTIVE_CLIENT_DAYS = 30;
+/** "Nouveaux" clients: card opened within this many days. */
+export const NEW_CLIENT_DAYS = 30;
+/** "Presque" clients: at most this many stamps short of the cheapest reward. */
+export const ALMOST_REWARD_GAP = 2;
 
 /** OTP maximum attempts before lockout (reduced from 5 to harden brute-force resistance) */
 export const MAX_OTP_ATTEMPTS = 3;
 
 /** OTP expiry time in milliseconds (5 minutes) */
 export const OTP_EXPIRY_MS = 5 * 60 * 1000;
+/** JitPlus client codes: emails often land late or in spam. */
+export const CLIENT_OTP_EXPIRY_MS = 10 * 60 * 1000;
+
+/**
+ * Version of the JitPlus terms and privacy policy a client accepts at sign-up.
+ * Keep in step with `legal.lastUpdate` in the jitplus locales when the text changes.
+ */
+export const CLIENT_TERMS_VERSION = '1.0';
 
 /** OTP range bounds */
 export const OTP_MIN = 100000;
@@ -45,6 +57,12 @@ export const DEFAULT_AMOUNT_PER_STAMP = 10;
 
 /** Maximum stamps credited in a single EARN_STAMPS transaction (anti-fraud cap) */
 export const MAX_STAMPS_PER_TX = 20;
+
+/** Welcome gift: the first reward must need at least this many stamps */
+export const WELCOME_BONUS_MIN_THRESHOLD = 3;
+
+/** Welcome gift: hard cap, on top of the quarter of the first reward */
+export const WELCOME_BONUS_MAX_STAMPS = 5;
 
 /** Bounds of the optional stamp validity (days without a visit before reset) */
 export const MIN_STAMP_VALIDITY_DAYS = 30;

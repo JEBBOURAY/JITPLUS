@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getErrorStatus } from '@jitplus/shared';
 import api from '@/services/api';
 import type {
   WheelCampaign,
@@ -13,6 +14,8 @@ import { queryKeys, STALE } from './keys';
 function invalidateWheel(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: queryKeys.luckyWheelCampaigns });
   qc.invalidateQueries({ queryKey: queryKeys.luckyWheelActiveInfo });
+  // Campaign counts of the Statistics screen: refetched when it next opens.
+  qc.invalidateQueries({ queryKey: queryKeys.dashboardGames, refetchType: 'none' });
 }
 
 export function useLuckyWheelCampaigns(enabled = true) {
@@ -42,20 +45,23 @@ export function useLuckyWheelPendingPrizes(enabled = true) {
 export type LuckyWheelPendingDraw = WheelPendingDraw;
 
 /** Prizes one client won and has not collected yet. Empty when the merchant has no Premium. */
+export async function fetchLuckyWheelClientPrizes(clientId: string): Promise<LuckyWheelPendingDraw[]> {
+  try {
+    const res = await api.get('/lucky-wheel/merchant/pending-prizes', { params: { clientId } });
+    return Array.isArray(res.data) ? res.data : [];
+  } catch (err) {
+    if (getErrorStatus(err) === 403) return [];
+    throw err;
+  }
+}
+
 export function useLuckyWheelClientPrizes(clientId: string | undefined) {
   return useQuery<LuckyWheelPendingDraw[]>({
-    queryKey: [...queryKeys.luckyWheelPendingPrizes, clientId ?? ''],
-    queryFn: async () => {
-      try {
-        const res = await api.get('/lucky-wheel/merchant/pending-prizes', { params: { clientId } });
-        return Array.isArray(res.data) ? res.data : [];
-      } catch (err) {
-        if ((err as { response?: { status?: number } })?.response?.status === 403) return [];
-        throw err;
-      }
-    },
+    queryKey: queryKeys.luckyWheelClientPrizes(clientId ?? ''),
+    queryFn: () => fetchLuckyWheelClientPrizes(clientId!),
     enabled: !!clientId,
-    staleTime: 0,
+    // Fresh per visit; the few seconds only let the scan-time prefetch be reused.
+    staleTime: STALE.TILL,
   });
 }
 

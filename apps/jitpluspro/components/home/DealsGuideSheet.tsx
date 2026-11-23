@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, I18nManager } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import {
-  Check,
   Globe,
   Lightbulb,
   Percent,
@@ -21,7 +21,9 @@ import { DEAL_LIMITS, type DealOffer, type DealScope, type DealType } from '@jit
 import { useTheme } from '@/contexts/ThemeContext';
 import { useMoney } from '@/hooks/useCurrency';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
 import PromoSheet, { SheetSectionLabel, useSheetColors, type LucideIcon } from '@/components/home/PromoSheet';
+import { SheetCallout, SheetCheckList, SheetIconList, type SheetItem } from '@/components/home/SheetBlocks';
 import { PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
 import { DealPreviewRow, useDealMerchantLook } from '@/components/deals/DealRows';
 
@@ -37,6 +39,8 @@ const EXAMPLE_OFFER: Required<DealOffer> = {
   dealPrice: null,
   buyQty: null,
   freeQty: null,
+  priceFrom: false,
+  priceUnit: null,
 };
 
 const SCOPES: readonly { scope: DealScope; Icon: LucideIcon }[] = [
@@ -81,12 +85,23 @@ function DealsGuideSheet({ visible, onClose, onCreate }: DealsGuideSheetProps) {
   const { money } = useMoney();
   const { softFill, hairline, muted, ink } = useSheetColors();
   const look = useDealMerchantLook();
-  const isRTL = I18nManager.isRTL;
+  const { isRTL } = useDir();
   const accentInk = ink(TONE);
   const listCard = [styles.listCard, { backgroundColor: softFill, borderColor: hairline }];
   const divider = { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: hairline };
   // Computed once per mount: reading the clock during render is impure.
   const [exampleEndsAt] = useState(() => new Date(Date.now() + 5 * DAY_MS).toISOString());
+
+  const offerTypes: SheetItem[] = OFFER_TYPES.map(({ type, Icon, exampleKey }) => ({
+    Icon,
+    title: t(`deals.type.${type}`),
+    text: t(exampleKey),
+  }));
+  const gains: SheetItem[] = GAINS.map(({ Icon, n }) => ({
+    Icon,
+    title: t(`home.dealsGuideGain${n}Title`),
+    text: t(`home.dealsGuideGain${n}Text`),
+  }));
 
   const facts = [
     { value: money(0), label: t('home.dealsGuideFactFree') },
@@ -151,23 +166,7 @@ function DealsGuideSheet({ visible, onClose, onCreate }: DealsGuideSheetProps) {
 
       {/* ── 3. Quelle offre choisir ── */}
       <SheetSectionLabel text={t('home.dealsGuideTypesLabel')} tone={TONE} />
-      <View style={listCard}>
-        {OFFER_TYPES.map(({ type, Icon, exampleKey }, i) => (
-          <View key={type} style={[styles.row, isRTL && styles.rowRtl, i > 0 && divider]}>
-            <View style={styles.tintIcon}>
-              <Icon size={16} color={accentInk} strokeWidth={2} />
-            </View>
-            <View style={styles.flex1}>
-              <Text style={[styles.rowTitle, { color: theme.text }]} maxFontSizeMultiplier={1.35}>
-                {t(`deals.type.${type}`)}
-              </Text>
-              <Text style={[styles.rowText, { color: muted }]} maxFontSizeMultiplier={1.45}>
-                {t(exampleKey)}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
+      <SheetIconList items={offerTypes} tone={TONE} />
 
       {/* ── 4. En 3 étapes ── */}
       <SheetSectionLabel text={t('home.dealsGuideStepsLabel')} tone={TONE} />
@@ -186,41 +185,11 @@ function DealsGuideSheet({ visible, onClose, onCreate }: DealsGuideSheetProps) {
 
       {/* ── 5. Ce que vous y gagnez ── */}
       <SheetSectionLabel text={t('home.dealsGuideGainsLabel')} tone={TONE} />
-      <View style={listCard}>
-        {GAINS.map(({ Icon, n }, i) => (
-          <View key={n} style={[styles.row, isRTL && styles.rowRtl, i > 0 && divider]}>
-            <View style={styles.gainCheck}>
-              <Check size={12} color="#FFFFFF" strokeWidth={3} />
-            </View>
-            <View style={styles.flex1}>
-              <View style={[styles.gainTitleRow, isRTL && styles.rowRtl]}>
-                <Icon size={14} color={accentInk} strokeWidth={2} />
-                <Text style={[styles.rowTitle, { color: theme.text }]} maxFontSizeMultiplier={1.35}>
-                  {t(`home.dealsGuideGain${n}Title`)}
-                </Text>
-              </View>
-              <Text style={[styles.rowText, { color: muted }]} maxFontSizeMultiplier={1.45}>
-                {t(`home.dealsGuideGain${n}Text`)}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
+      <SheetCheckList items={gains} tone={TONE} />
 
       {/* ── 6. Nos conseils ── */}
       <SheetSectionLabel text={t('home.dealsGuideTipsLabel')} tone={TONE} />
-      <View style={[styles.callout, isRTL && styles.rowRtl]}>
-        <View style={styles.tintIcon}>
-          <Lightbulb size={16} color={accentInk} strokeWidth={2} />
-        </View>
-        <View style={[styles.flex1, styles.tips]}>
-          {TIP_KEYS.map((key) => (
-            <Text key={key} style={[styles.tipText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.45}>
-              {t(key)}
-            </Text>
-          ))}
-        </View>
-      </View>
+      <SheetCallout Icon={Lightbulb} tone={TONE} lines={TIP_KEYS.map((key) => t(key))} />
 
       <Text style={[styles.freeNote, { color: muted }]} maxFontSizeMultiplier={1.3}>
         {t('deals.wizard.freeNote', { maxActive: DEAL_LIMITS.MAX_ACTIVE, maxPerDay: DEAL_LIMITS.MAX_CREATED_PER_DAY })}
@@ -233,7 +202,6 @@ export default React.memo(DealsGuideSheet);
 
 const styles = StyleSheet.create({
   rowRtl: { flexDirection: 'row-reverse' },
-  flex1: { flex: 1 },
 
   // Hero key figures
   facts: { flexDirection: 'row', gap: 8, marginTop: 16 },
@@ -275,32 +243,6 @@ const styles = StyleSheet.create({
   },
   stepNumberText: { color: '#FFFFFF', fontSize: 11.5, fontFamily: 'Lexend_600SemiBold' },
   stepText: { flex: 1, fontSize: 12.5, lineHeight: 18, fontFamily: 'Lexend_500Medium' },
-
-  // Gains
-  gainCheck: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-  },
-  gainTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-
-  // Tips
-  callout: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 11,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    backgroundColor: `${ACCENT}12`,
-    borderColor: `${ACCENT}30`,
-  },
-  tips: { gap: 8 },
-  tipText: { fontSize: 12.5, lineHeight: 18, fontFamily: 'Lexend_400Regular' },
 
   freeNote: { fontSize: 11.5, lineHeight: 16, marginTop: 16, textAlign: 'center', fontFamily: 'Lexend_400Regular' },
 });

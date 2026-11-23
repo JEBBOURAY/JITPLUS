@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image, type ImageSource } from 'expo-image';
 import { useRouter } from 'expo-router';
 import Svg, { Circle } from 'react-native-svg';
@@ -13,7 +14,7 @@ export interface Tool {
   label: string;
   hint: string;
   /** Illustration shown above the label (bundled PNG, transparent background). */
-  image: ImageSource | number;
+  image?: ImageSource | number;
   /** expo-router path pushed on tap. */
   route?: string;
   /** Runs instead of a navigation, e.g. to open a sheet. */
@@ -27,6 +28,8 @@ export interface Tool {
 interface Props {
   title: string;
   tools: Tool[];
+  /** Told which tool was opened, e.g. to rank the cards by use. */
+  onUse?: (key: string) => void;
 }
 
 const COLUMNS = 2;
@@ -108,7 +111,9 @@ const ToolCard = React.memo(function ToolCard({
       accessibilityRole="button"
       accessibilityLabel={`${label}, ${hint}`}
     >
-      <Image source={image} style={styles.image} contentFit="contain" accessible={false} />
+      {image ? (
+        <Image source={image} style={styles.image} contentFit="contain" accessible={false} />
+      ) : null}
       <View style={styles.text}>
         <Text
           style={[styles.label, { color: theme.text, textAlign: dir.textAlign }]}
@@ -151,17 +156,18 @@ const ToolCard = React.memo(function ToolCard({
  * "Mes outils" on Accueil: every merchant tool as a card, two per row. All
  * cards share one size and carry a one-line explanation under the label.
  */
-function ToolsGrid({ title, tools }: Props) {
+function ToolsGrid({ title, tools, onUse }: Props) {
   const router = useRouter();
   const theme = useTheme();
   const dir = useDir();
 
   const handlePress = useCallback(
     (tool: Tool) => {
+      onUse?.(tool.key);
       if (tool.onPress) tool.onPress();
       else if (tool.route) router.push(tool.route as never);
     },
-    [router],
+    [router, onUse],
   );
 
   return (
@@ -207,6 +213,7 @@ const styles = StyleSheet.create({
   },
   // The artwork carries its own violet disc and margin, so it sits flush in the corner.
   image: { width: 72, height: 72, margin: -4 },
+  // Same footprint as the artwork's own disc.
   text: { alignSelf: 'stretch', marginTop: 8 },
   label: {
     fontSize: 16,

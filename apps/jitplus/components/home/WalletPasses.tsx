@@ -1,10 +1,9 @@
-import { moneyFormatter } from '@jitplus/shared/src/currency';
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Animated } from 'react-native';
 import { Text } from '@/components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Clock, Gift, Ticket, Trophy } from 'lucide-react-native';
+import { Check, Clock, Gift, Ticket, Trophy } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import GlassCard from '@/components/GlassCard';
@@ -12,21 +11,19 @@ import MerchantLogo from '@/components/MerchantLogo';
 import LuckyWheelIcon from '@/components/LuckyWheelIcon';
 import PassDetailSheet, { type PassDetail } from '@/components/home/PassDetailSheet';
 import { useAppFonts } from '@/utils/fonts';
-import { formatDate } from '@/utils/date';
+import { pluralKey } from '@jitplus/shared';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
-import {
-  describeCouponConditions, diffDaysYmd, formatRewardValue, rewardDisplay, toYmd,
-} from '@jitplus/shared/src/scratch';
+import { formatBadgeCount } from '@/utils/badge';
+import { describeCoupon, describePrize, type PassView } from '@/utils/passDetail';
 import type { CouponDto, ScratchCardDto } from '@jitplus/shared/src/scratch';
 import type { LuckyWheelDraw } from '@/types';
 
 const PASS_W = wp(252);
 const PASS_H = ms(142);
 const PASS_GAP = wp(12);
-const TILE_H = ms(156);
+const TILE_H = ms(128);
 const STUB_W = ms(80);
 const NOTCH = ms(9);
-const SOON_DAYS = 2;
 const SCRATCH_COVER = ['#F3F4F6', '#9CA3AF'] as const;
 const DIAG_START = { x: 0, y: 0 } as const;
 const DIAG_END = { x: 1, y: 1 } as const;
@@ -34,56 +31,46 @@ const PERFORATION = Array.from({ length: 9 });
 
 type Fonts = ReturnType<typeof useAppFonts>;
 
-function daysUntil(iso: string): number {
-  return diffDaysYmd(toYmd(new Date()), toYmd(new Date(iso)));
-}
-
-// ── Game tile (lucky wheel / scratch cards): same layout, own colour ───────
+// ── Game tile (lucky wheel / scratch cards / collection): same layout, three on a row ──
 
 const GameTile = memo(function GameTile({
-  color, title, count, availableLabel, emptyLabel, cta, art, onPress, a11yLabel, fonts,
+  color, title, count, status, art, onPress, a11yLabel, fonts,
 }: {
+  /** Game colour, only as a soft tint behind the drawing */
   color: string;
   title: string;
   count: number;
-  availableLabel: string;
-  emptyLabel: string;
-  cta: string;
+  /** "2 tickets", "Aucune carte"… */
+  status: string;
   art: React.ReactNode;
   onPress: () => void;
   a11yLabel: string;
   fonts: Fonts;
 }) {
+  const theme = useTheme();
   const hasAny = count > 0;
-  const accentText = color;
 
+  // Calm card: the content is the drawing and the count; the gold badge marks what can be played now.
   return (
-    <GlassCard onPress={onPress} radius={radius.xl} style={styles.tileOuter} accessibilityLabel={a11yLabel}>
-      <View style={[styles.tile, { backgroundColor: color }]}>
-        {!hasAny && <View pointerEvents="none" style={styles.tileMuted} />}
-
+    <GlassCard onPress={onPress} style={styles.tileOuter} accessibilityLabel={a11yLabel}>
+      <View style={[styles.tile, { backgroundColor: theme.bgCard, borderColor: hasAny ? `${theme.accent}66` : theme.border }]}>
         <View style={styles.tileTop}>
-          <View style={styles.tileArt}>{art}</View>
-          <View style={[styles.countBadge, hasAny ? styles.countBadgeOn : styles.countBadgeOff]}>
-            <Text style={[styles.countText, { color: hasAny ? accentText : '#FFFFFF', fontFamily: fonts.bold }]}>
-              {count > 99 ? '99+' : count}
-            </Text>
-          </View>
+          <View style={[styles.tileArt, { backgroundColor: `${color}${theme.mode === 'dark' ? '33' : '14'}` }]}>{art}</View>
+          {hasAny && (
+            <View style={[styles.countBadge, { backgroundColor: theme.accent }]}>
+              <Text style={[styles.countText, { fontFamily: fonts.bold }]} maxFontSizeMultiplier={1.2}>
+                {formatBadgeCount(count)}
+              </Text>
+            </View>
+          )}
         </View>
-
         <View>
-          <Text style={[styles.tileTitle, { fontFamily: fonts.bold }]} numberOfLines={1}>{title}</Text>
-          <Text style={[styles.tileSub, { fontFamily: fonts.medium }]} numberOfLines={1}>
-            {hasAny ? availableLabel : emptyLabel}
-          </Text>
-        </View>
-
-        <View style={[styles.tileCta, !hasAny && styles.tileCtaMuted]}>
+          <Text style={[styles.tileTitle, { color: theme.text, fontFamily: fonts.semibold }]} numberOfLines={2}>{title}</Text>
           <Text
-            style={[styles.tileCtaText, { color: hasAny ? accentText : '#FFFFFF', fontFamily: fonts.bold }]}
-            numberOfLines={1}
+            style={[styles.tileSub, { color: hasAny ? theme.accent : theme.textMuted, fontFamily: fonts.medium }]}
+            numberOfLines={2}
           >
-            {cta}
+            {status}
           </Text>
         </View>
       </View>
@@ -103,29 +90,43 @@ const ScratchArt = memo(function ScratchArt() {
   );
 });
 
+/** Small collection drawing: a list of products, the first ones ticked. */
+const COLLECTION_ART_ROWS = [true, true, false] as const;
+const CollectionArt = memo(function CollectionArt() {
+  return (
+    <View style={styles.collectionArt}>
+      {COLLECTION_ART_ROWS.map((done, i) => (
+        <View key={i} style={styles.collectionArtRow}>
+          <View style={[styles.collectionArtBox, done && styles.collectionArtBoxDone]}>
+            {done && <Check size={ms(8)} color="#fff" strokeWidth={3.5} />}
+          </View>
+          <View style={[styles.collectionArtLine, done && styles.collectionArtLineDone]} />
+        </View>
+      ))}
+    </View>
+  );
+});
+
 // ── Ticket-style pass (coupon, won prize) ──────────────────────────────────
 
 const TicketPass = memo(function TicketPass({
-  logoUrl, merchantName, headline, tag, status, warning, stubColor, StubIcon, onPress, a11yLabel, fonts,
+  pass, stubColor, StubIcon, onPress, fonts,
 }: {
-  logoUrl?: string | null;
-  merchantName: string;
-  headline: string;
-  tag: string;
-  status: string;
-  warning?: boolean;
+  pass: PassView;
   stubColor: string;
   StubIcon: typeof Ticket;
-  onPress: () => void;
-  a11yLabel: string;
+  /** Stable across renders (receives the pass id) so the memo holds. */
+  onPress: (id: string) => void;
   fonts: Fonts;
 }) {
   const theme = useTheme();
   const isDark = theme.mode === 'dark';
   const notchStyle = { backgroundColor: theme.bg, borderColor: theme.border };
+  const { id, logoUrl, merchantName, headline, tag, status, warning, a11yLabel } = pass;
+  const handlePress = useCallback(() => onPress(id), [onPress, id]);
 
   return (
-    <GlassCard onPress={onPress} radius={radius.xl} style={styles.passOuter} accessibilityLabel={a11yLabel}>
+    <GlassCard onPress={handlePress} style={styles.passOuter} accessibilityLabel={a11yLabel}>
       <View style={[styles.ticket, !isDark && styles.ticketShadow, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
         <View style={[styles.stub, { backgroundColor: `${stubColor}${isDark ? '24' : '12'}` }]}>
           <View style={[styles.stubLogo, { borderColor: `${stubColor}40` }]}>
@@ -167,11 +168,15 @@ const TicketPass = memo(function TicketPass({
 
 // ── Section ────────────────────────────────────────────────────────────────
 
+const SCRATCH_ART = <ScratchArt />;
+const COLLECTION_ART = <CollectionArt />;
+
 export default memo(function WalletPasses({
   scratchCards,
   coupons,
   wonPrizes,
   ticketCount,
+  collectionCount,
   spinAnim,
   onOpenWheel,
 }: {
@@ -179,6 +184,8 @@ export default memo(function WalletPasses({
   coupons: CouponDto[];
   wonPrizes: LuckyWheelDraw[];
   ticketCount: number;
+  /** Collections in progress in the client's shops. */
+  collectionCount: number;
   spinAnim: Animated.Value;
   onOpenWheel: () => void;
 }) {
@@ -188,10 +195,13 @@ export default memo(function WalletPasses({
   const router = useRouter();
   const [detail, setDetail] = useState<PassDetail | null>(null);
 
+  const prizes = useMemo(() => wonPrizes.map((draw) => describePrize(draw, t, locale)), [wonPrizes, t, locale]);
   // Soonest-expiring first: that is the one the client must not forget.
-  const sortedCoupons = useMemo(
-    () => [...coupons].sort((a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime()),
-    [coupons],
+  const couponPasses = useMemo(
+    () => [...coupons]
+      .sort((a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime())
+      .map((coupon) => describeCoupon(coupon, t, locale)),
+    [coupons, t, locale],
   );
   const nextScratch = useMemo(
     () => [...scratchCards].sort((a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime())[0],
@@ -202,103 +212,38 @@ export default memo(function WalletPasses({
     () => spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
     [spinAnim],
   );
+  const wheelArt = useMemo(() => (
+    <Animated.View style={{ transform: [{ rotate: spin }] }}>
+      <LuckyWheelIcon size={ms(37)} />
+    </Animated.View>
+  ), [spin]);
 
   const scratchCount = scratchCards.length;
-  const hasTickets = wonPrizes.length > 0 || coupons.length > 0;
+  const hasTickets = prizes.length > 0 || couponPasses.length > 0;
 
-  const openScratch = () => {
-    if (nextScratch) router.push({ pathname: '/scratch/[id]', params: { id: nextScratch.id } });
+  const nextScratchId = nextScratch?.id;
+  const openScratch = useCallback(() => {
+    if (nextScratchId) router.push({ pathname: '/scratch/[id]', params: { id: nextScratchId } });
     else router.push('/scratch');
-  };
+  }, [nextScratchId, router]);
 
-  const openPrize = (draw: LuckyWheelDraw) => {
-    const merchantName = draw.ticket.campaign.merchant?.nom ?? draw.ticket.campaign.name;
-    setDetail({
-      kind: 'prize',
-      tag: t('home.passPrizeTag'),
-      headline: draw.prize?.label ?? t('luckyWheel.won'),
-      detail: draw.prize?.description,
-      merchantName,
-      logoUrl: draw.ticket.campaign.merchant?.logoUrl,
-      intro: t('home.passPrizeIntro', { merchant: merchantName }),
-      steps: [t('scratch.screen.stepVisit', { merchant: merchantName }), t('home.passPrizeStep')],
-      conditions: [],
-      expiry: draw.claimBefore
-        ? t('luckyWheel.claimBeforeLong', { date: formatDate(draw.claimBefore, locale) })
-        : t('home.passNoExpiry'),
-      expirySoon: !!draw.claimBefore && daysUntil(draw.claimBefore) <= SOON_DAYS,
-    });
-  };
+  const hasCollections = collectionCount > 0;
+  const openCollections = useCallback(() => {
+    router.push(hasCollections ? '/collections' : { pathname: '/collections', params: { view: 'history' } });
+  }, [hasCollections, router]);
 
-  const openCoupon = (coupon: CouponDto) => {
-    const merchantName = coupon.merchant?.nom || t('common.shop');
-    const money = moneyFormatter(coupon.merchant?.currency, locale);
-    const reward = rewardDisplay({ type: coupon.type, value: coupon.value, label: coupon.label }, t, money);
-    // Without expiresAt the helper returns [rules…, validFrom?, singleUse]: the
-    // expiry has its own row in the sheet and "single use" adds nothing here.
-    const conditions = describeCouponConditions(
-      { conditions: coupon.conditions, validFrom: coupon.validFrom },
-      t,
-      (iso) => formatDate(iso, locale),
-      money,
-    ).slice(0, -1);
-    setDetail({
-      kind: 'coupon',
-      tag: t('home.passCouponTag'),
-      headline: reward.headline,
-      detail: reward.detail,
-      merchantName,
-      logoUrl: coupon.merchant?.logoUrl,
-      intro: t('home.passCouponIntro', { merchant: merchantName }),
-      steps: [t('scratch.screen.stepVisit', { merchant: merchantName }), t('home.passCouponStep')],
-      conditions,
-      expiry: t('scratch.conditions.expiresAt', { date: formatDate(coupon.expiresAt, locale) }),
-      expirySoon: daysUntil(coupon.expiresAt) <= SOON_DAYS,
-    });
-  };
+  const openPrize = useCallback((id: string) => {
+    const pass = prizes.find((p) => p.id === id);
+    if (pass) setDetail(pass.detail);
+  }, [prizes]);
+  const openCoupon = useCallback((id: string) => {
+    const pass = couponPasses.find((p) => p.id === id);
+    if (pass) setDetail(pass.detail);
+  }, [couponPasses]);
+  const closeDetail = useCallback(() => setDetail(null), []);
 
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: theme.text, fontFamily: fonts.bold }]} numberOfLines={1}>
-          {t('home.perksTitle')}
-        </Text>
-      </View>
-
-      {/* ── Games: lucky wheel | scratch cards ── */}
-      <View style={styles.tilesRow}>
-        <GameTile
-          color={palette.violetDark}
-          title={t('luckyWheel.title')}
-          count={ticketCount}
-          availableLabel={t('home.availableCount', { count: ticketCount })}
-          emptyLabel={t('home.noneAvailable')}
-          cta={ticketCount > 0 ? t('luckyWheel.spin') : t('luckyWheel.history')}
-          fonts={fonts}
-          a11yLabel={`${t('luckyWheel.title')}, ${t('home.availableCount', { count: ticketCount })}`}
-          onPress={onOpenWheel}
-          art={
-            <Animated.View style={{ transform: [{ rotate: spin }] }}>
-              <LuckyWheelIcon size={ms(46)} />
-            </Animated.View>
-          }
-        />
-        <GameTile
-          color={palette.goldDark}
-          title={t('home.scratchTileTitle')}
-          count={scratchCount}
-          availableLabel={t('home.availableCount', { count: scratchCount })}
-          emptyLabel={t('home.noneAvailable')}
-          cta={scratchCount > 0 ? t('scratch.home.cta') : t('scratch.hub.history')}
-          fonts={fonts}
-          a11yLabel={`${t('home.scratchTileTitle')}, ${t('home.availableCount', { count: scratchCount })}`}
-          onPress={openScratch}
-          art={<ScratchArt />}
-        />
-      </View>
-
-      {/* ── Won prizes and coupons, as tickets ── */}
-      {hasTickets && (
+  // Won prizes and coupons, as tickets.
+  const ticketsRow = (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -308,54 +253,91 @@ export default memo(function WalletPasses({
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
         >
-          {wonPrizes.map((draw) => {
-            const merchantName = draw.ticket.campaign.merchant?.nom ?? draw.ticket.campaign.name;
-            const soon = !!draw.claimBefore && daysUntil(draw.claimBefore) <= SOON_DAYS;
-            return (
-              <TicketPass
-                key={`prize-${draw.id}`}
-                logoUrl={draw.ticket.campaign.merchant?.logoUrl}
-                merchantName={merchantName}
-                headline={draw.prize?.label ?? t('luckyWheel.won')}
-                tag={t('home.passPrizeTag')}
-                status={draw.claimBefore
-                  ? t('luckyWheel.claimBefore', { date: formatDate(draw.claimBefore, locale) })
-                  : t('luckyWheel.pending')}
-                warning={soon}
-                stubColor={palette.emerald}
-                StubIcon={Trophy}
-                fonts={fonts}
-                a11yLabel={`${t('home.passPrizeTag')}, ${draw.prize?.label ?? ''}, ${merchantName}`}
-                onPress={() => openPrize(draw)}
-              />
-            );
-          })}
+          {prizes.map((pass) => (
+            <TicketPass
+              key={`prize-${pass.id}`}
+              pass={pass}
+              stubColor={palette.emerald}
+              StubIcon={Trophy}
+              fonts={fonts}
+              onPress={openPrize}
+            />
+          ))}
 
-          {sortedCoupons.map((coupon) => {
-            const reward = formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t, moneyFormatter(coupon.merchant?.currency, locale));
-            const days = daysUntil(coupon.expiresAt);
-            const merchantName = coupon.merchant?.nom || t('common.shop');
+          {couponPasses.map((pass) => {
+            const fromCollection = pass.kind === 'collection';
             return (
               <TicketPass
-                key={`coupon-${coupon.id}`}
-                logoUrl={coupon.merchant?.logoUrl}
-                merchantName={merchantName}
-                headline={reward}
-                tag={t('home.passCouponTag')}
-                status={days <= 0 ? t('scratch.coupons.expiresToday') : t('scratch.coupons.expiresIn', { count: days })}
-                warning={days <= SOON_DAYS}
-                stubColor={palette.violet}
-                StubIcon={Ticket}
+                key={`coupon-${pass.id}`}
+                pass={pass}
+                stubColor={fromCollection ? palette.goldDark : palette.violet}
+                StubIcon={fromCollection ? Gift : Ticket}
                 fonts={fonts}
-                a11yLabel={`${t('home.passCouponTag')}, ${reward}, ${merchantName}`}
-                onPress={() => openCoupon(coupon)}
+                onPress={openCoupon}
               />
             );
           })}
         </ScrollView>
-      )}
+  );
 
-      <PassDetailSheet pass={detail} onClose={() => setDetail(null)} />
+  const sectionTitle = (text: string) => (
+    <View style={styles.sectionHeader}>
+      <Text
+        style={[styles.sectionTitle, { color: theme.text, fontFamily: fonts.bold }]}
+        numberOfLines={1}
+        accessibilityRole="header"
+      >
+        {text}
+      </Text>
+    </View>
+  );
+  const wheelStatus = ticketCount > 0
+    ? t(pluralKey('home.wheelTickets', ticketCount, locale), { count: ticketCount })
+    : t('home.wheelNone');
+  const scratchStatus = scratchCount > 0 ? t('home.scratchCount', { count: scratchCount }) : t('home.scratchNone');
+  const collectionStatus = hasCollections ? t('home.inProgressCount', { count: collectionCount }) : t('home.collectionNone');
+
+  return (
+    <View style={styles.section}>
+      {/* ── Games: lucky wheel | scratch cards | collection ── */}
+      {sectionTitle(t('home.gamesTitle'))}
+      <View style={styles.tilesRow}>
+        <GameTile
+          color={palette.violetDark}
+          title={t('luckyWheel.title')}
+          count={ticketCount}
+          status={wheelStatus}
+          fonts={fonts}
+          a11yLabel={`${t('luckyWheel.title')}, ${wheelStatus}`}
+          onPress={onOpenWheel}
+          art={wheelArt}
+        />
+        <GameTile
+          color={palette.goldDark}
+          title={t('home.scratchTileTitle')}
+          count={scratchCount}
+          status={scratchStatus}
+          fonts={fonts}
+          a11yLabel={`${t('home.scratchTileTitle')}, ${scratchStatus}`}
+          onPress={openScratch}
+          art={SCRATCH_ART}
+        />
+        <GameTile
+          color={palette.violet}
+          title={t('home.collectionTileTitle')}
+          count={collectionCount}
+          status={collectionStatus}
+          fonts={fonts}
+          a11yLabel={`${t('home.collectionTileTitle')}, ${collectionStatus}`}
+          onPress={openCollections}
+          art={COLLECTION_ART}
+        />
+      </View>
+
+      {/* ── Won gifts, right under the games they come from (no title: the tickets say what they are) ── */}
+      {hasTickets && ticketsRow}
+
+      <PassDetailSheet pass={detail} onClose={closeDetail} />
     </View>
   );
 });
@@ -364,43 +346,42 @@ const styles = StyleSheet.create({
   section: { marginBottom: hp(8) },
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    gap: wp(12), marginTop: hp(4), marginBottom: hp(10),
+    gap: wp(12), marginBottom: hp(12),
   },
   sectionTitle: { fontSize: fontSize.lg, letterSpacing: -0.3, flexShrink: 1 },
 
   // Game tiles
-  tilesRow: { flexDirection: 'row', gap: wp(12), marginBottom: hp(14) },
+  tilesRow: { flexDirection: 'row', gap: wp(8), marginBottom: hp(12) },
   tileOuter: { flex: 1, minHeight: TILE_H },
-  tile: { flexGrow: 1, borderRadius: radius.xl, padding: wp(14), overflow: 'hidden', justifyContent: 'space-between' },
-  tileMuted: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.28)' },
+  tile: {
+    flexGrow: 1, borderRadius: radius.lg, borderWidth: 1, padding: wp(12), gap: hp(10),
+    overflow: 'hidden', justifyContent: 'space-between',
+  },
   tileTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  tileArt: {
-    width: ms(54), height: ms(54), borderRadius: ms(27), backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  tileArt: { width: ms(44), height: ms(44), borderRadius: ms(22), alignItems: 'center', justifyContent: 'center' },
   countBadge: {
-    minWidth: ms(34), height: ms(34), borderRadius: ms(17), paddingHorizontal: wp(8),
+    minWidth: ms(22), height: ms(22), borderRadius: ms(11), paddingHorizontal: wp(6),
     alignItems: 'center', justifyContent: 'center',
   },
-  countBadgeOn: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
+  countText: { color: '#FFFFFF', fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
+  // Two lines reserved: "Collections" and "Roue de la chance" end on the same baseline.
+  tileTitle: { fontSize: fontSize.sm, lineHeight: ms(18), minHeight: ms(36) },
+  tileSub: { fontSize: fontSize.xs, marginTop: hp(2) },
+
+  collectionArt: { gap: ms(3) },
+  collectionArtRow: { flexDirection: 'row', alignItems: 'center', gap: ms(3) },
+  collectionArtBox: {
+    width: ms(10), height: ms(10), borderRadius: ms(3), borderWidth: 1.5, borderColor: palette.violetSoft,
+    alignItems: 'center', justifyContent: 'center',
   },
-  countBadgeOff: { backgroundColor: 'rgba(255,255,255,0.22)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
-  countText: { fontSize: fontSize.lg, letterSpacing: -0.4 },
-  tileTitle: { color: '#FFFFFF', fontSize: fontSize.sm, letterSpacing: -0.2 },
-  tileSub: { color: 'rgba(255,255,255,0.85)', fontSize: ms(11), marginTop: hp(1) },
-  tileCta: {
-    alignSelf: 'flex-start', backgroundColor: '#FFFFFF', borderRadius: 999,
-    paddingHorizontal: wp(12), paddingVertical: hp(5), maxWidth: '100%',
-  },
-  tileCtaMuted: { backgroundColor: 'rgba(255,255,255,0.22)' },
-  tileCtaText: { fontSize: fontSize.xs },
+  collectionArtBoxDone: { backgroundColor: palette.violet, borderColor: palette.violet },
+  collectionArtLine: { width: ms(14), height: ms(3), borderRadius: ms(2), backgroundColor: palette.violetUltraLight },
+  collectionArtLineDone: { backgroundColor: palette.violetSoft },
 
   scratchArt: {
-    width: ms(38), height: ms(26), borderRadius: ms(5), backgroundColor: '#FEF3C7',
+    width: ms(32), height: ms(22), borderRadius: ms(5), backgroundColor: palette.goldUltraLight,
     overflow: 'hidden', flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1, borderColor: '#F59E0B',
+    borderWidth: 1, borderColor: palette.gold,
     transform: [{ rotate: '-8deg' }],
   },
   scratchGift: { width: '45%', alignItems: 'center', justifyContent: 'center' },

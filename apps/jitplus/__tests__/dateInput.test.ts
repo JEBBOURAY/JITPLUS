@@ -29,6 +29,10 @@ describe('formatDateInput', () => {
 });
 
 describe('toIsoDate', () => {
+  it('rejects years before 1900 instead of reading them as 19xx', () => {
+    expect(toIsoDate('01/01/0099')).toBeUndefined();
+  });
+
   it('converts valid DD/MM/YYYY to ISO', () => {
     const iso = toIsoDate('15/03/1990');
     expect(iso).toBeDefined();

@@ -7,10 +7,8 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
@@ -21,6 +19,7 @@ import {
   type ViewStyle,
   type TextInputProps,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { useFocusEffect, usePreventRemove, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { hapticLight } from '@/utils/haptics';
@@ -29,6 +28,7 @@ import type { LucideIcon } from 'lucide-react-native';
 import { palette, useTheme, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
+import { useGoBack } from '@/hooks/useGoBack';
 import { font, icon as iconTokens } from '@/constants/design';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { ProBadge } from '@/components/ui/ProBadge';
@@ -194,12 +194,12 @@ export function Toast({ message, bottom = 24 }: { message: string | null; bottom
 
 function BackButton({ onPress }: { onPress?: () => void }) {
   const theme = useTheme();
-  const router = useRouter();
+  const goBack = useGoBack();
   const { t } = useLanguage();
   const dir = useDir();
   return (
     <TouchableOpacity
-      onPress={onPress ?? (() => router.back())}
+      onPress={onPress ?? goBack}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       accessibilityRole="button"
       accessibilityLabel={t('common.back')}
@@ -211,15 +211,11 @@ function BackButton({ onPress }: { onPress?: () => void }) {
   );
 }
 
-/**
- * Settings-style screen header: back button, large title, optional caption.
- * `back={false}` drops the arrow: the system back gesture is then the way out.
- */
-export function ScreenHeader({ title, caption, onBack, back = true, right }: {
+/** Settings-style screen header: back button, large title, optional caption. */
+export function ScreenHeader({ title, caption, onBack, right }: {
   title: string;
   caption?: string;
   onBack?: () => void;
-  back?: boolean;
   right?: React.ReactNode;
 }) {
   const theme = useTheme();
@@ -228,7 +224,7 @@ export function ScreenHeader({ title, caption, onBack, back = true, right }: {
   return (
     <View style={[ui.header, { paddingTop: insets.top + 12 }]}>
       <View style={[ui.headerRow, { flexDirection: dir.row }]}>
-        {back ? <BackButton onPress={onBack} /> : null}
+        <BackButton onPress={onBack} />
         <Text style={[ui.headerTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3} accessibilityRole="header">
           {title}
         </Text>

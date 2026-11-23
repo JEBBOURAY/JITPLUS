@@ -5,10 +5,11 @@ import { useAuthActions } from '@/contexts/AuthContext';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useUpdateMerchantProfile, useUploadMerchantGalleryImage } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
+import { prepareUploadImage } from '@/utils/prepareUploadImage';
 import { haptic } from '@/components/stores/StoreUi';
 import type { Merchant } from '@/types';
 
-const GALLERY_MAX = 5;
+const GALLERY_MAX = 6;
 
 /**
  * Photo gallery of the public page: add (upload), remove and reorder. Every
@@ -63,7 +64,9 @@ export function useGalleryEditor(merchant: Merchant) {
       if (result.canceled || !result.assets?.length) return;
       for (const asset of result.assets.slice(0, remaining)) {
         // The server appends the photo and returns the whole gallery.
-        const res = await uploadGalleryImage.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType });
+        // Full-size iPhone photos (24–48 MP) could exceed the 10 MB upload limit.
+        const image = await prepareUploadImage(asset, { maxSide: 2048 });
+        const res = await uploadGalleryImage.mutateAsync(image);
         updateMerchant({ gallery: res.gallery });
       }
       haptic();

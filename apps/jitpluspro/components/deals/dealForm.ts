@@ -4,10 +4,13 @@ import {
   DEAL_DEFAULT_DAYS,
   DEAL_LIMITS,
   computePercentOff,
+  discountedPrice,
   type DealDisplayStatus,
   type DealInput,
   type DealOffer,
+  type DealPriceUnit,
   type DealScope,
+  type DealStats,
   type DealType,
   type MerchantDealDto,
 } from '@jitplus/shared/src/deals';
@@ -36,6 +39,9 @@ export interface DealForm {
   percentOff: string;
   buyQty: string;
   freeQty: string;
+  /** "À partir de" and the unit apply to the price the client pays, when the offer gives one */
+  priceFrom: boolean;
+  priceUnit: DealPriceUnit | null;
   imageUrl: string | null;
   linkUrl: string;
   allStores: boolean;
@@ -56,6 +62,8 @@ export function initialDealForm(today: string): DealForm {
     percentOff: '',
     buyQty: '1',
     freeQty: '1',
+    priceFrom: false,
+    priceUnit: null,
     imageUrl: null,
     linkUrl: '',
     allStores: true,
@@ -79,6 +87,8 @@ export function formFromDeal(d: MerchantDealDto): DealForm {
     percentOff: d.type === 'PERCENT_OFF' ? numText(d.percentOff) : '',
     buyQty: numText(d.buyQty) || '1',
     freeQty: numText(d.freeQty) || '1',
+    priceFrom: d.priceFrom,
+    priceUnit: d.priceUnit,
     imageUrl: d.imageUrl,
     linkUrl: d.linkUrl ?? '',
     allStores: d.allStores,
@@ -145,21 +155,27 @@ function validateOffer(form: DealForm): FormError | null {
   if (form.conditions.trim().length > DEAL_LIMITS.CONDITIONS_MAX) {
     return { key: 'deals.wizard.errors.tooLong', params: { max: DEAL_LIMITS.CONDITIONS_MAX } };
   }
-  const validPrice = (n: number | null) => n != null && n >= 0 && n <= DEAL_LIMITS.MAX_PRICE;
+  const validPrice = (n: number | null) => n != null && n > 0 && n <= DEAL_LIMITS.MAX_PRICE;
+  const optionalPrice = (): FormError | null =>
+    !form.originalPrice.trim() || validPrice(parseDecimal(form.originalPrice)) ? null : { key: 'deals.wizard.errors.priceInvalid' };
   switch (form.type) {
     case 'PERCENT_OFF': {
       const pct = parseInteger(form.percentOff);
       if (pct == null || pct < DEAL_LIMITS.MIN_PERCENT || pct > DEAL_LIMITS.MAX_PERCENT) {
         return { key: 'deals.wizard.errors.percentRange', params: { min: DEAL_LIMITS.MIN_PERCENT, max: DEAL_LIMITS.MAX_PERCENT } };
       }
-      return null;
+      return optionalPrice();
     }
     case 'PRICE_DROP': {
       const original = parseDecimal(form.originalPrice);
       const price = parseDecimal(form.dealPrice);
       if (original == null || price == null) return { key: 'deals.wizard.errors.pricesRequired' };
+      if (price === 0) return { key: 'deals.wizard.errors.priceFree' };
       if (!validPrice(original) || !validPrice(price)) return { key: 'deals.wizard.errors.priceInvalid' };
-      if (!(original > 0) || price >= original) return { key: 'deals.wizard.errors.priceNotLower' };
+      if (price >= original) return { key: 'deals.wizard.errors.priceNotLower' };
+      if (computePercentOff(original, price) == null) {
+        return { key: 'deals.wizard.errors.discountTooSmall', params: { min: DEAL_LIMITS.MIN_PERCENT } };
+      }
       return null;
     }
     case 'BUY_X_GET_Y': {
@@ -167,12 +183,10 @@ function validateOffer(form: DealForm): FormError | null {
       if (!inRange(parseInteger(form.buyQty)) || !inRange(parseInteger(form.freeQty))) {
         return { key: 'deals.wizard.errors.qtyRange', params: { max: DEAL_LIMITS.MAX_QTY } };
       }
-      return null;
+      return optionalPrice();
     }
-    case 'FREE_ITEM': {
-      if (!form.originalPrice.trim()) return null;
-      return validPrice(parseDecimal(form.originalPrice)) ? null : { key: 'deals.wizard.errors.priceInvalid' };
-    }
+    case 'FREE_ITEM':
+      return optionalPrice();
     default:
       return null;
   }
@@ -227,23 +241,30 @@ export function validateDealStep(form: DealForm, step: DealWizardStep, today: st
   }
 }
 
+/** The offer shows a price the client pays, so "à partir de" and the unit can apply. */
+export function dealHasPaidPrice(form: Pick<DealForm, 'type' | 'originalPrice'>): boolean {
+  if (form.type === 'PRICE_DROP') return true;
+  return (form.type === 'PERCENT_OFF' || form.type === 'BUY_X_GET_Y') && parseDecimal(form.originalPrice) != null;
+}
+
 /** Offer fields of the chosen type only: the others are not sent. */
 export function offerOf(form: DealForm): DealOffer {
+  // null clears a value left from a previous type, or a price removed while editing.
+  const original = parseDecimal(form.originalPrice);
+  const originalPrice = original == null ? null : toPrice(original);
+  const paid = dealHasPaidPrice(form);
+  const display = { priceFrom: paid && form.priceFrom, priceUnit: paid ? form.priceUnit : null };
   switch (form.type) {
     case 'PERCENT_OFF':
-      return { type: form.type, percentOff: parseInteger(form.percentOff) };
+      return { type: form.type, percentOff: parseInteger(form.percentOff), originalPrice, ...display };
     case 'PRICE_DROP': {
-      const original = parseDecimal(form.originalPrice);
       const price = parseDecimal(form.dealPrice);
-      return { type: form.type, originalPrice: original == null ? null : toPrice(original), dealPrice: price == null ? null : toPrice(price) };
+      return { type: form.type, originalPrice, dealPrice: price == null ? null : toPrice(price), ...display };
     }
     case 'BUY_X_GET_Y':
-      return { type: form.type, buyQty: parseInteger(form.buyQty), freeQty: parseInteger(form.freeQty) };
-    case 'FREE_ITEM': {
-      // null clears a value left from a previous type when editing.
-      const value = parseDecimal(form.originalPrice);
-      return { type: form.type, originalPrice: value == null ? null : toPrice(value) };
-    }
+      return { type: form.type, buyQty: parseInteger(form.buyQty), freeQty: parseInteger(form.freeQty), originalPrice, ...display };
+    case 'FREE_ITEM':
+      return { type: form.type, originalPrice };
     default:
       return { type: form.type };
   }
@@ -259,8 +280,12 @@ export function previewOffer(form: DealForm): Required<DealOffer> {
     percentOff: offer.percentOff ?? null,
     buyQty: offer.buyQty ?? null,
     freeQty: offer.freeQty ?? null,
+    priceFrom: offer.priceFrom ?? false,
+    priceUnit: offer.priceUnit ?? null,
   };
+  // The two values the backend computes.
   if (full.type === 'PRICE_DROP') full.percentOff = computePercentOff(full.originalPrice, full.dealPrice);
+  if (full.type === 'PERCENT_OFF') full.dealPrice = discountedPrice(full.originalPrice, full.percentOff);
   return full;
 }
 
@@ -327,6 +352,9 @@ export function dealFormReducer(state: DealForm, action: DealFormAction): DealFo
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────
+
+/** What clients did beyond looking: opened the link, asked the way, called. */
+export const dealActions = (stats: DealStats): number => stats.linkClicks + stats.directions + stats.calls;
 
 export const DEAL_LIST_TABS = ['live', 'scheduled', 'ended'] as const;
 export type DealListTab = (typeof DEAL_LIST_TABS)[number];

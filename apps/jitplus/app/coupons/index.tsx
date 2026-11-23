@@ -1,19 +1,16 @@
 import { moneyFormatter } from '@jitplus/shared/src/currency';
 import { useCallback, useMemo, useState } from 'react';
-import {
-  FlatList, RefreshControl, StyleSheet, TouchableOpacity, View,
-} from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Ticket } from 'lucide-react-native';
+import { Gift, Ticket } from 'lucide-react-native';
 
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { wp, hp, ms } from '@/utils/responsive';
+import { wp, ms } from '@/utils/responsive';
 import { formatDate } from '@/utils/date';
 import MerchantLogo from '@/components/MerchantLogo';
-import Skeleton from '@/components/Skeleton';
+import TabbedListScreen from '@/components/TabbedListScreen';
 import { useClientCoupons, type ClientCouponStatus } from '@/hooks/useScratchHooks';
 import { diffDaysYmd, formatRewardValue, toYmd } from '@jitplus/shared/src/scratch';
 import type { CouponDto } from '@jitplus/shared/src/scratch';
@@ -23,6 +20,8 @@ const TWO_DAYS_MS = 48 * 3600 * 1000;
 
 type Tab = { key: ClientCouponStatus; labelKey: string };
 
+const keyOf = (c: CouponDto) => c.id;
+
 const TABS: Tab[] = [
   { key: 'active', labelKey: 'scratch.coupons.tabActive' },
   { key: 'used', labelKey: 'scratch.coupons.tabUsed' },
@@ -31,9 +30,8 @@ const TABS: Tab[] = [
 
 export default function CouponsScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const { t, isRTL, locale } = useLanguage();
+  const { t, locale } = useLanguage();
   const [tab, setTab] = useState<ClientCouponStatus>('active');
 
   const query = useClientCoupons(tab);
@@ -60,6 +58,10 @@ export default function CouponsScreen() {
     }
 
     const merchantName = item.merchant?.nom || t('common.shop');
+    const fromCollection = item.source === 'COLLECTION';
+    const badgeColor = fromCollection ? palette.goldDark : palette.violet;
+    const BadgeIcon = fromCollection ? Gift : Ticket;
+    const origin = fromCollection ? `${t('home.passCollectionTag')} · ${merchantName}` : merchantName;
     // Rows render bare: a virtualized list must not replay an entrance on every recycle or tab switch.
     return (
       <TouchableOpacity
@@ -67,13 +69,13 @@ export default function CouponsScreen() {
         activeOpacity={0.75}
         onPress={() => router.push({ pathname: '/coupons/[id]', params: { id: item.id } })}
         accessibilityRole="button"
-        accessibilityLabel={`${reward}, ${merchantName}`}
+        accessibilityLabel={`${reward}, ${origin}`}
       >
         <MerchantLogo logoUrl={item.merchant?.logoUrl} merchantName={merchantName} style={styles.logo} />
         <View style={styles.cardInfo}>
           <Text style={[styles.cardReward, { color: theme.text }]} numberOfLines={2}>{reward}</Text>
           <Text style={[styles.cardMerchant, { color: theme.textSecondary }]} numberOfLines={1}>
-            {merchantName}
+            {origin}
           </Text>
           <Text
             style={[
@@ -85,8 +87,8 @@ export default function CouponsScreen() {
             {statusLine}
           </Text>
         </View>
-        <View style={[styles.cardBadge, { backgroundColor: `${palette.violet}14` }]}>
-          <Ticket size={ms(18)} color={palette.violet} />
+        <View style={[styles.cardBadge, { backgroundColor: `${badgeColor}14` }]}>
+          <BadgeIcon size={ms(18)} color={badgeColor} />
         </View>
       </TouchableOpacity>
     );
@@ -96,87 +98,24 @@ export default function CouponsScreen() {
   const emptyHint = tab === 'active' ? t('scratch.coupons.emptyActiveHint') : null;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top + hp(8) }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('common.back')}>
-          <ArrowLeft size={ms(24)} color={theme.text} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('scratch.coupons.title')}</Text>
-        <View style={{ width: ms(24) }} />
-      </View>
-
-      {/* Segmented tabs: Actifs / Utilisés / Expirés */}
-      <View style={[styles.tabs, { backgroundColor: theme.bgCard }]}>
-        {TABS.map((tb) => {
-          const active = tab === tb.key;
-          return (
-            <TouchableOpacity
-              key={tb.key}
-              style={[styles.tab, active && { backgroundColor: palette.violet }]}
-              onPress={() => setTab(tb.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-            >
-              <Text style={[styles.tabText, { color: active ? '#fff' : theme.textMuted }]}>
-                {t(tb.labelKey)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {query.isLoading ? (
-        <View style={styles.listContent}>
-          {[1, 2, 3].map((i) => (
-            <View key={i} style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-              <Skeleton width={ms(44)} height={ms(44)} borderRadius={ms(12)} />
-              <View style={{ flex: 1, marginLeft: wp(12), gap: hp(6) }}>
-                <Skeleton width={wp(140)} height={hp(15)} borderRadius={6} />
-                <Skeleton width={wp(90)} height={hp(11)} borderRadius={4} />
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : query.isError ? (
-        <View style={styles.emptyWrap}>
-          <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t('scratch.coupons.error')}</Text>
-          <TouchableOpacity style={[styles.retryBtn, { borderColor: theme.border }]} onPress={() => query.refetch()} accessibilityRole="button">
-            <Text style={[styles.retryText, { color: theme.text }]}>{t('common.retry')}</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={coupons}
-          keyExtractor={(c) => c.id}
-          renderItem={renderCoupon}
-          contentContainerStyle={[styles.listContent, coupons.length === 0 && styles.emptyListContent]}
-          refreshControl={
-            <RefreshControl refreshing={query.isRefetching} onRefresh={() => query.refetch()} tintColor={theme.primary} />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <View style={[styles.emptyIcon, { backgroundColor: `${palette.violet}12` }]}>
-                <Ticket size={ms(36)} color={palette.violet} strokeWidth={1.5} />
-              </View>
-              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>{emptyText}</Text>
-              {emptyHint ? <Text style={[styles.emptyHint, { color: theme.textMuted }]}>{emptyHint}</Text> : null}
-            </View>
-          }
-        />
-      )}
-    </View>
+    <TabbedListScreen
+      title={t('scratch.coupons.title')}
+      tabs={TABS}
+      tab={tab}
+      onTabChange={setTab}
+      query={query}
+      data={coupons}
+      keyExtractor={keyOf}
+      renderItem={renderCoupon}
+      errorText={t('scratch.coupons.error')}
+      emptyIcon={Ticket}
+      emptyText={emptyText}
+      emptyHint={emptyHint}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: wp(20) },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(14) },
-  headerTitle: { fontSize: ms(19), fontWeight: '600' },
-  tabs: { flexDirection: 'row', borderRadius: 12, padding: 4, marginBottom: hp(12) },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: hp(8), borderRadius: 9 },
-  tabText: { fontSize: ms(13), fontWeight: '600' },
-  listContent: { paddingBottom: hp(24), gap: hp(10) },
-  emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   card: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: 16, borderWidth: 1, padding: wp(14), gap: wp(12),
@@ -187,10 +126,4 @@ const styles = StyleSheet.create({
   cardMerchant: { fontSize: ms(12), fontWeight: '500', marginTop: 1 },
   cardStatus: { fontSize: ms(11), fontWeight: '600', marginTop: 3 },
   cardBadge: { width: ms(36), height: ms(36), borderRadius: ms(10), alignItems: 'center', justifyContent: 'center' },
-  emptyWrap: { alignItems: 'center', gap: hp(10), paddingTop: hp(40) },
-  emptyIcon: { width: ms(72), height: ms(72), borderRadius: ms(22), alignItems: 'center', justifyContent: 'center' },
-  emptyText: { fontSize: ms(15), fontWeight: '600', textAlign: 'center' },
-  emptyHint: { fontSize: ms(13), textAlign: 'center', paddingHorizontal: wp(30) },
-  retryBtn: { marginTop: hp(6), paddingHorizontal: wp(24), paddingVertical: hp(10), borderRadius: 12, borderWidth: 1 },
-  retryText: { fontWeight: '600', fontSize: ms(14) },
 });

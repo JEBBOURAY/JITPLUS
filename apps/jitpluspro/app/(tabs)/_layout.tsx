@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { Tabs, useRouter } from 'expo-router';
+import { useMemo } from 'react';
+import { Tabs } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -12,7 +12,6 @@ export default function TabLayout() {
   const isAuthenticated = useAuthStore((s) => !!s.merchant);
   const loading = useAuthStore((s) => s.loading);
   const theme = useTheme();
-  const router = useRouter();
   const screenOptions = useMemo(
     () => ({
       headerShown: false,
@@ -29,12 +28,8 @@ export default function TabLayout() {
   // Auth is the ONLY blocking gate: email verification and business setup are
   // never a forced tunnel.
   // The app lands directly on the "Accueil" tab after login/registration.
-  useEffect(() => {
-    if (loading) return;
-    if (!isAuthenticated) {
-      router.replace('/login');
-    }
-  }, [loading, isAuthenticated, router]);
+  // The redirect to login is done once, by AuthRedirectGuard (root layout):
+  // a second replace here raced with it and stacked two login screens.
 
   if (loading) {
     return (

@@ -14,11 +14,11 @@ export {
   useClientStatus,
   prefetchClientStatus,
   prefetchTillData,
-  isLocalTransactionEcho,
   useRecordTransaction,
 } from './queries/clientStatus';
+export { isLocalTransactionEcho } from './queries/transactionCache';
 export { useHomeStats, useTransactions } from './queries/transactions';
-export { useHasClients, useClientList } from './queries/clients';
+export { useHasClients, useClientList, useClientSegments } from './queries/clients';
 export {
   useNotificationHistory,
   useHasSentNotification,
@@ -33,6 +33,7 @@ export {
   useUploadMerchantGalleryImage,
   useDeleteMerchantLogo,
   useUploadRewardImage,
+  useUploadCollectionImage,
   useUploadMerchantCardBackground,
   useDeleteMerchantCardBackground,
   useUpdateMerchantProfile,
@@ -63,3 +64,5 @@ export {
   useLuckyWheelActiveInfo,
   type LuckyWheelPendingDraw,
 } from './queries/luckyWheel';
+// Booking screens import the rest straight from './queries/booking'.
+export { usePendingBookingsCount } from './queries/booking';

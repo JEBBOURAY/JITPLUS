@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { toast } from '@/components/ui/Toast';
+import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { pluralKey } from '@jitplus/shared';
@@ -78,7 +80,8 @@ export default function CreateStampCodeBatchScreen() {
         : t('stampCodes.list.quotaReached', { limit: quota.data?.limit ?? 0 }),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('stampCodes.list.upgrade'), onPress: () => router.push('/plan') },
+        // No plan upsell on iOS (App Store 3.1.1 / 3.1.3).
+        ...(Platform.OS === 'ios' ? [] : [{ text: t('stampCodes.list.upgrade'), onPress: () => router.push('/plan') }]),
       ],
     );
   }, [quota.data?.limit, router, t]);
@@ -87,7 +90,7 @@ export default function CreateStampCodeBatchScreen() {
     if (createMutation.isPending) return;
     const error = validate();
     if (error) {
-      Alert.alert(t('common.error'), error);
+      toast.error(error);
       return;
     }
     const qty = toInt(quantity);
@@ -108,7 +111,7 @@ export default function CreateStampCodeBatchScreen() {
         showQuotaAlert(typeof meta?.remaining === 'number' ? meta.remaining : 0);
         return;
       }
-      Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
+      toast.error(getErrorMessage(e, t('common.genericError')));
     }
   }, [createMutation, validate, quantity, remaining, showQuotaAlert, label, mode, stamps, amountValue, router, t]);
 
@@ -116,7 +119,7 @@ export default function CreateStampCodeBatchScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <ScreenHeader title={t('stampCodes.create.title')} onBack={() => router.back()} />
+      <ScreenHeader title={t('stampCodes.create.title')} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}

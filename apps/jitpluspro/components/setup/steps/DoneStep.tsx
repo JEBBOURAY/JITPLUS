@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { AlignLeft, Camera, ImagePlus, ListChecks, Share2 } from 'lucide-react-native';
 import { JitGift, JitStamp } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';

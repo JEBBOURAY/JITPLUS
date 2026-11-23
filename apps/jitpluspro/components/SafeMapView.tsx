@@ -7,7 +7,6 @@
 import React, { forwardRef, useImperativeHandle, useCallback, useState, useRef, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Linking,
   TouchableOpacity,
@@ -16,6 +15,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { requireOptionalNativeModule } from 'expo';
 import * as Device from 'expo-device';
 import { ExternalLink, Navigation } from 'lucide-react-native';

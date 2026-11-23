@@ -32,6 +32,12 @@ describe('buildDealFeedParams', () => {
     expect(buildDealFeedParams({ tab: 'online', cursor: '40' })).toEqual({ tab: 'online', cursor: '40' });
   });
 
+  it('sends a trimmed search of at least two characters and the discount sort only', () => {
+    expect(buildDealFeedParams({ tab: 'new', q: '  pizza ', sort: 'discount' })).toEqual({ tab: 'new', q: 'pizza', sort: 'discount' });
+    expect(buildDealFeedParams({ tab: 'new', q: ' p ', sort: 'recommended' })).toEqual({ tab: 'new' });
+    expect(buildDealFeedParams({ tab: 'saved', q: 'x'.repeat(60) }).q).toHaveLength(40);
+  });
+
   it('drops values the server would reject', () => {
     expect(buildDealFeedParams({ tab: 'new', category: 'restaurant', cursor: 'abc' })).toEqual({ tab: 'new' });
     expect(buildDealFeedParams({ tab: 'ending', category: null, cursor: '12345' })).toEqual({ tab: 'ending' });

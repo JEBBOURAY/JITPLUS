@@ -3,7 +3,7 @@
  * In Expo Go the native module is unavailable and the hook degrades gracefully.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { router } from 'expo-router';
+import { resetTo } from '@/utils/navReset';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { requestGoogleIdToken } from '@/utils/socialSignIn';
@@ -40,7 +40,7 @@ export function useGoogleAuth() {
     setIsLoading(false);
     if (result.success) {
       hapticSuccess();
-      router.replace('/(tabs)');
+      resetTo('/(tabs)');
     } else if (result.rawError && isNoAccountError(result.rawError)) {
       setNoAccount(true);
       setError(t('googleAuth.noAccountFound'));

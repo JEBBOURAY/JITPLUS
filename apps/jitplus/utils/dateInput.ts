@@ -11,7 +11,8 @@ export const toIsoDate = (dmy: string): string | undefined => {
   const parts = dmy.split('/');
   if (parts.length !== 3 || parts[2].length !== 4) return undefined;
   const [d, m, y] = parts.map(Number);
-  if (!d || !m || !y || m > 12 || d > 31) return undefined;
+  // Date.UTC reads years 0-99 as 19xx: "0099" would silently become 1999.
+  if (!d || !m || y < 1900 || m > 12 || d > 31) return undefined;
   const date = new Date(Date.UTC(y, m - 1, d));
   if (isNaN(date.getTime())) return undefined;
   if (date.getUTCDate() !== d || date.getUTCMonth() !== m - 1) return undefined;

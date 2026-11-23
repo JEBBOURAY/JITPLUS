@@ -7,6 +7,7 @@ import {
   RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../../common/repositories';
 import { MS_PER_DAY } from '../../common/constants';
+import { moroccoOffsetMinutes, moroccoParts, moroccoWallTimeToUtc } from '../../common/utils/morocco-time';
 
 @Injectable()
 export class MerchantDashboardService {
@@ -105,18 +106,18 @@ export class MerchantDashboardService {
   // ── Accueil home stats — today/yesterday stamps + current-month daily scans.
   // All plans, team-accessible, uncached (kept live: refetched on WS scan events). ──
   async getHomeStats(merchantId: string) {
-    // Day/month boundaries in Morocco time (UTC+1, no DST) so "today" matches the
-    // merchant's local day regardless of the server timezone (cf. cron-utils).
-    const OFFSET_MS = 3_600_000;
-    const local = new Date(Date.now() + OFFSET_MS); // UTC fields now read as Morocco-local
-    const y = local.getUTCFullYear();
-    const mo = local.getUTCMonth();
-    const day = local.getUTCDate();
-    const startToday = new Date(Date.UTC(y, mo, day) - OFFSET_MS);
-    const startYesterday = new Date(startToday.getTime() - MS_PER_DAY);
-    const startMonth = new Date(Date.UTC(y, mo, 1) - OFFSET_MS);
-    const startNextMonth = new Date(Date.UTC(y, mo + 1, 1) - OFFSET_MS);
+    // Day/month boundaries on the Africa/Casablanca clock (UTC+0 since 2026-09-20,
+    // tzdata 2026c) so "today" matches the merchant's local day on any server.
+    const { year: y, month, ymd: todayYmd } = moroccoParts();
+    const mo = month - 1;
+    const ymdOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    const startToday = moroccoWallTimeToUtc(todayYmd, 0, 0);
+    const startYesterday = moroccoWallTimeToUtc(ymdOf(Date.parse(`${todayYmd}T00:00:00Z`) - MS_PER_DAY), 0, 0);
+    const startMonth = moroccoWallTimeToUtc(ymdOf(Date.UTC(y, mo, 1)), 0, 0);
+    const startNextMonth = moroccoWallTimeToUtc(ymdOf(Date.UTC(y, mo + 1, 1)), 0, 0);
     const daysInMonth = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+    // The offset is constant within a month in practice; read it once for the SQL day bucket.
+    const offsetMinutes = moroccoOffsetMinutes(startMonth);
 
     const [[agg], dailyRows] = await Promise.all([
       this.rawQuery.queryRaw<{
@@ -135,7 +136,7 @@ export class MerchantDashboardService {
           AND created_at >= ${startYesterday}
       `),
       this.rawQuery.queryRaw<{ day: number; cnt: number }>(Prisma.sql`
-        SELECT EXTRACT(DAY FROM (created_at + interval '1 hour'))::int AS day, COUNT(*)::int AS cnt
+        SELECT EXTRACT(DAY FROM (created_at + ${offsetMinutes}::int * interval '1 minute'))::int AS day, COUNT(*)::int AS cnt
         FROM transactions
         WHERE merchant_id = ${merchantId}
           AND status = 'ACTIVE'

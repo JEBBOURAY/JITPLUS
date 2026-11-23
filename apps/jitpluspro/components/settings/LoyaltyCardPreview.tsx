@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image as ExpoImage } from 'expo-image';
 import { JitGift, JitStamp } from '@/components/icons';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';

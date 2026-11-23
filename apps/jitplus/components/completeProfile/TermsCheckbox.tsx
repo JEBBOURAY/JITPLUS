@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { View, TouchableOpacity } from 'react-native';
+import { View, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
 import { router } from 'expo-router';
 import { Check } from 'lucide-react-native';
 import { Text } from '@/components/AppText';
@@ -14,12 +14,13 @@ interface TermsCheckboxProps {
   t: TranslateFn;
   checked: boolean;
   onToggle: () => void;
+  style?: StyleProp<ViewStyle>;
 }
 
-export const TermsCheckbox = memo(function TermsCheckbox({ theme, t, checked, onToggle }: TermsCheckboxProps) {
+export const TermsCheckbox = memo(function TermsCheckbox({ theme, t, checked, onToggle, style }: TermsCheckboxProps) {
   return (
     <TouchableOpacity
-      style={s.termsRow}
+      style={[s.termsRow, style]}
       onPress={onToggle}
       activeOpacity={0.7}
       accessibilityRole="checkbox"

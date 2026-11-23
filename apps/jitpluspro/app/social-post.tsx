@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from '@/components/ui/Toast';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   ScrollView,
   PixelRatio,
@@ -14,6 +13,8 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// The screen's own text follows the app language (Cairo in Arabic); only the post keeps fixed fonts.
+import { Text } from '@/components/AppText';
 import { Check, Copy, Download, Facebook, Images, Instagram, MessageCircle, Send, Share2, Twitter, type LucideIcon } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { captureRef } from 'react-native-view-shot';
@@ -244,7 +245,7 @@ export default function SocialPostScreen() {
       try {
         await job();
       } catch {
-        Alert.alert(t('common.error'), t('home.clientShareSocialError'));
+        toast.error(t('home.clientShareSocialError'));
       } finally {
         setBusy(null);
       }
@@ -254,7 +255,7 @@ export default function SocialPostScreen() {
 
   const shareDialogTitle = t('home.socialPostShareDialog');
   const shareUnavailable = useCallback(() => {
-    Alert.alert(t('common.error'), t('home.clientQrShareUnavailable'));
+    toast.error(t('home.clientQrShareUnavailable'));
   }, [t]);
 
   // Instagram and Facebook drop pre-filled captions: theirs waits on the clipboard.
@@ -335,9 +336,9 @@ export default function SocialPostScreen() {
       runExport('gallery', async () => {
         const uris = await captureAll();
         if (await saveToGallery(uris)) {
-          Alert.alert(t('home.socialPostSavedTitle'), t('home.socialPostSaved', { total }));
+          toast.success(t('home.socialPostSaved', { total }));
         } else {
-          Alert.alert(t('common.error'), t('home.socialPostSavePermission'));
+          toast.error(t('home.socialPostSavePermission'));
         }
       }),
     [runExport, captureAll, t, total],
@@ -350,7 +351,7 @@ export default function SocialPostScreen() {
       if (copiedTimer.current) clearTimeout(copiedTimer.current);
       copiedTimer.current = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
     } catch {
-      Alert.alert(t('common.error'), t('home.clientShareSocialError'));
+      toast.error(t('home.clientShareSocialError'));
     }
   }, [caption, t]);
 

@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -16,6 +17,7 @@ import { getPlanStatus } from '@/utils/plan';
 const GAMES = [
   { key: 'wheel', route: '/lucky-wheel', image: require('@/assets/images/tools/jeux.png') },
   { key: 'scratch', route: '/scratch-campaigns', image: require('@/assets/images/tools/carte_a_gratter.png') },
+  { key: 'collection', route: '/collections', image: require('@/assets/images/tools/cadeaux.png') },
 ] as const;
 
 export default function GamesScreen() {
