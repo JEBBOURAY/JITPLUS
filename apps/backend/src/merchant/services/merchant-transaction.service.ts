@@ -44,6 +44,7 @@ import {
 import type { MerchantTransactionType } from '../dto/create-transaction.dto';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
 import { assertClean } from '../../common/utils/content-moderation';
+import { trackBackground } from '../../common/tasks/background-work';
 
 export interface CreateTransactionOptions {
   /**
@@ -693,7 +694,7 @@ export class MerchantTransactionService {
     if (result.linkedBooking) {
       this.booking?.announceVisit(result.linkedBooking);
     } else if (type === 'EARN_STAMPS' && this.booking) {
-      void this.booking.checkInFromTransaction(merchantId, clientId, result.transaction.id);
+      void trackBackground(this.booking.checkInFromTransaction(merchantId, clientId, result.transaction.id));
     }
 
     // ── Real-time: emit WebSocket events IMMEDIATELY (sub-100ms) ──
@@ -724,7 +725,7 @@ export class MerchantTransactionService {
 
     // ── Send push notifications (fire-and-forget — FCM fallback for background/offline) ──
     if (type !== 'PURCHASE') {
-      this.sendTransactionNotifications(
+      trackBackground(this.sendTransactionNotifications(
         clientId,
         merchantId,
         merchant,
@@ -733,7 +734,7 @@ export class MerchantTransactionService {
         result.newStamps,
         p.clientLanguage,
         rewardTitle,
-      ).catch((err) => this.logger.warn(`Transaction notification failed: ${errMsg(err)}`));
+      )).catch((err) => this.logger.warn(`Transaction notification failed: ${errMsg(err)}`));
     }
 
     // ── Lucky-wheel ticket notification ──

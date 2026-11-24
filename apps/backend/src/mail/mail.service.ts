@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { trackBackground } from '../common/tasks/background-work';
 import {
   IMailProvider,
   EmailSource,
@@ -132,13 +133,13 @@ export class MailService implements IMailProvider, OnModuleDestroy {
     }
 
     try {
-      await this.transporter.sendMail({
+      await trackBackground(this.transporter.sendMail({
         from: this.fromAddress,
         to,
         subject,
         html,
         replyTo: this.replyToAddress,
-      });
+      }));
       this.logger.log(`OTP email sent to ${maskEmail(to)} (${source}/${lang})`);
     } catch (error) {
       this.logger.error(`Failed to send OTP email to ${maskEmail(to)}`, error);
@@ -348,7 +349,7 @@ export class MailService implements IMailProvider, OnModuleDestroy {
       headers['List-Unsubscribe'] = `<${unsubscribeUrl}>`;
       headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
     }
-    await this.transporter.sendMail({ from, to, subject: safeSubject, html: safeHtml, headers, replyTo: this.replyToAddress });
+    await trackBackground(this.transporter.sendMail({ from, to, subject: safeSubject, html: safeHtml, headers, replyTo: this.replyToAddress }));
   }
 
   /**
@@ -367,7 +368,7 @@ export class MailService implements IMailProvider, OnModuleDestroy {
     }
 
     try {
-      await this.transporter.sendMail({ from, to, subject, html, replyTo: this.replyToAddress });
+      await trackBackground(this.transporter.sendMail({ from, to, subject, html, replyTo: this.replyToAddress }));
       this.logger.log(`${tag} email sent to ${maskEmail(to)}`);
     } catch (error) {
       this.logger.error(`Failed to send ${tag} email to ${maskEmail(to)}`, error);

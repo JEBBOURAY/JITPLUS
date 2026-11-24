@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { AuditAction, AuditActorType, AuditTargetType, Prisma } from '@prisma/client';
 import { AUDIT_LOG_REPOSITORY, type IAuditLogRepository } from '../common/repositories';
+import { trackBackground } from '../common/tasks/background-work';
 
 export { AuditAction, AuditTargetType };
 
@@ -56,7 +57,7 @@ export class AuditLogService {
       const ctx = input.ctx;
       const isMerchant = 'actorType' in ctx && ctx.actorType === 'MERCHANT';
 
-      await this.auditLogRepo.create({
+      await trackBackground(this.auditLogRepo.create({
         data: {
           actorType: isMerchant ? AuditActorType.MERCHANT : AuditActorType.ADMIN,
           adminId: isMerchant ? null : (ctx as AdminAuditContext | AuditLogContext).adminId,
@@ -70,7 +71,7 @@ export class AuditLogService {
           ipAddress: input.ctx.ipAddress ?? null,
           userAgent: input.ctx.userAgent ?? null,
         },
-      });
+      }));
     } catch (err) {
       // Non-blocking: log the failure but never propagate it
       this.logger.error(

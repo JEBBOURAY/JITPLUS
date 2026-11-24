@@ -146,14 +146,17 @@ steps:
       - --platform=managed
       - --allow-unauthenticated
       - --port=3000
-      # The @Cron jobs (purges, digests, reminders, scratch dispatch) are
-      # in-process timers: with min-instances=0 Cloud Run scales to zero when
-      # idle and they never fire; with request-based CPU they fire late or
-      # not at all between requests. Keep one warm instance with CPU always
-      # allocated. cron_runs (CronRunLock) still makes each slot run once
-      # when several instances are up.
+      # CPU is billed only while a request (or websocket) is open: ~3x cheaper
+      # for this traffic. The @Cron jobs therefore do not run on in-process
+      # timers (CRON_MODE=http stops them): Cloud Scheduler job
+      # jitplus-cron-tick POSTs /api/v1/internal/cron/tick every minute with
+      # an OIDC token of CRON_TICK_INVOKER, and the tick runs the due jobs and
+      # waits for pending pushes/e-mails (see common/tasks/cron-tick.service.ts).
+      # One warm instance avoids NestJS + Prisma cold starts (idle is billed
+      # at the much lower min-instance rate). cron_runs (CronRunLock) still
+      # makes each slot run once when several instances are up.
       - --min-instances=1
-      - --no-cpu-throttling
+      - --cpu-throttling
       - --max-instances=3
       # WebSocket connections are idle 99% of the time; pack many per instance
       # so far fewer instances are needed (major Cloud Run cost saver).
@@ -169,7 +172,7 @@ steps:
       # Extend request timeout to 1h to keep long-lived WebSocket connections alive.
       - --timeout=3600
       - --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE
-      - --set-env-vars=^;;^NODE_ENV=production;;ENABLE_CRONS=true;;DATABASE_POOL_SIZE=5;;SKIP_MIGRATIONS=1;;GCP_PROJECT_ID=${PROJECT_ID};;GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod;;FIREBASE_PROJECT_ID=jitplus-97259;;MODERATION_EMAIL=contact@jitplus.com;;SMTP_FROM=contact@jitplus.com;;SMTP_FROM_NAME=JitPlus;;SMTP_REPLY_TO=contact@jitplus.com;;PUBLIC_WEB_URL=https://jitplus.com;;GOOGLE_CLIENT_ID=290470991104-71koh2ac0h2ai8tppb5t8bsnmoo9mdtj.apps.googleusercontent.com;;GOOGLE_ANDROID_CLIENT_ID=290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com,290470991104-rcumid1oof1j80luvo62n05rc7or4ve9.apps.googleusercontent.com;;ANDROID_SHA256_FINGERPRINT=26:6C:F3:12:5F:51:32:2A:03:A8:FD:26:F2:A5:92:02:48:61:F8:B7:03:1B:B7:DB:92:CA:AE:2C:78:8E:8C:1B;;ANDROID_PRO_SHA256_FINGERPRINT=54:55:81:CB:46:7F:D1:B7:8E:26:88:89:EA:C9:F7:3C:A1:04:F5:82:BC:D2:1E:FE:B3:3D:F8:3C:9D:34:BE:F4;;APPLE_TEAM_ID=53X2DQJH29;;APPLE_BUNDLE_IDS=com.jitplus.client,com.jitplus.pro;;IOS_APP_ID=6762307929;;IOS_PRO_APP_ID=6762308251;;MAINTENANCE_MODE=${_MAINTENANCE_MODE};;GEOCODE_REQUIRE_AUTH=${_GEOCODE_REQUIRE_AUTH};;MIN_IOS_VERSION=${_MIN_VERSION_LEGACY};;MIN_ANDROID_VERSION=${_MIN_VERSION_LEGACY};;MIN_IOS_VERSION_JITPLUS=${_MIN_VERSION_JITPLUS};;MIN_ANDROID_VERSION_JITPLUS=${_MIN_VERSION_JITPLUS};;MIN_IOS_VERSION_JITPLUSPRO=${_MIN_VERSION_JITPLUSPRO};;MIN_ANDROID_VERSION_JITPLUSPRO=${_MIN_VERSION_JITPLUSPRO}
+      - --set-env-vars=^;;^NODE_ENV=production;;ENABLE_CRONS=true;;CRON_MODE=http;;CRON_TICK_AUDIENCE=https://jitplus-api-kd4hlbzxba-od.a.run.app/api/v1/internal/cron/tick;;CRON_TICK_INVOKER=cron-invoker@${PROJECT_ID}.iam.gserviceaccount.com;;DATABASE_POOL_SIZE=5;;SKIP_MIGRATIONS=1;;GCP_PROJECT_ID=${PROJECT_ID};;GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod;;FIREBASE_PROJECT_ID=jitplus-97259;;MODERATION_EMAIL=contact@jitplus.com;;SMTP_FROM=contact@jitplus.com;;SMTP_FROM_NAME=JitPlus;;SMTP_REPLY_TO=contact@jitplus.com;;PUBLIC_WEB_URL=https://jitplus.com;;GOOGLE_CLIENT_ID=290470991104-71koh2ac0h2ai8tppb5t8bsnmoo9mdtj.apps.googleusercontent.com;;GOOGLE_ANDROID_CLIENT_ID=290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com,290470991104-rcumid1oof1j80luvo62n05rc7or4ve9.apps.googleusercontent.com;;ANDROID_SHA256_FINGERPRINT=26:6C:F3:12:5F:51:32:2A:03:A8:FD:26:F2:A5:92:02:48:61:F8:B7:03:1B:B7:DB:92:CA:AE:2C:78:8E:8C:1B;;ANDROID_PRO_SHA256_FINGERPRINT=54:55:81:CB:46:7F:D1:B7:8E:26:88:89:EA:C9:F7:3C:A1:04:F5:82:BC:D2:1E:FE:B3:3D:F8:3C:9D:34:BE:F4;;APPLE_TEAM_ID=53X2DQJH29;;APPLE_BUNDLE_IDS=com.jitplus.client,com.jitplus.pro;;IOS_APP_ID=6762307929;;IOS_PRO_APP_ID=6762308251;;MAINTENANCE_MODE=${_MAINTENANCE_MODE};;GEOCODE_REQUIRE_AUTH=${_GEOCODE_REQUIRE_AUTH};;MIN_IOS_VERSION=${_MIN_VERSION_LEGACY};;MIN_ANDROID_VERSION=${_MIN_VERSION_LEGACY};;MIN_IOS_VERSION_JITPLUS=${_MIN_VERSION_JITPLUS};;MIN_ANDROID_VERSION_JITPLUS=${_MIN_VERSION_JITPLUS};;MIN_IOS_VERSION_JITPLUSPRO=${_MIN_VERSION_JITPLUSPRO};;MIN_ANDROID_VERSION_JITPLUSPRO=${_MIN_VERSION_JITPLUSPRO}
       - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,QR_HMAC_SECRET=QR_HMAC_SECRET:latest,SENTRY_DSN=SENTRY_DSN:latest,CORS_ORIGINS=CORS_ORIGINS:latest,BACKEND_URL=BACKEND_URL:latest,RESEND_API_KEY=RESEND_API_KEY:latest,FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest,FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest,SMTP_HOST=SMTP_HOST:latest,SMTP_PORT=SMTP_PORT:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASS=SMTP_PASS:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest
     waitFor: [run-migrations]
 

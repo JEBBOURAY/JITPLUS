@@ -39,6 +39,7 @@ import { ScratchPushService } from './scratch-push.service';
 import { getScratchTexts, legacyCardReceivedTexts } from './scratch-notif-i18n';
 import { ScratchDispatchService } from './scratch-dispatch.service';
 import { nextAllowedSendTime } from '../common/tasks/cron-utils';
+import { trackBackground } from '../common/tasks/background-work';
 import { MS_PER_DAY } from '../common/constants';
 
 const DEFAULT_DESIGN = 'violet';
@@ -352,8 +353,7 @@ export class ScratchCampaignService {
       ),
     );
     if (immediate) {
-      void this.dispatcher
-        .dispatch(id)
+      void trackBackground(this.dispatcher.dispatch(id))
         .catch((err) => this.logger.error(`Immediate dispatch of ${id} failed: ${errMsg(err)}`));
     }
     return { ...(await this.get(merchantId, id)), audience };
@@ -477,7 +477,7 @@ export class ScratchCampaignService {
       metadata: { campaignId: id, cancelledCards: result.cancelledCards, cancelledCoupons: result.cancelledCoupons },
     });
 
-    this.notifyCancellation(id, result).catch((err) =>
+    trackBackground(this.notifyCancellation(id, result)).catch((err) =>
       this.logger.warn(`Cancellation side effects failed for ${id}: ${errMsg(err)}`),
     );
 

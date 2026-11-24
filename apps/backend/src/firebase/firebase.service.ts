@@ -4,6 +4,7 @@ import * as admin from 'firebase-admin';
 import * as Sentry from '@sentry/nestjs';
 import { IPushProvider } from '../common/interfaces';
 import { mapLimit } from '../common/tasks/cron-utils';
+import { trackBackground } from '../common/tasks/background-work';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 /** Expo accepts at most 100 messages per request. */
@@ -149,7 +150,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
     for (let attempt = 0; attempt <= EXPO_MAX_RETRIES; attempt++) {
       let retryAfter: string | null = null;
       try {
-        const response = await fetch(EXPO_PUSH_URL, {
+        const response = await trackBackground(fetch(EXPO_PUSH_URL, {
           method: 'POST',
           headers: {
             'Accept': 'application/json',
@@ -158,7 +159,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           },
           body: JSON.stringify(messages),
           signal: AbortSignal.timeout(EXPO_TIMEOUT_MS),
-        });
+        }));
 
         if (response.ok) {
           let payload: unknown;
@@ -317,7 +318,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           };
 
           try {
-            const response = await admin.messaging().sendEachForMulticast(message);
+            const response = await trackBackground(admin.messaging().sendEachForMulticast(message));
             totalSuccess += response.successCount;
             totalFailure += response.failureCount;
 
@@ -443,7 +444,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         ...(data ? { data } : {}),
       };
 
-      await admin.messaging().send(message);
+      await trackBackground(admin.messaging().send(message));
       this.logger.log(`Merchant push delivered: "${title}"`);
       return { invalidToken: false };
     } catch (err) {

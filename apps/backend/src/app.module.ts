@@ -42,6 +42,7 @@ import { ClientReengagementService } from './common/tasks/client-reengagement.se
 import { ClientRewardReminderService } from './common/tasks/client-reward-reminder.service';
 import { ClientWeeklyDigestService } from './common/tasks/client-weekly-digest.service';
 import { StampExpiryService } from './common/tasks/stamp-expiry.service';
+import { CronTickModule } from './common/tasks/cron-tick.module';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
@@ -97,6 +98,11 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
         WELCOME_BONUS_HMAC_SECRET: Joi.string().min(32).allow('').optional(),
         // SECURITY: Sentry DSN is required in production for error monitoring
         SENTRY_DSN: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().uri().required(), otherwise: Joi.string().optional() }),
+        // Crons: in-process timers (default) or one Cloud Scheduler tick a minute
+        // (needed once the CPU is only allocated during requests).
+        CRON_MODE: Joi.string().valid('timer', 'http').default('timer'),
+        CRON_TICK_AUDIENCE: Joi.when('CRON_MODE', { is: 'http', then: Joi.string().uri().required(), otherwise: Joi.string().optional() }),
+        CRON_TICK_INVOKER: Joi.when('CRON_MODE', { is: 'http', then: Joi.string().email().required(), otherwise: Joi.string().optional() }),
         // SECURITY: Dev auth bypass must NEVER be enabled in production
         ALLOW_DEV_AUTH_BYPASS: Joi.when('NODE_ENV', { is: 'production', then: Joi.forbidden(), otherwise: Joi.string().optional() }),
       }),
@@ -106,6 +112,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
       throttlers: [{ ttl: THROTTLE_TTL, limit: 60 }],
     }),
     ScheduleModule.forRoot(),
+    CronTickModule,
     CacheModule.register({
       isGlobal: true,
       ttl: THROTTLE_TTL,

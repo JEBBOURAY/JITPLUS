@@ -27,6 +27,7 @@ import { PostgresIoAdapter } from './events/postgres-io.adapter';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { DEFAULT_PORT, getAdminDashboardOrigin } from './common/constants';
 import { flattenValidationErrors } from './common/utils/validation-i18n';
+import { CronTickService, cronMode } from './common/tasks/cron-tick.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -178,6 +179,11 @@ async function bootstrap() {
   // In production behind Docker, use BIND_HOST env to override if needed
   const host = process.env.BIND_HOST || '0.0.0.0';
   await app.listen(port, host);
+
+  // CRON_MODE=http: Cloud Scheduler drives the @Cron jobs through
+  // /internal/cron/tick. Stopped after listen() so every timer is mounted
+  // (ScheduleModule mounts them on application bootstrap).
+  if (cronMode() === 'http') app.get(CronTickService).stopInProcessTimers();
 
   logger.log(`Backend JitPlus démarré sur http://${host}:${port}`);
   if (!isProd) {

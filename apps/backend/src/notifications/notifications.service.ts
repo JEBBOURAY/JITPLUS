@@ -25,6 +25,7 @@ import { maskPhone } from '../common/utils/pii-mask';
 import { mapLimit } from '../common/tasks/cron-utils';
 import { randomUUID } from 'crypto';
 import { notificationLink } from './notification-link';
+import { trackBackground } from '../common/tasks/background-work';
 
 /** Concurrent single-client pushes in a {@link NotificationsService.sendToClients} batch. */
 const CLIENT_PUSH_CONCURRENCY = 8;
@@ -343,13 +344,25 @@ export class NotificationsService {
    * Send a push notification to a SINGLE client (transactional: earn, redeem, reward available).
    * Creates an in-app Notification + ClientNotificationStatus so it shows in the client's feed.
    */
-  async sendToClient(
+  /** Tracked as background work: request paths call it without awaiting. */
+  sendToClient(
     merchantId: string,
     clientId: string,
     title: string,
     body: string,
     data?: Record<string, string>,
     /** Android channel; defaults to the push provider's offers channel. */
+    androidChannelId?: string,
+  ): Promise<void> {
+    return trackBackground(this.deliverToClient(merchantId, clientId, title, body, data, androidChannelId));
+  }
+
+  private async deliverToClient(
+    merchantId: string,
+    clientId: string,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
     androidChannelId?: string,
   ): Promise<void> {
     try {

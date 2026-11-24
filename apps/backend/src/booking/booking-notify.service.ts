@@ -13,6 +13,7 @@ import {
 } from './booking-messages';
 import { formatLocalDayMonth, formatLocalTime, timeZoneForCountry } from './booking-time';
 import { DEFAULT_SETTINGS } from './booking.constants';
+import { trackBackground } from '../common/tasks/background-work';
 
 export interface NotifiableBooking {
   id: string;
@@ -62,7 +63,12 @@ export class BookingNotifyService {
     }
   }
 
-  async toClient(b: NotifiableBooking, kind: ClientBookingMessage): Promise<void> {
+  /** Push + e-mail to the client. Tracked: callers in requests do not await it. */
+  toClient(b: NotifiableBooking, kind: ClientBookingMessage): Promise<void> {
+    return trackBackground(this.deliverToClient(b, kind));
+  }
+
+  private async deliverToClient(b: NotifiableBooking, kind: ClientBookingMessage): Promise<void> {
     if (!b.clientId) return;
     try {
       const [client, merchant] = await Promise.all([
@@ -131,7 +137,12 @@ export class BookingNotifyService {
   }
 
   /** Always kept in the merchant's notifications, and pushed when a device is reachable. */
-  async toMerchant(b: NotifiableBooking, kind: MerchantBookingMessage): Promise<void> {
+  /** Inbox + push to the merchant. Tracked: callers in requests do not await it. */
+  toMerchant(b: NotifiableBooking, kind: MerchantBookingMessage): Promise<void> {
+    return trackBackground(this.deliverToMerchant(b, kind));
+  }
+
+  private async deliverToMerchant(b: NotifiableBooking, kind: MerchantBookingMessage): Promise<void> {
     try {
       const merchant = await this.prisma.merchant.findUnique({
         where: { id: b.merchantId },
