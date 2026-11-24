@@ -62,8 +62,14 @@ const MERCHANT_BRIEF = (d30: Date) => Prisma.sql`
   f.status::text AS fu_status, f.next_action_at, f.next_action, f.owner AS fu_owner
 `;
 
+/** Effective plan from raw `plan`, `admin_plan` and `premium_grant` columns. */
+export function planKindOfRow(r: Row): 'FREE' | 'TRIAL' | 'PAID' | 'OFFERED' | 'ADMIN' {
+  if (r.plan !== 'PREMIUM') return 'FREE';
+  if (!r.admin_plan) return 'TRIAL';
+  return r.premium_grant === 'OFFERED' ? 'OFFERED' : r.premium_grant === 'PAID' ? 'PAID' : 'ADMIN';
+}
+
 function mapBrief(r: Row) {
-  const isPremium = r.plan === 'PREMIUM';
   return {
     id: String(r.id),
     nom: String(r.nom),
@@ -72,7 +78,7 @@ function mapBrief(r: Row) {
     ville: (r.ville as string | null) ?? null,
     categorie: String(r.categorie),
     plan: String(r.plan) as 'FREE' | 'PREMIUM',
-    planKind: !isPremium ? 'FREE' : !r.admin_plan ? 'TRIAL' : r.premium_grant === 'OFFERED' ? 'OFFERED' : r.premium_grant === 'PAID' ? 'PAID' : 'ADMIN',
+    planKind: planKindOfRow(r),
     planExpiresAt: iso(r.expires_at),
     createdAt: iso(r.created_at)!,
     onboarded: Boolean(r.onboarded),

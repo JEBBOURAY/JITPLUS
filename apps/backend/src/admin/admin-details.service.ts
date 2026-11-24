@@ -434,7 +434,18 @@ export class AdminDetailsService {
             (SELECT COUNT(*) FROM coupons WHERE merchant_id = ${merchantId} AND status = 'REDEEMED') AS coupons_redeemed,
             (SELECT COUNT(*) FROM client_claims WHERE merchant_id = ${merchantId}) AS claims,
             (SELECT COUNT(*) FROM client_claims WHERE merchant_id = ${merchantId} AND consumed_at IS NOT NULL) AS claims_consumed,
-            (SELECT COUNT(*) FROM profile_views_log WHERE merchant_id = ${merchantId} AND created_at >= ${d30}) AS views30
+            (SELECT COUNT(*) FROM profile_views_log WHERE merchant_id = ${merchantId} AND created_at >= ${d30}) AS views30,
+            (SELECT COUNT(*) FROM deals WHERE merchant_id = ${merchantId}) AS deals,
+            (SELECT COUNT(*) FROM deals WHERE merchant_id = ${merchantId} AND status = 'ACTIVE' AND starts_at <= ${now} AND ends_at > ${now}) AS deals_live,
+            (SELECT COUNT(*) FROM bookings WHERE merchant_id = ${merchantId}) AS bookings,
+            (SELECT COUNT(*) FROM bookings WHERE merchant_id = ${merchantId} AND created_at >= ${d30}) AS bookings30,
+            COALESCE((SELECT enabled FROM booking_settings WHERE merchant_id = ${merchantId}), false) AS booking_on,
+            (SELECT COUNT(*) FROM collections WHERE merchant_id = ${merchantId} AND status <> 'DRAFT') AS collections,
+            (SELECT COUNT(*) FROM collections WHERE merchant_id = ${merchantId} AND status = 'ACTIVE') AS collections_live,
+            (SELECT COUNT(*) FROM collection_progress WHERE merchant_id = ${merchantId} AND completed_at IS NOT NULL) AS collections_completed,
+            (SELECT COUNT(*) FROM stamp_codes WHERE merchant_id = ${merchantId}) AS stamp_codes,
+            (SELECT COUNT(*) FROM stamp_codes WHERE merchant_id = ${merchantId} AND redeemed_at IS NOT NULL) AS stamp_codes_redeemed,
+            (SELECT COUNT(*) FROM transactions WHERE merchant_id = ${merchantId} AND type = 'WELCOME_BONUS' AND status = 'ACTIVE') AS welcome_given
         `;
     const f = featureRows[0] ?? {};
     return {
@@ -448,6 +459,17 @@ export class AdminDetailsService {
       claims: num(f.claims),
       claimsConsumed: num(f.claims_consumed),
       views30: num(f.views30),
+      deals: num(f.deals),
+      dealsLive: num(f.deals_live),
+      bookings: num(f.bookings),
+      bookings30: num(f.bookings30),
+      bookingOn: Boolean(f.booking_on),
+      collections: num(f.collections),
+      collectionsLive: num(f.collections_live),
+      collectionsCompleted: num(f.collections_completed),
+      stampCodes: num(f.stamp_codes),
+      stampCodesRedeemed: num(f.stamp_codes_redeemed),
+      welcomeGiven: num(f.welcome_given),
     };
   }
 

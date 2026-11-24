@@ -17,6 +17,7 @@ import { AdminReferralService } from './admin-referral.service';
 import { AuditLogService } from './audit-log.service';
 import { AdminInsightsService } from './admin-insights.service';
 import { AdminDetailsService } from './admin-details.service';
+import { AdminUsageService } from './admin-usage.service';
 import { MerchantPlanModule } from '../merchant/merchant-plan.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ClientClosureModule } from '../client-auth/client-closure.module';
@@ -52,6 +53,7 @@ import { SignupFunnelModule } from '../client-auth/signup-funnel.module';
     AdminReferralService,
     AdminInsightsService,
     AdminDetailsService,
+    AdminUsageService,
     AdminCrmService,
     AuditLogService,
     AdminGuard,

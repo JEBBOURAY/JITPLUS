@@ -393,6 +393,11 @@ export default function MerchantDetailPage() {
                 <KeyValue label="Roue de la fortune" value={a.features.wheelCampaigns ? `${a.features.wheelCampaigns} campagne(s)${a.features.wheelActive ? ' · active' : ''}` : <Muted>Jamais</Muted>} />
                 <KeyValue label="Coupons" value={a.features.coupons ? `${a.features.couponsRedeemed}/${a.features.coupons} utilisés` : <Muted>Aucun</Muted>} />
                 <KeyValue label="Ajout rapide WhatsApp" value={a.features.claims ? `${a.features.claimsConsumed}/${a.features.claims} réclamés` : <Muted>Jamais</Muted>} />
+                <KeyValue label="Cadeau de bienvenue" value={a.features.welcomeGiven ? `${fmtNumber(a.features.welcomeGiven)} offert(s)` : <Muted>Jamais</Muted>} />
+                <KeyValue label="Codes e-commerce" value={a.features.stampCodes ? `${a.features.stampCodesRedeemed}/${a.features.stampCodes} utilisés` : <Muted>Jamais</Muted>} />
+                <KeyValue label="Collections" value={a.features.collections ? `${a.features.collections} collection(s)${a.features.collectionsLive ? ' · active' : ''} · ${fmtNumber(a.features.collectionsCompleted)} cadeau(x) gagné(s)` : <Muted>Jamais</Muted>} />
+                <KeyValue label="Bons plans" value={a.features.deals ? `${a.features.deals} publié(s)${a.features.dealsLive ? ` · ${a.features.dealsLive} en ligne` : ''}` : <Muted>Jamais</Muted>} />
+                <KeyValue label="Réservations" value={a.features.bookings ? `${fmtNumber(a.features.bookings)} RDV · ${fmtNumber(a.features.bookings30)} sur 30 j${a.features.bookingOn ? '' : ' · désactivée'}` : a.features.bookingOn ? <Muted>Activée, aucun RDV</Muted> : <Muted>Jamais</Muted>} />
                 <KeyValue label="Équipe" value={a.team.length ? `${a.team.filter((t) => t.isActive).length} membre(s) actif(s)` : <Muted>Seul</Muted>} />
                 {a.notifications.length === 0 ? (
                   <KeyValue label="Campagnes de notification" value={<Muted>Jamais</Muted>} />

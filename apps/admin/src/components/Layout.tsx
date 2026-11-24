@@ -13,6 +13,7 @@ const Icons = {
   followUp: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
   revenue: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6',
   analytics: 'M3 3v18h18M7 15l4-4 3 3 5-6',
+  usage: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
   merchants: 'M3 9l1.5-5h15L21 9M3 9v11h18V9M3 9h18M9 20v-6h6v6',
   clients: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm14 10v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
   notifications: 'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0',
@@ -45,6 +46,7 @@ const NAV: { title: string; items: { to: string; label: string; icon: keyof type
       { to: '/follow-ups', label: 'Suivi commercial', icon: 'followUp' },
       { to: '/revenue', label: 'Revenus', icon: 'revenue' },
       { to: '/analytics', label: 'Analyses', icon: 'analytics' },
+      { to: '/usage', label: 'Fonctionnalités', icon: 'usage' },
     ],
   },
   {

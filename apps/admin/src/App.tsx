@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Analytics from './pages/Analytics';
+import Usage from './pages/Usage';
 import FollowUps from './pages/FollowUps';
 import Revenue from './pages/Revenue';
 import Merchants from './pages/Merchants';
@@ -61,6 +62,7 @@ export default function App() {
                   <Route path="/follow-ups" element={<FollowUps />} />
                   <Route path="/revenue" element={<Revenue />} />
                   <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/usage" element={<Usage />} />
                   <Route path="/merchants" element={<Merchants />} />
                   <Route path="/merchants/:id" element={<MerchantDetail />} />
                   <Route path="/clients" element={<Clients />} />

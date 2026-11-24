@@ -5,6 +5,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminInsightsService } from './admin-insights.service';
 import { AdminDetailsService } from './admin-details.service';
+import { AdminUsageService } from './admin-usage.service';
 import { InsightsQueryDto } from './dto/insights-query.dto';
 import { SignupFunnelService } from '../client-auth/signup-funnel.service';
 
@@ -17,6 +18,7 @@ export class AdminDashboardController {
     private readonly dashboardService: AdminDashboardService,
     private readonly insightsService: AdminInsightsService,
     private readonly detailsService: AdminDetailsService,
+    private readonly usageService: AdminUsageService,
     private readonly signupFunnel: SignupFunnelService,
   ) {}
 
@@ -32,6 +34,13 @@ export class AdminDashboardController {
   @ApiOperation({ summary: 'Product analytics: growth, activation, retention, games, geography' })
   async getInsights(@Query() query: InsightsQueryDto) {
     return this.insightsService.getInsights(query.days ?? 30);
+  }
+
+  @Get('stats/usage')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Feature usage per merchant: used in the period, before, never; what is switched on now' })
+  async getUsage(@Query() query: InsightsQueryDto) {
+    return this.usageService.getUsage(query.days ?? 30);
   }
 
   @Get('stats/signup-funnel')

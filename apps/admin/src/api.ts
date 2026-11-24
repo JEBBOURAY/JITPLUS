@@ -1,5 +1,6 @@
 import type {
   AdminInfo,
+  UsageReport,
   MerchantsResponse,
   MerchantDetail,
   GlobalStats,
@@ -195,6 +196,8 @@ export const getInsights = (days: InsightPeriod = 30) =>
   req<AdminInsights>(`/admin/stats/insights?days=${days}`);
 export const getSignupFunnel = (days: InsightPeriod = 30) =>
   req<SignupFunnel>(`/admin/stats/signup-funnel?days=${days}`);
+export const getUsage = (days: InsightPeriod = 30) =>
+  req<UsageReport>(`/admin/stats/usage?days=${days}`);
 export const getAlerts = () => req<AdminAlerts>('/admin/alerts');
 
 // ── Merchants ──────────────────────────────────────────────────────────────────

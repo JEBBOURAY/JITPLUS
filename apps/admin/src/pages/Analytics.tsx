@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
 import { getInsights, getSignupFunnel, getStats } from '../api';
 import type { AdminInsights, AuditLogBrief, GlobalStats, InsightPeriod, MerchantRow, SignupFunnel } from '../types';
@@ -244,7 +244,7 @@ function MerchantsTab({ d, navigate }: { d: AdminInsights; navigate: (to: string
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 16 }}>
-        <Card title="Adoption des fonctionnalités">
+        <Card title="Adoption des fonctionnalités (depuis le lancement)" right={<Link to="/usage" style={{ fontSize: 12.5, color: C.primary, textDecoration: 'none' }}>Usage détaillé →</Link>}>
           <ShareList
             total={total}
             color={C.primary}

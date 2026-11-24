@@ -460,6 +460,17 @@ export interface MerchantActivity {
     claims: number;
     claimsConsumed: number;
     views30: number;
+    deals: number;
+    dealsLive: number;
+    bookings: number;
+    bookings30: number;
+    bookingOn: boolean;
+    collections: number;
+    collectionsLive: number;
+    collectionsCompleted: number;
+    stampCodes: number;
+    stampCodesRedeemed: number;
+    welcomeGiven: number;
   };
   notifications: { channel: string; campaigns: number; recipients: number; success: number; successRate: number; lastAt: string | null }[];
 }
@@ -569,6 +580,49 @@ export type InsightPeriod = 7 | 30 | 90;
 export interface SignupFunnel {
   days: number;
   rows: { step: string; method: string; platform: string; count: number }[];
+}
+
+// ── Feature usage (GET /admin/stats/usage) ───────────────────────────────────
+
+export type UsageFeature =
+  | 'stamps' | 'rewards' | 'welcome' | 'team' | 'stampCodes' | 'quickAdd'
+  | 'notifications' | 'scratch' | 'wheel' | 'collections' | 'deals' | 'booking';
+
+/** Events in the period (n), the previous one (prev), ever, and the last one. */
+export interface UsageCount {
+  n: number;
+  prev: number;
+  ever: number;
+  last: string | null;
+}
+
+export interface UsageMerchant {
+  id: string;
+  nom: string;
+  email: string;
+  phone: string | null;
+  ville: string | null;
+  categorie: string;
+  planKind: PlanKind;
+  planExpiresAt: string | null;
+  createdAt: string;
+  onboarded: boolean;
+  clients: number;
+  /** Last authenticated request from the Pro app (owner or team) */
+  lastAppAt: string | null;
+  /** Only the features used at least once */
+  usage: Partial<Record<UsageFeature, UsageCount>>;
+  /** Switched on or running right now */
+  live: UsageFeature[];
+  settings: { perAmount: boolean; stampExpiry: boolean; multiStore: boolean };
+}
+
+export interface UsageReport {
+  period: { days: InsightPeriod; since: string; until: string };
+  generatedAt: string;
+  features: UsageFeature[];
+  truncated: boolean;
+  merchants: UsageMerchant[];
 }
 
 export interface InsightDailyPoint {
